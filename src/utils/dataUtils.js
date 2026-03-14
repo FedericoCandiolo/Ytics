@@ -201,12 +201,29 @@ export function aggregateData(data, groupField, valueField, aggregation) {
 export function aggregate(vals, fn) {
   if (!vals.length) return 0;
   switch (fn) {
-    case 'count': return vals.length;
-    case 'mean':  return vals.reduce((a, b) => a + b, 0) / vals.length;
-    case 'min':   return Math.min(...vals);
-    case 'max':   return Math.max(...vals);
-    default:      return vals.reduce((a, b) => a + b, 0);
+    case 'count':  return vals.length;
+    case 'mean':   return vals.reduce((a, b) => a + b, 0) / vals.length;
+    case 'min':    return Math.min(...vals);
+    case 'max':    return Math.max(...vals);
+    case 'median': return _quantile([...vals].sort((a, b) => a - b), 0.5);
+    case 'std': {
+      const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+      return Math.sqrt(vals.reduce((s, v) => s + (v - m) ** 2, 0) / Math.max(vals.length - 1, 1));
+    }
+    case 'p25': return _quantile([...vals].sort((a, b) => a - b), 0.25);
+    case 'p75': return _quantile([...vals].sort((a, b) => a - b), 0.75);
+    case 'p90': return _quantile([...vals].sort((a, b) => a - b), 0.90);
+    case 'p95': return _quantile([...vals].sort((a, b) => a - b), 0.95);
+    default:     return vals.reduce((a, b) => a + b, 0); // sum
   }
+}
+
+function _quantile(sorted, p) {
+  const n = sorted.length;
+  if (n === 0) return 0;
+  const idx = p * (n - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
 export function formatValue(v) {
@@ -217,21 +234,56 @@ export function formatValue(v) {
   return v % 1 === 0 ? String(v) : v.toFixed(2);
 }
 
+// Descriptive, non-commercial color palette names
 export const COLOR_SCHEMES = {
-  tableau10: 'Tableau 10',
-  category10: 'Category 10',
-  set2: 'Set 2',
-  set3: 'Set 3',
-  pastel1: 'Pastel',
-  dark2: 'Dark',
-  paired: 'Paired',
-  accent: 'Accent',
+  vivid:     'Vivid',          // bold, high-contrast categorical (was tableau10)
+  spectrum:  'Spectrum',       // full spectral categorical      (was category10)
+  muted:     'Muted',          // subdued 8-color set            (was set2)
+  soft:      'Soft',           // light 12-color set             (was set3)
+  pastel:    'Pastel',         // desaturated gentle tones
+  contrast:  'Contrast',       // dark high-contrast set         (was dark2)
+  duo:       'Duo-tone',       // two-hue sequential pairs       (was paired)
+  bold:      'Bold Accent',    // saturated accent palette
+  // Sequential single-hue
+  blues:     'Blues',
+  greens:    'Greens',
+  reds:      'Reds',
+  purples:   'Purples',
+  oranges:   'Oranges',
+  // Diverging
+  warmCool:  'Warm–Cool',      // red-blue diverging (was RdYlBu)
+  brownGreen:'Brown–Green',    // BrBG diverging
+};
+
+// Maps scheme key → d3 color array (used in editor swatches)
+export const SCHEME_D3_MAP = {
+  vivid:      'schemeTableau10',
+  spectrum:   'schemeCategory10',
+  muted:      'schemeSet2',
+  soft:       'schemeSet3',
+  pastel:     'schemePastel1',
+  contrast:   'schemeDark2',
+  duo:        'schemePaired',
+  bold:       'schemeAccent',
+  blues:      'schemeBlues[9]',
+  greens:     'schemeGreens[9]',
+  reds:       'schemeReds[9]',
+  purples:    'schemePurples[9]',
+  oranges:    'schemeOranges[9]',
+  warmCool:   'schemeRdYlBu[9]',
+  brownGreen: 'schemeBrBG[9]',
 };
 
 export const AGGREGATIONS = {
-  sum: 'Sum',
-  count: 'Count',
-  mean: 'Average',
-  min: 'Min',
-  max: 'Max',
+  sum:    'Sum',
+  count:  'Count',
+  mean:   'Average',
+  min:    'Min',
+  max:    'Max',
+  median: 'Median',
+  std:    'Std Dev',
+  p25:    '25th pct',
+  p75:    '75th pct',
+  p90:    '90th pct',
+  p95:    '95th pct',
 };

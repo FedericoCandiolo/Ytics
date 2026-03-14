@@ -24,9 +24,9 @@ export default function DeveloperMode() {
           onClick={() => dispatch({ type: 'SET_DEVELOPER_TAB', payload: 'dashboard' })}
         >
           📊 Dashboard
-          {state.dashboard.widgets.length > 0 && (
+          {state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0) > 0 && (
             <span className="badge badge-purple" style={{ marginLeft: 4 }}>
-              {state.dashboard.widgets.length}
+              {state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0)}
             </span>
           )}
         </button>

@@ -354,6 +354,81 @@
 .color-swatches { display: flex; gap: 2px; }
 .color-swatch { width: 14px; height: 14px; border-radius: 50%; }
 
+/* ── Maximize overlay ────────────────────────────────────────────────────── */
+.widget-maximize-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(10, 20, 38, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px;
+  animation: wmFadeIn .12s ease;
+}
+@keyframes wmFadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.widget-maximize-card {
+  background: #fff; border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0,0,0,.35);
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: wmScaleIn .15s ease;
+}
+@keyframes wmScaleIn { from { transform: scale(.97); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+
+/* ── Grid resize handles ─────────────────────────────────────────────────── */
+/* SE corner handle */
+.react-resizable-handle-se {
+  width: 18px !important; height: 18px !important;
+  bottom: 0 !important; right: 0 !important;
+  cursor: se-resize;
+}
+.react-resizable-handle-se::after {
+  content: '';
+  position: absolute; right: 4px; bottom: 4px;
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--border-dark);
+  border-bottom: 2px solid var(--border-dark);
+  border-radius: 0 0 2px 0;
+  opacity: 0.4;
+  transition: opacity .15s;
+}
+.react-grid-item:hover .react-resizable-handle-se::after { opacity: 1; }
+
+/* E (right edge) handle — drag to resize width */
+.react-resizable-handle-e {
+  width: 8px !important;
+  top: 20% !important; bottom: 20% !important; height: auto !important;
+  right: 0 !important;
+  cursor: ew-resize;
+  display: flex; align-items: center; justify-content: center;
+}
+.react-resizable-handle-e::after {
+  content: '';
+  width: 3px; height: 28px;
+  background: var(--border-dark);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.react-grid-item:hover .react-resizable-handle-e::after { opacity: 0.5; }
+
+/* S (bottom edge) handle — drag to resize height */
+.react-resizable-handle-s {
+  height: 8px !important;
+  left: 20% !important; right: 20% !important; width: auto !important;
+  bottom: 0 !important;
+  cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+}
+.react-resizable-handle-s::after {
+  content: '';
+  height: 3px; width: 28px;
+  background: var(--border-dark);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.react-grid-item:hover .react-resizable-handle-s::after { opacity: 0.5; }
+
 /* ── Range slider ────────────────────────────────────────────────────────── */
 input[type=range] {
   width: 100%; accent-color: var(--primary);
@@ -364,4 +439,91 @@ input[type=range] {
   display: flex; align-items: center; gap: 8px;
   font-size: 13px; cursor: pointer; user-select: none;
 }
+
+/* ── Page tabs (builder + viewer) ───────────────────────────────────────── */
+.page-tabs {
+  display: flex; align-items: center;
+  background: #f1f5f9;
+  border-top: 1px solid var(--border);
+  padding: 0 8px;
+  min-height: 36px;
+  flex-shrink: 0;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.page-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px; font-weight: 500;
+  color: var(--text-muted);
+  border-radius: var(--radius) var(--radius) 0 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+  user-select: none;
+  position: relative;
+}
+.page-tab:hover:not(.page-tab--active) { background: #e2e8f0; color: var(--text); }
+.page-tab--active {
+  background: #fff; color: var(--primary);
+  border-color: var(--border);
+  box-shadow: 0 -1px 0 #fff;
+}
+.page-tab-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-light); font-size: 13px; line-height: 1;
+  padding: 0 2px; border-radius: 3px;
+  transition: color .1s, background .1s;
+}
+.page-tab-close:hover { color: var(--danger); background: rgba(239,68,68,.1); }
+
+.page-tab-add {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 16px; font-weight: 400;
+  padding: 4px 8px; border-radius: var(--radius);
+  transition: color .1s, background .1s;
+  line-height: 1;
+}
+.page-tab-add:hover { color: var(--primary); background: #eff6ff; }
+
+.page-tab-input {
+  background: transparent; border: none; outline: none;
+  font-size: 12px; font-weight: 500; color: var(--primary);
+  width: 80px; padding: 0;
+}
+
+/* ── Viewer page navigation ──────────────────────────────────────────────── */
+.viewer-page-nav {
+  display: flex; align-items: center; gap: 8px;
+  background: #f1f5f9;
+  border-top: 1px solid var(--border);
+  padding: 4px 12px;
+  flex-shrink: 0;
+}
+
+/* ── Carousel widget ─────────────────────────────────────────────────────── */
+.carousel-nav {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: #fafafa;
+  flex-shrink: 0;
+}
+.carousel-arrow {
+  background: none; border: 1px solid var(--border); border-radius: 50%;
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px; color: var(--text);
+  transition: background .1s, border-color .1s;
+}
+.carousel-arrow:hover { background: var(--bg); border-color: var(--primary); color: var(--primary); }
+.carousel-dots { display: flex; align-items: center; gap: 5px; }
+.carousel-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  border: none; background: var(--border-dark);
+  cursor: pointer; padding: 0; transition: background .15s, transform .15s;
+}
+.carousel-dot--active { background: var(--primary); transform: scale(1.25); }
 .checkbox-row input { accent-color: var(--primary); width: 14px; height: 14px; }

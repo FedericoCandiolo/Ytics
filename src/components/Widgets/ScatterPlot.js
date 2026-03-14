@@ -1,139 +1,157 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-
-const SCHEMES = {
-  tableau10: d3.schemeTableau10, category10: d3.schemeCategory10,
-  set2: d3.schemeSet2, set3: d3.schemeSet3, pastel1: d3.schemePastel1,
-  dark2: d3.schemeDark2, paired: d3.schemePaired, accent: d3.schemeAccent,
-};
+import { getColorScale, getPrimaryColor } from '../../utils/colorUtils';
+import { useTooltip } from './useTooltip';
+import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
 export default function ScatterPlot({ widget, data }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
-  const [tooltip, setTooltip] = useState(null);
-  const [dims, setDims] = useState({ w: 0, h: 0 });
+  const dims = useChartDims(containerRef);
+  const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
 
-  useEffect(() => {
-    const ro = new ResizeObserver(([e]) => {
-      const { width, height } = e.contentRect;
-      setDims({ w: width, h: height });
-    });
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
+  const render = useCallback(() => {
     const { w, h } = dims;
-    if (!data?.length || !widget.xField || !widget.yField || w < 10 || h < 10) {
+    if (!data?.length || !widget.xField || !widget.yField || w < 20 || h < 20) {
       d3.select(svgRef.current).selectAll('*').remove();
       return;
     }
 
-    const m = { top: 14, right: 20, bottom: 50, left: 60 };
+    const m = { top: 16, right: widget.showLegend && widget.colorField ? 110 : 20, bottom: 52, left: 62 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0) return;
 
-    const pts = data
-      .map(d => ({
-        x: +d[widget.xField],
-        y: +d[widget.yField],
-        color: widget.colorField ? String(d[widget.colorField] ?? '') : null,
-        size: widget.sizeField ? +d[widget.sizeField] || 0 : null,
-        raw: d,
-      }))
-      .filter(d => !isNaN(d.x) && !isNaN(d.y));
+    const pts = data.map(d => ({
+      x: +d[widget.xField], y: +d[widget.yField],
+      color: widget.colorField ? String(d[widget.colorField] ?? '') : null,
+      size: widget.sizeField ? +d[widget.sizeField] || 0 : null,
+      raw: d,
+    })).filter(d => !isNaN(d.x) && !isNaN(d.y));
 
-    const opacity = widget.opacity ?? 1;
-    const colors = d3.scaleOrdinal(SCHEMES[widget.colorScheme] || d3.schemeTableau10);
-    const sizeMin = widget.dotSizeMin ?? 4;
-    const sizeMax = widget.dotSizeMax ?? 20;
+    if (!pts.length) return;
 
-    const sizeExtent = widget.sizeField ? d3.extent(pts, d => d.size) : [1, 1];
-    const sizeScale = d3.scaleSqrt().domain(sizeExtent).range([sizeMin, sizeMax]).clamp(true);
+    const opacity = widget.opacity ?? 0.8;
+    const categories = widget.colorField ? [...new Set(pts.map(d => d.color))] : [];
+    const colors = widget.colorField ? getColorScale(widget.colorScheme, categories) : null;
+    const primaryColor = getPrimaryColor(widget.colorScheme);
+
+    const sMin = widget.dotSizeMin ?? 4, sMax = widget.dotSizeMax ?? 20;
+    const sizeExt = widget.sizeField ? d3.extent(pts, d => d.size) : [1, 1];
+    const sizeScale = d3.scaleSqrt().domain(sizeExt).range([sMin, sMax]).clamp(true);
 
     const xScale = d3.scaleLinear().domain(d3.extent(pts, d => d.x)).range([0, W]).nice();
     const yScale = d3.scaleLinear().domain(d3.extent(pts, d => d.y)).range([H, 0]).nice();
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
+    svg.attr('width', w).attr('height', h);
     const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
     if (widget.showGrid) {
       g.append('g').call(d3.axisLeft(yScale).tickSize(-W).tickFormat(''))
-        .call(a => a.select('.domain').remove())
-        .call(a => a.selectAll('.tick line').attr('stroke', '#e2e8f0').attr('stroke-dasharray', '3,3'));
+        .call(a => { a.select('.domain').remove(); a.selectAll('.tick line').attr('stroke', 'var(--chart-grid-color)').attr('stroke-dasharray', '3,3'); });
       g.append('g').call(d3.axisBottom(xScale).tickSize(-H).tickFormat(''))
         .attr('transform', `translate(0,${H})`)
-        .call(a => a.select('.domain').remove())
-        .call(a => a.selectAll('.tick line').attr('stroke', '#e2e8f0').attr('stroke-dasharray', '3,3'));
+        .call(a => { a.select('.domain').remove(); a.selectAll('.tick line').attr('stroke', 'var(--chart-grid-color)').attr('stroke-dasharray', '3,3'); });
     }
 
-    g.append('g').attr('transform', `translate(0,${H})`)
-      .call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styled);
-    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(formatValue)).call(styled);
+    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(6).tickFormat(fmtTick)).call(styledAxis);
+    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtTick)).call(styledAxis);
 
-    g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
-      .attr('cx', d => xScale(d.x))
-      .attr('cy', d => yScale(d.y))
-      .attr('r', d => widget.sizeField ? sizeScale(d.size) : sizeMin + 2)
-      .attr('fill', d => widget.colorField ? colors(d.color) : (SCHEMES[widget.colorScheme] || d3.schemeTableau10)[0])
-      .attr('opacity', opacity)
-      .attr('stroke', '#fff').attr('stroke-width', 1)
-      .on('mouseenter', (ev, d) => {
-        d3.select(ev.currentTarget).attr('stroke-width', 2.5).attr('opacity', 1);
-        setTooltip({ x: ev.offsetX, y: ev.offsetY, d });
+    const dots = g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
+      .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
+      .attr('r', 0)
+      .attr('fill', d => widget.colorField ? colors(d.color) : primaryColor)
+      .attr('opacity', opacity).attr('stroke', 'rgba(255,255,255,.6)').attr('stroke-width', 1);
+
+    dots.transition().duration(400).delay((_, i) => i * 0.5).ease(d3.easeCubicOut)
+      .attr('r', d => widget.sizeField ? sizeScale(d.size) : sMin + 2);
+
+    dots
+      .on('mouseover', (ev, d) => {
+        d3.select(ev.currentTarget).raise().transition().duration(80)
+          .attr('r', (widget.sizeField ? sizeScale(d.size) : sMin + 2) * 1.5)
+          .attr('opacity', 1).attr('stroke-width', 2.5);
+        showTooltip(ev, <ScatterTip d={d} widget={widget} color={widget.colorField ? colors(d.color) : primaryColor} />);
       })
-      .on('mousemove', ev => setTooltip(t => t ? { ...t, x: ev.offsetX, y: ev.offsetY } : t))
-      .on('mouseleave', ev => { d3.select(ev.currentTarget).attr('stroke-width', 1).attr('opacity', opacity); setTooltip(null); });
+      .on('mousemove', moveTooltip)
+      .on('mouseleave', (ev, d) => {
+        d3.select(ev.currentTarget).transition().duration(120)
+          .attr('r', widget.sizeField ? sizeScale(d.size) : sMin + 2)
+          .attr('opacity', opacity).attr('stroke-width', 1);
+        hideTooltip();
+      });
+
+    // Regression line (always shown)
+    const xVals = pts.map(d => d.x), yVals = pts.map(d => d.y);
+    const xMean = d3.mean(xVals), yMean = d3.mean(yVals);
+    const num = d3.sum(pts, d => (d.x - xMean) * (d.y - yMean));
+    const den = d3.sum(pts, d => (d.x - xMean) ** 2);
+    if (den !== 0) {
+      const slope = num / den;
+      const intercept = yMean - slope * xMean;
+      const [x0, x1] = xScale.domain();
+      g.append('line')
+        .attr('x1', xScale(x0)).attr('y1', yScale(slope * x0 + intercept))
+        .attr('x2', xScale(x1)).attr('y2', yScale(slope * x1 + intercept))
+        .attr('stroke', 'var(--chart-axis-color)').attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '6,4').attr('opacity', 0.5);
+    }
 
     // Axis labels
-    g.append('text').attr('fill', '#94a3b8').attr('font-size', 11).attr('text-anchor', 'middle')
-      .attr('x', W / 2).attr('y', H + 44).text(widget.xField);
-    g.append('text').attr('fill', '#94a3b8').attr('font-size', 11).attr('text-anchor', 'middle')
-      .attr('transform', `translate(-42,${H / 2}) rotate(-90)`).text(widget.yField);
+    g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
+      .attr('text-anchor', 'middle').attr('x', W / 2).attr('y', H + 44).text(widget.xField);
+    g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
+      .attr('text-anchor', 'middle').attr('transform', `translate(-46,${H / 2}) rotate(-90)`).text(widget.yField);
 
-    // Legend for color
-    if (widget.showLegend && widget.colorField) {
-      const categories = [...new Set(pts.map(d => d.color))];
-      const leg = g.append('g').attr('transform', `translate(${W - 10},0)`);
-      categories.slice(0, 8).forEach((cat, i) => {
-        leg.append('circle').attr('cx', 0).attr('cy', i * 16 + 5).attr('r', 4).attr('fill', colors(cat));
-        leg.append('text').attr('x', 7).attr('y', i * 16 + 9).attr('font-size', 10).attr('fill', '#64748b')
-          .text(cat.length > 12 ? cat.slice(0, 12) + '…' : cat);
+    // Legend
+    if (widget.showLegend && widget.colorField && categories.length > 1) {
+      const leg = g.append('g').attr('transform', `translate(${W + 8}, 0)`);
+      categories.slice(0, 10).forEach((cat, i) => {
+        const row = leg.append('g').attr('transform', `translate(0,${i * 18})`);
+        row.append('circle').attr('cx', 5).attr('cy', 6).attr('r', 5).attr('fill', colors(cat)).attr('opacity', opacity);
+        row.append('text').attr('x', 14).attr('y', 10).attr('font-size', 10.5).attr('font-family', 'var(--font)')
+          .attr('fill', 'var(--text-muted)').text(cat.length > 13 ? cat.slice(0, 13) + '…' : cat);
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, widget, dims]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+
+  useEffect(render, [render]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <svg ref={svgRef} width="100%" height="100%" />
-      {tooltip && (
-        <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 10 }}>
-          <strong>{widget.colorField ? tooltip.d.color : 'Point'}</strong>
-          <div>{widget.xField}: {formatValue(tooltip.d.x)}</div>
-          <div>{widget.yField}: {formatValue(tooltip.d.y)}</div>
-          {widget.sizeField && <div>{widget.sizeField}: {formatValue(tooltip.d.size)}</div>}
-        </div>
-      )}
-      {(!widget.xField || !widget.yField) && <Placeholder text="Select X and Y fields (numeric)" />}
+      <svg ref={svgRef} style={{ overflow: 'visible' }} />
+      {tooltipEl}
+      {(!widget.xField || !widget.yField) && <Placeholder text="Select numeric X and Y fields" />}
     </div>
   );
 }
 
-function styled(g) {
-  g.select('.domain').attr('stroke', '#e2e8f0');
-  g.selectAll('.tick line').attr('stroke', '#e2e8f0');
-  g.selectAll('text').attr('fill', '#64748b').attr('font-size', 11);
-}
-
-function Placeholder({ text }) {
+function ScatterTip({ d, widget, color }) {
   return (
-    <div style={{
-      position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', color: '#94a3b8', fontSize: 12, pointerEvents: 'none',
-    }}>{text}</div>
+    <>
+      <div className="chart-tooltip-title">
+        {widget.colorField
+          ? <><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, marginRight: 6, verticalAlign: 'middle' }} />{d.color}</>
+          : 'Data point'
+        }
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">{widget.xField}</span>
+        <span className="tt-value">{formatValue(d.x)}</span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">{widget.yField}</span>
+        <span className="tt-value">{formatValue(d.y)}</span>
+      </div>
+      {widget.sizeField && (
+        <div className="chart-tooltip-row">
+          <span className="tt-label">{widget.sizeField}</span>
+          <span className="tt-value">{formatValue(d.size)}</span>
+        </div>
+      )}
+    </>
   );
 }

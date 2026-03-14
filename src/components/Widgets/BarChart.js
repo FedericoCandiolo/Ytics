@@ -1,42 +1,25 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-
-const SCHEMES = {
-  tableau10: d3.schemeTableau10,
-  category10: d3.schemeCategory10,
-  set2: d3.schemeSet2,
-  set3: d3.schemeSet3,
-  pastel1: d3.schemePastel1,
-  dark2: d3.schemeDark2,
-  paired: d3.schemePaired,
-  accent: d3.schemeAccent,
-};
+import { getColorScale } from '../../utils/colorUtils';
+import { useTooltip } from './useTooltip';
+import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
 export default function BarChart({ widget, data }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
-  const [tooltip, setTooltip] = useState(null);
-  const [dims, setDims] = useState({ w: 0, h: 0 });
+  const dims = useChartDims(containerRef);
+  const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
 
-  useEffect(() => {
-    const ro = new ResizeObserver(([e]) => {
-      const { width, height } = e.contentRect;
-      setDims({ w: width, h: height });
-    });
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
+  const render = useCallback(() => {
     const { w, h } = dims;
-    if (!data?.length || !widget.xField || !widget.yField || w < 10 || h < 10) {
+    if (!data?.length || !widget.xField || !widget.yField || w < 20 || h < 20) {
       d3.select(svgRef.current).selectAll('*').remove();
       return;
     }
 
     const isH = widget.orientation === 'horizontal';
-    const m = { top: 14, right: 14, bottom: isH ? 44 : 64, left: isH ? 120 : 60 };
+    const m = { top: 14, right: 18, bottom: isH ? 46 : 70, left: isH ? 130 : 58 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0) return;
@@ -44,123 +27,144 @@ export default function BarChart({ widget, data }) {
     // Aggregate
     const groups = new Map();
     for (const row of data) {
-      const key = String(row[widget.xField] ?? '');
+      const key = String(row[widget.xField] ?? '(blank)');
       const val = +row[widget.yField] || 0;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(val);
     }
-    let pts = Array.from(groups, ([key, vals]) => ({ key, value: aggregate(vals, widget.aggregation || 'sum') }));
+    let pts = Array.from(groups, ([key, vals]) => ({
+      key,
+      value: aggregate(vals, widget.aggregation || 'sum'),
+      count: vals.length,
+    }));
 
-    // Sort
     if (widget.sortBy === 'label') {
       pts.sort((a, b) => widget.sortOrder === 'desc' ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key));
     } else {
       pts.sort((a, b) => widget.sortOrder === 'desc' ? b.value - a.value : a.value - b.value);
     }
 
-    const colors = d3.scaleOrdinal(SCHEMES[widget.colorScheme] || d3.schemeTableau10);
+    const colors = getColorScale(widget.colorScheme, pts.map(d => d.key));
     const opacity = widget.opacity ?? 1;
+    const maxVal = d3.max(pts, d => d.value) * 1.05 || 1;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
+    svg.attr('width', w).attr('height', h);
     const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
-    const maxVal = d3.max(pts, d => d.value) * 1.05 || 1;
-
     if (isH) {
-      const y = d3.scaleBand().domain(pts.map(d => d.key)).range([0, H]).padding(0.2);
-      const x = d3.scaleLinear().domain([0, maxVal]).range([0, W]).nice();
+      const yScale = d3.scaleBand().domain(pts.map(d => d.key)).range([0, H]).padding(0.22);
+      const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, W]).nice();
 
-      if (widget.showGrid) {
-        g.append('g').call(d3.axisTop(x).tickSize(-H).tickFormat(''))
-          .call(a => a.select('.domain').remove())
-          .call(a => a.selectAll('.tick line').attr('stroke', '#e2e8f0').attr('stroke-dasharray', '3,3'));
-      }
+      if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
 
-      g.append('g').attr('transform', `translate(0,${H})`)
-        .call(d3.axisBottom(x).ticks(5).tickFormat(formatValue))
-        .call(styled);
+      g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+      g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
-      g.append('g')
-        .call(d3.axisLeft(y).tickFormat(d => d.length > 16 ? d.slice(0, 16) + '…' : d))
-        .call(styled);
+      const bars = g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
+        .attr('y', d => yScale(d.key)).attr('x', 0)
+        .attr('height', yScale.bandwidth()).attr('width', 0)
+        .attr('fill', d => colors(d.key)).attr('opacity', opacity).attr('rx', 4);
 
-      g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
-        .attr('y', d => y(d.key)).attr('x', 0)
-        .attr('height', y.bandwidth()).attr('width', d => x(d.value))
-        .attr('fill', d => colors(d.key)).attr('opacity', opacity).attr('rx', 3)
-        .on('mouseenter', (ev, d) => { d3.select(ev.currentTarget).attr('opacity', Math.min(1, opacity + 0.15)); showTip(ev, d); })
-        .on('mousemove', ev => moveTip(ev))
-        .on('mouseleave', ev => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTip(); });
+      bars.transition().duration(500).ease(d3.easeCubicOut).attr('width', d => xScale(d.value));
+
+      bars
+        .on('mouseover', (ev, d) => {
+          d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1).attr('x', -3).attr('height', yScale.bandwidth() + 2).attr('y', yScale(d.key) - 1);
+          showTooltip(ev, <BarTip d={d} widget={widget} color={colors(d.key)} total={pts.reduce((s, p) => s + p.value, 0)} />);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseleave', (ev) => {
+          d3.select(ev.currentTarget).transition().duration(100).attr('opacity', opacity).attr('x', 0).attr('y', d => yScale(d.key)).attr('height', yScale.bandwidth());
+          hideTooltip();
+        });
+
+      axisLabel(g, isH ? widget.yField : widget.xField, W / 2, H + 38, false);
 
     } else {
-      const x = d3.scaleBand().domain(pts.map(d => d.key)).range([0, W]).padding(0.2);
-      const y = d3.scaleLinear().domain([0, maxVal]).range([H, 0]).nice();
+      const xScale = d3.scaleBand().domain(pts.map(d => d.key)).range([0, W]).padding(0.22);
+      const yScale = d3.scaleLinear().domain([0, maxVal]).range([H, 0]).nice();
 
-      if (widget.showGrid) {
-        g.append('g').call(d3.axisLeft(y).tickSize(-W).tickFormat(''))
-          .call(a => a.select('.domain').remove())
-          .call(a => a.selectAll('.tick line').attr('stroke', '#e2e8f0').attr('stroke-dasharray', '3,3'));
-      }
+      if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
 
-      g.append('g').attr('transform', `translate(0,${H})`)
-        .call(d3.axisBottom(x).tickFormat(d => d.length > 10 ? d.slice(0, 10) + '…' : d))
-        .call(styled)
-        .selectAll('text').attr('transform', 'rotate(-35)').style('text-anchor', 'end');
+      g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
+        .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
+      g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
 
-      g.append('g').call(d3.axisLeft(y).ticks(5).tickFormat(formatValue)).call(styled);
+      const bars = g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
+        .attr('x', d => xScale(d.key)).attr('y', H).attr('width', xScale.bandwidth()).attr('height', 0)
+        .attr('fill', d => colors(d.key)).attr('opacity', opacity).attr('rx', 4);
 
-      g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
-        .attr('x', d => x(d.key)).attr('y', d => y(d.value))
-        .attr('width', x.bandwidth()).attr('height', d => H - y(d.value))
-        .attr('fill', d => colors(d.key)).attr('opacity', opacity).attr('rx', 3)
-        .on('mouseenter', (ev, d) => { d3.select(ev.currentTarget).attr('opacity', Math.min(1, opacity + 0.15)); showTip(ev, d); })
-        .on('mousemove', ev => moveTip(ev))
-        .on('mouseleave', ev => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTip(); });
+      bars.transition().duration(500).ease(d3.easeCubicOut).attr('y', d => yScale(d.value)).attr('height', d => H - yScale(d.value));
+
+      bars
+        .on('mouseover', (ev, d) => {
+          d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1).attr('x', d => xScale(d.key) - 2).attr('width', xScale.bandwidth() + 4);
+          showTooltip(ev, <BarTip d={d} widget={widget} color={colors(d.key)} total={pts.reduce((s, p) => s + p.value, 0)} />);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseleave', (ev) => {
+          d3.select(ev.currentTarget).transition().duration(100).attr('opacity', opacity).attr('x', d => xScale(d.key)).attr('width', xScale.bandwidth());
+          hideTooltip();
+        });
+
+      axisLabel(g, widget.xField, W / 2, H + 56, false);
+      axisLabel(g, widget.yField, -(H / 2), -46, true);
     }
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
 
-    // Axis labels
-    g.append('text').attr('class', 'axis-label')
-      .attr('fill', '#94a3b8').attr('font-size', 11).attr('text-anchor', 'middle')
-      .attr('x', isH ? W / 2 : W / 2)
-      .attr('y', isH ? H + 38 : H + 52)
-      .text(isH ? widget.yField : widget.xField);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, widget, dims]);
-
-  const showTip = (ev, d) => setTooltip({ x: ev.offsetX, y: ev.offsetY, key: d.key, value: d.value });
-  const moveTip = (ev) => setTooltip(t => t ? { ...t, x: ev.offsetX, y: ev.offsetY } : t);
-  const hideTip = () => setTooltip(null);
-
-  const noData = !widget.xField || !widget.yField;
+  useEffect(render, [render]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <svg ref={svgRef} width="100%" height="100%" />
-      {tooltip && (
-        <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 10 }}>
-          <strong>{tooltip.key}</strong>
-          {widget.yField}: {formatValue(tooltip.value)}
-        </div>
-      )}
-      {noData && (
-        <Placeholder text={`Select X field and Y field${!widget.datasetId ? ' (no dataset)' : ''}`} />
-      )}
+      <svg ref={svgRef} style={{ overflow: 'visible' }} />
+      {tooltipEl}
+      {(!widget.xField || !widget.yField) && <Placeholder text="Select Category (X) and Numeric (Y) fields" />}
     </div>
   );
 }
 
-function styled(g) {
-  g.select('.domain').attr('stroke', '#e2e8f0');
-  g.selectAll('.tick line').attr('stroke', '#e2e8f0');
-  g.selectAll('text').attr('fill', '#64748b').attr('font-size', 11);
-}
-
-function Placeholder({ text }) {
+function BarTip({ d, widget, color, total }) {
+  const pct = total > 0 ? ((d.value / total) * 100).toFixed(1) : '–';
   return (
-    <div style={{
-      position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', color: '#94a3b8', fontSize: 12, pointerEvents: 'none',
-    }}>{text}</div>
+    <>
+      <div className="chart-tooltip-title">
+        <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
+        {d.key}
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">{widget.yField}</span>
+        <span className="tt-value">{formatValue(d.value)}</span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">Share of total</span>
+        <span className="tt-value">{pct}%</span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">Records</span>
+        <span className="tt-value">{d.count.toLocaleString()}</span>
+      </div>
+    </>
   );
 }
+
+// Helpers
+function drawGrid(g, axis, dir, offset) {
+  g.append('g')
+    .attr('class', 'grid')
+    .attr('transform', dir === 'x' ? `translate(0,0)` : `translate(0,${offset})`)
+    .call(axis)
+    .call(a => a.select('.domain').remove())
+    .call(a => a.selectAll('.tick line').attr('stroke', 'var(--chart-grid-color)').attr('stroke-dasharray', '3,3'));
+}
+
+function axisLabel(g, text, x, y, rotate) {
+  g.append('text')
+    .attr('fill', 'var(--chart-axis-color)').attr('font-size', 11).attr('font-family', 'var(--font)')
+    .attr('text-anchor', 'middle')
+    .attr('transform', rotate ? `translate(${y},${x}) rotate(-90)` : `translate(${x},${y})`)
+    .text(text);
+}
+
+function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
