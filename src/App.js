@@ -1,25 +1,27 @@
-import logo from './logo.svg';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+import { AppProvider, useApp } from './context/AppContext';
+import Header from './components/Header';
+import DeveloperMode from './components/Developer/DeveloperMode';
+import ViewerMode from './components/Viewer/ViewerMode';
 import './App.css';
 
-function App() {
+function AppInner() {
+  const { state } = useApp();
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="app">
+      <Header />
+      <main className="app-main">
+        {state.mode === 'developer' ? <DeveloperMode /> : <ViewerMode />}
+      </main>
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <AppProvider>
+      <AppInner />
+    </AppProvider>
+  );
+}

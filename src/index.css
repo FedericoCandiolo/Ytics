@@ -1,13 +1,162 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Reset & Variables ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #f1f5f9;
+  --card:         #ffffff;
+  --header-bg:    #0f172a;
+  --sidebar-bg:   #1e293b;
+  --primary:      #3b82f6;
+  --primary-dark: #1d4ed8;
+  --secondary:    #8b5cf6;
+  --success:      #10b981;
+  --danger:       #ef4444;
+  --warning:      #f59e0b;
+  --border:       #e2e8f0;
+  --border-dark:  #cbd5e1;
+  --text:         #0f172a;
+  --text-muted:   #64748b;
+  --text-light:   #94a3b8;
+  --text-inv:     #f8fafc;
+  --shadow:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:    0 4px 6px -1px rgba(0,0,0,.08), 0 2px 4px -1px rgba(0,0,0,.04);
+  --shadow-lg:    0 10px 25px -5px rgba(0,0,0,.10), 0 8px 10px -6px rgba(0,0,0,.04);
+  --radius:       6px;
+  --radius-lg:    10px;
+  --font:         -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  --header-h:     52px;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+html, body, #root {
+  height: 100%;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
 }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-dark); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-light); }
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+h1, h2, h3, h4 { font-weight: 600; line-height: 1.3; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+h3 { font-size: 14px; }
+h4 { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500; cursor: pointer; border: none;
+  transition: background .15s, opacity .15s, box-shadow .15s;
+  white-space: nowrap; text-decoration: none;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary   { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background: var(--border-dark); }
+.btn-danger    { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled)  { background: #dc2626; }
+.btn-ghost     { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover:not(:disabled)   { background: var(--border); color: var(--text); }
+.btn-icon      { padding: 5px; border-radius: var(--radius); }
+.btn-sm        { padding: 4px 8px; font-size: 12px; }
+
+/* ── Inputs & Selects ────────────────────────────────────────────────────── */
+.input, .select, .textarea {
+  width: 100%; padding: 6px 10px;
+  border: 1px solid var(--border-dark); border-radius: var(--radius);
+  font-size: 13px; font-family: var(--font); color: var(--text);
+  background: #fff; transition: border-color .15s, box-shadow .15s;
+  outline: none;
+}
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+.textarea { resize: vertical; min-height: 64px; }
+.input-sm  { padding: 4px 8px; font-size: 12px; }
+.select-sm { padding: 4px 8px; font-size: 12px; }
+
+/* ── Form groups ─────────────────────────────────────────────────────────── */
+.form-group   { display: flex; flex-direction: column; gap: 4px; }
+.form-label   { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.form-row     { display: flex; gap: 8px; align-items: center; }
+.form-row .input, .form-row .select { flex: 1; min-width: 0; }
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card); border-radius: var(--radius-lg);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 100px; font-size: 11px; font-weight: 500;
+}
+.badge-blue   { background: #dbeafe; color: #1d4ed8; }
+.badge-green  { background: #d1fae5; color: #065f46; }
+.badge-purple { background: #ede9fe; color: #5b21b6; }
+.badge-gray   { background: var(--border); color: var(--text-muted); }
+.badge-orange { background: #ffedd5; color: #9a3412; }
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 40px; text-align: center; color: var(--text-muted);
+}
+.empty-state-icon { font-size: 40px; opacity: .4; }
+.empty-state p    { font-size: 13px; max-width: 260px; line-height: 1.6; }
+
+/* ── Chart tooltip ───────────────────────────────────────────────────────── */
+.chart-tooltip {
+  position: absolute; pointer-events: none; z-index: 200;
+  background: rgba(15,23,42,.92); color: #fff;
+  padding: 8px 12px; border-radius: var(--radius);
+  font-size: 12px; line-height: 1.5; white-space: nowrap;
+  box-shadow: var(--shadow-md);
+}
+.chart-tooltip strong { display: block; font-size: 13px; margin-bottom: 2px; }
+
+/* ── Section label ───────────────────────────────────────────────────────── */
+.section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-light); margin-bottom: 8px;
+}
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+.flex            { display: flex; }
+.flex-col        { display: flex; flex-direction: column; }
+.items-center    { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1  { gap: 4px; }
+.gap-2  { gap: 8px; }
+.gap-3  { gap: 12px; }
+.gap-4  { gap: 16px; }
+.mt-2   { margin-top: 8px; }
+.mt-3   { margin-top: 12px; }
+.mt-4   { margin-top: 16px; }
+.w-full { width: 100%; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.text-muted { color: var(--text-muted); }
+.text-sm    { font-size: 12px; }
+
+/* ── react-grid-layout overrides ─────────────────────────────────────────── */
+.react-resizable-handle { opacity: 0; transition: opacity .15s; }
+.react-grid-item:hover .react-resizable-handle { opacity: 1; }
+.react-grid-item.react-grid-placeholder {
+  background: rgba(59,130,246,.1) !important;
+  border: 2px dashed var(--primary) !important;
+  border-radius: var(--radius-lg) !important;
+}
+.react-grid-item.resizing { opacity: .85; }
+.react-grid-item.react-draggable-dragging { opacity: .85; box-shadow: var(--shadow-lg); }
