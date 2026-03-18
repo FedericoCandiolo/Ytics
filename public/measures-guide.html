@@ -291,7 +291,80 @@
 </div>
 
 <!-- ──────────────────────────────────────────────── -->
-<h2>Example 4: Country-Level Summary for a Geo Map</h2>
+<h2>Example 4: Multi-Level Aggregation (Avg of Avg of Avg)</h2>
+<p><strong>Question:</strong> <em>"What is the average per country of the average per state of the average salary per city?"</em></p>
+<p>
+  This is a <strong>three-level nested aggregation</strong>. The key insight is that you chain
+  multiple Group &amp; Aggregate steps — each one reduces the granularity and the next step
+  aggregates the output of the previous one.
+</p>
+
+<div class="pipeline-visual">
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 1 — Group &amp; Aggregate (city level)</h4>
+      <p>Group by: <code>country</code>, <code>region</code>, <code>city</code><br>
+        Aggregation: Average of <code>avg_salary</code> → <code>city_avg_salary</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 2 — Group &amp; Aggregate (state/region level)</h4>
+      <p>Group by: <code>country</code>, <code>region</code><br>
+        Aggregation: Average of <code>city_avg_salary</code> → <code>region_avg_salary</code></p>
+      <p style="font-size: 11px; color: #166534; margin-top: 4px;">
+        Note: <code>city_avg_salary</code> is the output of Step 1 — the column picker shows it automatically.</p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 3 — Group &amp; Aggregate (country level)</h4>
+      <p>Group by: <code>country</code><br>
+        Aggregation: Average of <code>region_avg_salary</code> → <code>country_avg_salary</code></p>
+      <p style="font-size: 11px; color: #166534; margin-top: 4px;">
+        Now <code>region_avg_salary</code> from Step 2 is the input. This gives the average-of-averages-of-averages.</p>
+    </div>
+  </div>
+</div>
+
+<p><strong>Fields tab:</strong> X = <code>country</code>, Value = <code>country_avg_salary</code></p>
+
+<div class="card" style="overflow-x: auto;">
+  <div class="result-label">How the data transforms at each level</div>
+  <table>
+    <thead><tr><th>After Step</th><th>Rows</th><th>Columns</th><th>What each row represents</th></tr></thead>
+    <tbody>
+      <tr><td>Raw data</td><td>50,000</td><td>country, region, city, population, avg_salary, …</td><td>One record per data point</td></tr>
+      <tr><td>Step 1</td><td>~5,000</td><td>country, region, city, <strong>city_avg_salary</strong></td><td>One row per city</td></tr>
+      <tr><td>Step 2</td><td>~200</td><td>country, region, <strong>region_avg_salary</strong></td><td>One row per region</td></tr>
+      <tr><td>Step 3</td><td>~50</td><td>country, <strong>country_avg_salary</strong></td><td>One row per country</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="example">
+  <div class="example-title">Why does this matter?</div>
+  <p style="font-size: 13px; margin: 0; line-height: 1.6;">
+    A simple "Average of avg_salary grouped by country" would weight large cities (with many data points) more heavily.
+    The multi-level approach gives <strong>equal weight to each city within a state, and equal weight to each state within a country</strong>,
+    regardless of how many raw records each one has. This is the statistically correct way to compute nested averages.
+  </p>
+</div>
+
+<h3>Generalizing: N levels deep</h3>
+<p>You can chain as many Group &amp; Aggregate steps as you need. Each step:</p>
+<ol>
+  <li>Groups by the columns you want to keep at that level (always include higher-level grouping columns like <code>country</code>)</li>
+  <li>Aggregates the output column from the previous step</li>
+  <li>Produces a new output column that the next step can aggregate</li>
+</ol>
+<p>The column picker in each step automatically shows the output columns of the previous step, so you always know what's available.</p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Example 5: Country-Level Summary for a Geo Map</h2>
 <p><strong>Question:</strong> <em>"Show total population per country on a world map."</em></p>
 
 <div class="pipeline-visual">

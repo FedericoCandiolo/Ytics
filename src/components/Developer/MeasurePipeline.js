@@ -10,6 +10,8 @@ const STEP_TYPES = [
   { type: 'sort',    label: 'Sort',              icon: '↕', desc: 'Sort rows by a column' },
 ];
 
+const AGG_SHORT = { sum: 'sum', count: 'count', mean: 'avg', min: 'min', max: 'max', median: 'med', std: 'std', p25: 'p25', p75: 'p75', p90: 'p90', p95: 'p95' };
+
 const OPERATORS = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'not contains', 'is null', 'is not null'];
 
 function makeStep(type) {
@@ -24,6 +26,13 @@ function makeStep(type) {
   }
 }
 
+// Compute the effective output name of an aggregation
+function aggOutputName(agg) {
+  if (agg.as) return agg.as;
+  if (!agg.field) return '';
+  return `${AGG_SHORT[agg.fn] || agg.fn}_${agg.field}`;
+}
+
 export default function MeasurePipeline({ measures, dataset, onUpdate }) {
   const [expanded, setExpanded] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -31,20 +40,28 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
   const rawData = useMemo(() => dataset?.data ?? [], [dataset]);
   const rawCols = useMemo(() => getColumnInfo(rawData), [rawData]);
 
-  // Compute columns available at each step (input columns for that step)
-  const stepColumns = useMemo(() => {
-    const result = [rawCols]; // step 0 input = raw columns
-    let data = rawData.slice(0, 200); // sample for performance
+  // Compute columns available at each step (input columns) AND output columns after each step
+  const { stepInputCols, stepOutputCols, stepRowCounts } = useMemo(() => {
+    const inputs = [rawCols];
+    const outputs = [rawCols];
+    const counts = [rawData.length];
+    let data = rawData.slice(0, 200);
     for (let i = 0; i < measures.length; i++) {
       try {
         data = executeMeasurePipeline(data, [measures[i]]);
         const types = detectColumnTypes(data);
-        result.push(Object.keys(types).map(name => ({ name, type: types[name] })));
+        const cols = Object.keys(types).map(name => ({ name, type: types[name] }));
+        outputs.push(cols);
+        inputs.push(cols); // output of step i = input of step i+1
+        counts.push(data.length);
       } catch {
-        result.push(result[result.length - 1]); // fallback to previous
+        const prev = outputs[outputs.length - 1];
+        outputs.push(prev);
+        inputs.push(prev);
+        counts.push(0);
       }
     }
-    return result;
+    return { stepInputCols: inputs, stepOutputCols: outputs, stepRowCounts: counts };
   }, [measures, rawData, rawCols]);
 
   // Preview output
@@ -76,8 +93,9 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
     onUpdate(arr);
   };
 
-  // Columns available at a given step index (input to that step)
-  const colsAt = (stepIdx) => stepColumns[Math.min(stepIdx, stepColumns.length - 1)] || rawCols;
+  const colsAt = (stepIdx) => stepInputCols[Math.min(stepIdx, stepInputCols.length - 1)] || rawCols;
+  const outputAt = (stepIdx) => stepOutputCols[Math.min(stepIdx + 1, stepOutputCols.length - 1)] || rawCols;
+  const rowCountAt = (stepIdx) => stepRowCounts[Math.min(stepIdx + 1, stepRowCounts.length - 1)] ?? '?';
 
   return (
     <div className="measure-pipeline">
@@ -89,7 +107,16 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
       {measures.length === 0 && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 0', lineHeight: 1.5 }}>
           No pipeline steps. Charts use raw data with built-in aggregation.
-          Add steps for multi-level calculations like "average salary of the most populated city per country".
+          Add steps for multi-level calculations. You can chain multiple
+          Group &amp; Aggregate steps for nested averages (e.g., avg per country of avg per state of avg salary).
+        </div>
+      )}
+
+      {/* Input indicator */}
+      {measures.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '3px 8px', fontSize: 10, color: 'var(--text-muted)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94a3b8', flexShrink: 0 }} />
+          Input: {rawCols.length} columns, {rawData.length.toLocaleString()} rows
         </div>
       )}
 
@@ -98,15 +125,23 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
         const stepType = STEP_TYPES.find(t => t.type === step.type);
         const isOpen = expanded === step.id;
         const cols = colsAt(idx);
+        const outCols = outputAt(idx);
+        const outCount = rowCountAt(idx);
 
         return (
-          <div key={step.id} className="pipeline-step" style={{ marginBottom: 6 }}>
+          <div key={step.id} className="pipeline-step" style={{ marginBottom: 2 }}>
+            {/* Connector line */}
+            <div style={{ display: 'flex', justifyContent: 'center', height: 10 }}>
+              <div style={{ width: 2, height: '100%', background: '#cbd5e1' }} />
+            </div>
+
             <div
               className="pipeline-step-header"
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
                 background: isOpen ? '#eff6ff' : 'var(--bg-elevated)', border: `1px solid ${isOpen ? '#bfdbfe' : 'var(--border)'}`,
-                borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12,
+                borderRadius: isOpen ? 'var(--radius) var(--radius) 0 0' : 'var(--radius)',
+                cursor: 'pointer', fontSize: 12,
               }}
               onClick={() => setExpanded(isOpen ? null : step.id)}
             >
@@ -119,6 +154,15 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
                 )}
                 {step.type === 'topN' && (
                   <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> {step.direction === 'desc' ? 'top' : 'bottom'} {step.n}</span>
+                )}
+                {step.type === 'filter' && step.field && (
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> {step.field} {step.operator} {step.value}</span>
+                )}
+                {step.type === 'compute' && step.newColumn && (
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> → {step.newColumn}</span>
+                )}
+                {step.type === 'sort' && step.field && (
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> {step.field} {step.direction}</span>
                 )}
               </span>
               <div style={{ display: 'flex', gap: 2 }}>
@@ -141,23 +185,33 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
                 {step.type === 'sort' && <SortEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
               </div>
             )}
+
+            {/* Output indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', fontSize: 10, color: 'var(--text-muted)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: idx === measures.length - 1 ? '#3b82f6' : '#94a3b8', flexShrink: 0 }} />
+              → {outCols.map(c => c.name).join(', ')}
+              <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>~{outCount} rows</span>
+            </div>
           </div>
         );
       })}
 
       {/* Add step buttons */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-        {STEP_TYPES.map(st => (
-          <button
-            key={st.type}
-            className="btn btn-secondary btn-sm"
-            style={{ fontSize: 11 }}
-            title={st.desc}
-            onClick={() => addStep(st.type)}
-          >
-            {st.icon} {st.label}
-          </button>
-        ))}
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Add step:</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {STEP_TYPES.map(st => (
+            <button
+              key={st.type}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: 11 }}
+              title={st.desc}
+              onClick={() => addStep(st.type)}
+            >
+              {st.icon} {st.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Preview */}
@@ -238,26 +292,46 @@ function GroupByEditor({ step, cols, onChange }) {
       </div>
 
       <label className="form-label" style={{ fontSize: 11 }}>Aggregations</label>
-      {step.aggregations.map((agg, i) => (
-        <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
-          <select className="select select-sm" value={agg.fn} onChange={e => updateAgg(i, { fn: e.target.value })} style={{ width: 80 }}>
-            {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <select className="select select-sm" value={agg.field} onChange={e => updateAgg(i, { field: e.target.value })} style={{ flex: 1 }}>
-            <option value="">— field —</option>
-            {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-          </select>
-          <input
-            className="input input-sm" placeholder="as..."
-            value={agg.as} onChange={e => updateAgg(i, { as: e.target.value })}
-            style={{ width: 80 }}
-          />
-          {step.aggregations.length > 1 && (
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAgg(i)}>✕</button>
-          )}
-        </div>
-      ))}
-      <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={addAgg}>+ Add aggregation</button>
+      {step.aggregations.map((agg, i) => {
+        const autoName = aggOutputName(agg);
+        return (
+          <div key={i} style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <select className="select select-sm" value={agg.fn} onChange={e => updateAgg(i, { fn: e.target.value })} style={{ width: 80 }}>
+                {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>of</span>
+              <select className="select select-sm" value={agg.field} onChange={e => updateAgg(i, { field: e.target.value })} style={{ flex: 1 }}>
+                <option value="">— field —</option>
+                {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+              {step.aggregations.length > 1 && (
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAgg(i)}>✕</button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, paddingLeft: 2 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>→ save as</span>
+              <input
+                className="input input-sm"
+                placeholder={autoName || 'output name'}
+                value={agg.as}
+                onChange={e => updateAgg(i, { as: e.target.value })}
+                style={{ flex: 1, fontSize: 11 }}
+              />
+              {!agg.as && autoName && (
+                <span style={{ fontSize: 9, color: '#3b82f6', whiteSpace: 'nowrap' }}>({autoName})</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, marginTop: 4 }} onClick={addAgg}>+ Add aggregation</button>
+
+      {/* Hint about multi-level */}
+      <div style={{ marginTop: 10, padding: '6px 8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 10, color: '#166534', lineHeight: 1.5 }}>
+        <strong>Multi-level:</strong> Add another Group &amp; Aggregate step after this one to compute
+        averages-of-averages (e.g., avg per country of avg per state). Each step sees the output columns of the previous step.
+      </div>
     </div>
   );
 }
