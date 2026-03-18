@@ -19,6 +19,7 @@ import RadarChart from './RadarChart';
 import WaffleChart from './WaffleChart';
 import SankeyDiagram from './SankeyDiagram';
 import GeoMap from './GeoMap';
+import PivotTable from './PivotTable';
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
@@ -26,6 +27,7 @@ const CHART_MAP = {
   treemap: Treemap, heatmap: HeatMap, bump: BumpChart, stream: StreamGraph, violin: ViolinPlot,
   carousel: Carousel,
   boxplot: BoxPlot, radar: RadarChart, waffle: WaffleChart, sankey: SankeyDiagram, geo: GeoMap,
+  pivot: PivotTable,
 };
 
 const TYPE_ICONS = {
@@ -33,6 +35,7 @@ const TYPE_ICONS = {
   treemap: '⬛', heatmap: '🌡', bump: '🏅', stream: '〰', violin: '🎻',
   carousel: '🎠',
   boxplot: '📦', radar: '🕸', waffle: '🧇', sankey: '🔀', geo: '🌍',
+  pivot: '⊞',
 };
 
 export { TYPE_ICONS };

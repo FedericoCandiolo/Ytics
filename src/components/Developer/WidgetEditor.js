@@ -33,10 +33,11 @@ const AGG_VALUE_KEY = {
   bar: 'yField', line: 'yField',
   treemap: 'valueField', heatmap: 'valueField', bump: 'valueField', stream: 'valueField',
   radar: 'valueField', waffle: 'valueField', sankey: 'valueField', boxplot: 'yField',
+  pivot: 'valueField',
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table', 'pivot'];
 
 // ── Fields tab content ────────────────────────────────────────────────────────
 function FieldsTab({ widget, dataset, columns, onUpdate }) {
@@ -113,6 +114,9 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'geoField',    label: 'Geography (country name)', filter: null },
       { key: 'valueField',  label: 'Value (numeric)',          filter: ['number'] },
     ],
+    pivot: [
+      { key: 'valueField',  label: 'Value (numeric)',          filter: ['number'] },
+    ],
   };
 
   const cols = columns;
@@ -141,7 +145,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     onUpdate(updates);
   };
 
-  const showAgg = ['bar', 'line', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey'].includes(widget.type);
+  const showAgg = ['bar', 'line', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'pivot'].includes(widget.type);
 
   return (
     <div>

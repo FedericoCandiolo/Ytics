@@ -26,6 +26,7 @@ export const CHART_REQUIRED_FIELDS = {
   waffle:    ['labelField', 'valueField'],
   sankey:    ['sourceField', 'targetField', 'valueField'],
   geo:       ['geoField', 'valueField'],
+  pivot:     ['valueField'],
 };
 
 // Check if converting from one type to another is reasonable
@@ -175,6 +176,9 @@ function defaultWidget(overrides = {}) {
     // Geo
     geoField: null,
     mapProjection: 'naturalEarth',
+    // Pivot table
+    pivotRows: [],
+    pivotCols: [],
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget

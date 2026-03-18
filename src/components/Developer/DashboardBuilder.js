@@ -25,6 +25,7 @@ const WIDGET_TYPES = [
   { type: 'sankey',    label: 'Sankey',       icon: '🔀' },
   { type: 'geo',       label: 'Geo Map',      icon: '🌍' },
   { type: 'carousel',  label: 'Carousel',     icon: '🎠' },
+  { type: 'pivot',     label: 'Pivot Table',  icon: '⊞' },
 ];
 
 // Custom resize handles with inline styles — bypasses library CSS specificity issues

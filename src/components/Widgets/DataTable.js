@@ -1,6 +1,27 @@
 import { useState } from 'react';
 import { getColumnInfo } from '../../utils/dataUtils';
 
+function exportTableCSV(data, cols, filename) {
+  const esc = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    cols.map(c => esc(c.name)).join(','),
+    ...data.map(row => cols.map(c => esc(row[c.name])).join(',')),
+  ];
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function DataTable({ widget, data }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
@@ -71,22 +92,29 @@ export default function DataTable({ widget, data }) {
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '6px 12px', borderTop: '1px solid var(--border)',
-          fontSize: 12, color: 'var(--text-muted)', flexShrink: 0,
-        }}>
-          <span>{rows.length.toLocaleString()} rows</span>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(0)}>«</button>
-            <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹</button>
-            <span>Page {page + 1} / {totalPages}</span>
-            <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
-            <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
-          </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 12px', borderTop: '1px solid var(--border)',
+        fontSize: 12, color: 'var(--text-muted)', flexShrink: 0,
+      }}>
+        <span>{rows.length.toLocaleString()} rows</span>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => exportTableCSV(rows, cols, (widget.title || 'table') + '.csv')}
+            title="Export CSV"
+          >Export CSV</button>
+          {totalPages > 1 && (
+            <>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(0)}>«</button>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹</button>
+              <span>Page {page + 1} / {totalPages}</span>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
