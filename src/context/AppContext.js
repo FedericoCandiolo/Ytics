@@ -1,9 +1,92 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import { applyTransforms, detectColumnTypes } from '../utils/dataUtils';
 import { buildTable, cloneDicts } from '../utils/columnStore';
 import { v4 as uuid } from 'uuid';
 
 const AppContext = createContext(null);
+
+export const GRID_COLS = 24;
+
+// Required field keys per chart type (used for type-replace compatibility)
+export const CHART_REQUIRED_FIELDS = {
+  bar:       ['xField', 'yField'],
+  line:      ['xField', 'yField'],
+  scatter:   ['xField', 'yField'],
+  pie:       ['labelField', 'valueField'],
+  histogram: ['xField'],
+  table:     [],
+  treemap:   ['labelField', 'valueField'],
+  heatmap:   ['xField', 'yField', 'valueField'],
+  bump:      ['xField', 'colorField', 'valueField'],
+  stream:    ['xField', 'colorField', 'valueField'],
+  violin:    ['xField', 'yField'],
+  carousel:  [],
+  boxplot:   ['xField', 'yField'],
+  radar:     ['axisField', 'valueField'],
+  waffle:    ['labelField', 'valueField'],
+  sankey:    ['sourceField', 'targetField', 'valueField'],
+  geo:       ['geoField', 'valueField'],
+};
+
+// Check if converting from one type to another is reasonable
+// Returns true if the target type can use at least one field from the source widget
+export function canReplaceType(sourceType, targetType, widget) {
+  if (sourceType === targetType) return false;
+  const targetFields = CHART_REQUIRED_FIELDS[targetType];
+  if (!targetFields) return false;
+  // table and carousel accept anything
+  if (targetFields.length === 0) return true;
+  if ((CHART_REQUIRED_FIELDS[sourceType] || []).length === 0) return false;
+  // Check if any of the source widget's assigned fields can map to the target
+  const allFieldKeys = ['xField', 'yField', 'colorField', 'groupField', 'sizeField',
+    'labelField', 'valueField', 'axisField', 'sourceField', 'targetField', 'geoField'];
+  const assignedKeys = allFieldKeys.filter(k => widget[k] != null);
+  if (assignedKeys.length === 0) return true; // no fields assigned yet, allow any switch
+  // Target needs at least one field that is either directly assigned or can be inferred
+  const targetNeeds = new Set(targetFields);
+  for (const k of assignedKeys) {
+    if (targetNeeds.has(k)) return true;
+  }
+  // Also check cross-mappable fields (xField↔labelField↔axisField, yField↔valueField)
+  const categoryKeys = new Set(['xField', 'labelField', 'axisField', 'geoField', 'sourceField', 'colorField', 'groupField']);
+  const numericKeys = new Set(['yField', 'valueField', 'sizeField']);
+  const hasCategoryAssigned = assignedKeys.some(k => categoryKeys.has(k));
+  const hasNumericAssigned = assignedKeys.some(k => numericKeys.has(k));
+  const targetNeedsCategory = targetFields.some(k => categoryKeys.has(k));
+  const targetNeedsNumeric = targetFields.some(k => numericKeys.has(k));
+  if ((targetNeedsCategory && hasCategoryAssigned) || (targetNeedsNumeric && hasNumericAssigned)) return true;
+  return false;
+}
+
+// Map fields from source type to target type, preserving as much as possible
+export function mapFieldsForTypeChange(sourceType, targetType, widget) {
+  const updates = { type: targetType };
+  // Cross-mapping for category fields
+  const categoryMap = ['xField', 'labelField', 'axisField', 'geoField', 'sourceField'];
+  const numericMap = ['yField', 'valueField'];
+
+  // Find the first assigned category and numeric field from source
+  const assignedCategory = categoryMap.find(k => widget[k] != null);
+  const assignedNumeric = numericMap.find(k => widget[k] != null);
+
+  // For each target required field, try to fill it
+  for (const tf of (CHART_REQUIRED_FIELDS[targetType] || [])) {
+    if (widget[tf] != null) continue; // already has it
+    if (categoryMap.includes(tf) && assignedCategory && widget[assignedCategory]) {
+      updates[tf] = widget[assignedCategory];
+    } else if (numericMap.includes(tf) && assignedNumeric && widget[assignedNumeric]) {
+      updates[tf] = widget[assignedNumeric];
+    }
+  }
+  // Also map colorField → groupField and vice versa if needed
+  if (targetType === 'bar' && !widget.groupField && widget.colorField) {
+    updates.groupField = widget.colorField;
+  }
+  if (targetType !== 'bar' && !widget.colorField && widget.groupField) {
+    updates.colorField = widget.groupField;
+  }
+  return updates;
+}
 
 export const defaultTheme = {
   fontFamily: 'Inter, sans-serif',
@@ -99,6 +182,20 @@ function defaultWidget(overrides = {}) {
     autoPlayInterval: 5000,
     ...overrides,
   };
+}
+
+function findFirstSlot(layout, w, h) {
+  const maxY = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+  for (let y = 0; y <= maxY + h; y++) {
+    for (let x = 0; x <= GRID_COLS - w; x++) {
+      const fits = !layout.some(l =>
+        l.x < x + w && l.x + l.w > x &&
+        l.y < y + h && l.y + l.h > y
+      );
+      if (fits) return { x, y };
+    }
+  }
+  return { x: 0, y: maxY };
 }
 
 function reducer(state, action) {
@@ -254,8 +351,8 @@ function reducer(state, action) {
         ...action.payload,
       });
       const pageLayout = state.dashboard.pages.find(p => p.id === state.dashboard.currentPageId)?.layout ?? [];
-      const nextY = pageLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
-      const layoutItem = { i: widget.id, x: 0, y: nextY, w: 12, h: 5 };
+      const { x: slotX, y: slotY } = findFirstSlot(pageLayout, 12, 5);
+      const layoutItem = { i: widget.id, x: slotX, y: slotY, w: 12, h: 5 };
       const pages = state.dashboard.pages.map(p =>
         p.id === state.dashboard.currentPageId
           ? { ...p, widgets: [...p.widgets, widget], layout: [...p.layout, layoutItem] }
@@ -296,12 +393,14 @@ function reducer(state, action) {
         const src = p.widgets.find(w => w.id === action.payload);
         if (!src) return p;
         newWidget = { ...src, id: uuid(), title: src.title + ' (copy)' };
-        const pageLayout = p.layout;
-        const nextY = pageLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+        const srcLayout = p.layout.find(l => l.i === action.payload);
+        const sw = srcLayout?.w ?? 12;
+        const sh = srcLayout?.h ?? 5;
+        const { x: slotX, y: slotY } = findFirstSlot(p.layout, sw, sh);
         return {
           ...p,
           widgets: [...p.widgets, newWidget],
-          layout: [...p.layout, { i: newWidget.id, x: 0, y: nextY, w: 12, h: 5 }],
+          layout: [...p.layout, { i: newWidget.id, x: slotX, y: slotY, w: sw, h: sh }],
         };
       });
       if (!newWidget) return state;
@@ -328,11 +427,13 @@ function reducer(state, action) {
         : srcWidget;
       const pages = state.dashboard.pages.map(p => {
         if (p.id === targetPageId) {
-          const nextY = p.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+          const sw = srcLayout?.w ?? 12;
+          const sh = srcLayout?.h ?? 5;
+          const { x: slotX, y: slotY } = findFirstSlot(p.layout, sw, sh);
           return {
             ...p,
             widgets: [...p.widgets, movedWidget],
-            layout: [...p.layout, { i: newId, x: 0, y: nextY, w: srcLayout?.w ?? 12, h: srcLayout?.h ?? 5 }],
+            layout: [...p.layout, { i: newId, x: slotX, y: slotY, w: sw, h: sh }],
           };
         }
         if (!copy) {
@@ -407,13 +508,62 @@ function reducer(state, action) {
       };
     }
 
+    case 'RESTORE_STATE':
+      return action.payload;
+
     default:
       return state;
   }
 }
 
+const UNDO_LIMIT = 50;
+const UNDOABLE_ACTIONS = new Set([
+  'ADD_WIDGET', 'UPDATE_WIDGET', 'REMOVE_WIDGET', 'DUPLICATE_WIDGET',
+  'MOVE_WIDGET_TO_PAGE', 'UPDATE_LAYOUT',
+  'ADD_PAGE', 'REMOVE_PAGE', 'RENAME_PAGE',
+  'SET_THEME', 'SET_DASHBOARD_TITLE',
+  'LOAD_DATASET', 'DELETE_DATASET',
+  'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
+]);
+
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, rawDispatch] = useReducer(reducer, initialState);
+  const undoStackRef = React.useRef([]);
+
+  const dispatch = useCallback((action) => {
+    if (action.type === 'UNDO') {
+      const stack = undoStackRef.current;
+      if (stack.length === 0) return;
+      const prev = stack.pop();
+      rawDispatch({ type: 'RESTORE_STATE', payload: prev });
+      return;
+    }
+    if (UNDOABLE_ACTIONS.has(action.type)) {
+      // Save current state snapshot before applying action
+      // We read state via a sync dispatch trick - use a ref updated by effect
+      undoStackRef.current = [...undoStackRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current];
+    }
+    rawDispatch(action);
+  }, []);
+
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+
+  // Ctrl+Z handler
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        // Don't intercept if user is typing in an input
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        dispatch({ type: 'UNDO' });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [dispatch]);
+
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
 }
 

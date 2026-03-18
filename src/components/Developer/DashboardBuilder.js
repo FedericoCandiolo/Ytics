@@ -1,6 +1,6 @@
-import { useRef, useEffect, useState, forwardRef } from 'react';
+import { useRef, useEffect, useState, useCallback, forwardRef } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
-import { useApp } from '../../context/AppContext';
+import { useApp, GRID_COLS, canReplaceType, mapFieldsForTypeChange } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import WidgetEditor from './WidgetEditor';
 import { ALL_SCHEMES, getSwatchColors } from '../../utils/colorUtils';
@@ -51,7 +51,7 @@ export default function DashboardBuilder() {
   // 24×12 grid: compute rowHeight so 12 rows fit the visible canvas height
   const canvasRef = useRef(null);
   const [rowHeight, setRowHeight] = useState(30);
-  const cols = 24;
+  const cols = GRID_COLS;
   const rows = 12;
   const margin = 8;
 
@@ -80,6 +80,18 @@ export default function DashboardBuilder() {
   const onLayoutChange = (_layout, allLayouts) => {
     dispatch({ type: 'UPDATE_LAYOUT', payload: allLayouts.lg || _layout });
   };
+
+  const handleTypeReplace = useCallback((widgetId, newType, newLabel) => {
+    const page = dashboard.pages.find(p => p.id === dashboard.currentPageId) || dashboard.pages[0];
+    const widget = page?.widgets.find(w => w.id === widgetId);
+    if (!widget) return;
+    if (!canReplaceType(widget.type, newType, widget)) return;
+    const oldLabel = WIDGET_TYPES.find(t => t.type === widget.type)?.label || widget.type;
+    if (window.confirm(`Change "${widget.title}" from ${oldLabel} to ${newLabel}?\nData fields will be preserved.`)) {
+      const fieldUpdates = mapFieldsForTypeChange(widget.type, newType, widget);
+      dispatch({ type: 'UPDATE_WIDGET', payload: { id: widgetId, updates: fieldUpdates } });
+    }
+  }, [dashboard, dispatch]);
 
   // Compute grid background style
   const gridBgStyle = (() => {
@@ -222,6 +234,12 @@ export default function DashboardBuilder() {
                     <button
                       key={wt.type}
                       className="widget-type-btn"
+                      draggable
+                      onDragStart={e => {
+                        e.dataTransfer.setData('application/widget-type', wt.type);
+                        e.dataTransfer.setData('application/widget-label', wt.label);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
                       onClick={() => dispatch({ type: 'ADD_WIDGET', payload: { type: wt.type, title: wt.label } })}
                     >
                       <span className="widget-type-btn-icon">{wt.icon}</span>
@@ -298,6 +316,7 @@ export default function DashboardBuilder() {
                     onRemove={() => dispatch({ type: 'REMOVE_WIDGET', payload: widget.id })}
                     onDuplicate={() => dispatch({ type: 'DUPLICATE_WIDGET', payload: widget.id })}
                     onDragToPage={dashboard.pages.length > 1 ? setDraggingWidgetId : undefined}
+                    onTypeReplace={(newType, newLabel) => handleTypeReplace(widget.id, newType, newLabel)}
                   />
                 </div>
               ))}

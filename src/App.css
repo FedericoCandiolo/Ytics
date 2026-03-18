@@ -404,6 +404,12 @@
   box-shadow: 0 0 0 2px rgba(59,130,246,.2), 0 2px 8px rgba(0,0,0,.10) !important;
 }
 
+.widget-card--drop-hover {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 3px rgba(16,185,129,.3), 0 2px 8px rgba(0,0,0,.10) !important;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
 .widget-header {
   display: flex;
   align-items: center;

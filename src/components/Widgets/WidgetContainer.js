@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { useApp } from '../../context/AppContext';
+import { useApp, canReplaceType } from '../../context/AppContext';
 import { applyFilters, executeMeasurePipeline } from '../../utils/dataUtils';
 import BarChart from './BarChart';
 import LineChart from './LineChart';
@@ -37,9 +37,10 @@ const TYPE_ICONS = {
 
 export { TYPE_ICONS };
 
-export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage }) {
+export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage, onTypeReplace }) {
   const { state } = useApp();
   const [maximized, setMaximized] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
   const theme = state.dashboard.theme || {};
 
   const dataset = state.datasets.find(d => d.id === widget.datasetId);
@@ -82,13 +83,35 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   return (
     <>
       <div
-        className={`widget-card ${isSelected ? 'widget-card--selected' : ''}`}
+        className={`widget-card ${isSelected ? 'widget-card--selected' : ''} ${dropHover ? 'widget-card--drop-hover' : ''}`}
         style={{
           backgroundColor: cardBg,
           borderRadius: cardRadius,
           boxShadow: isSelected ? undefined : cardShadow,
         }}
         onClick={isEditing ? onSelect : undefined}
+        onDragOver={isEditing && onTypeReplace ? (e) => {
+          if (e.dataTransfer.types.includes('application/widget-type')) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+            if (!dropHover) setDropHover(true);
+          }
+        } : undefined}
+        onDragLeave={isEditing && onTypeReplace ? (e) => {
+          // Only clear if we're leaving the card itself, not entering a child
+          if (!e.currentTarget.contains(e.relatedTarget)) setDropHover(false);
+        } : undefined}
+        onDrop={isEditing && onTypeReplace ? (e) => {
+          const newType = e.dataTransfer.getData('application/widget-type');
+          const newLabel = e.dataTransfer.getData('application/widget-label');
+          setDropHover(false);
+          if (newType && canReplaceType(widget.type, newType, widget)) {
+            e.preventDefault();
+            e.stopPropagation();
+            onTypeReplace(newType, newLabel || newType);
+          }
+        } : undefined}
       >
         <div className="widget-header">
           <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICONS[widget.type] || '📊'}</span>
