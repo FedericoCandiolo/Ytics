@@ -287,3 +287,84 @@ export const AGGREGATIONS = {
   p90:    '90th pct',
   p95:    '95th pct',
 };
+
+// ── Measure Pipeline ────────────────────────────────────────────────────────────
+// Per-widget multi-step aggregation pipeline.
+// When `widget.measures` is non-empty, data is processed through these steps
+// BEFORE reaching the chart component.
+
+export function executeMeasurePipeline(data, steps) {
+  if (!steps || steps.length === 0) return data;
+  let result = [...data];
+  for (const step of steps) {
+    switch (step.type) {
+      case 'groupBy':  result = executeGroupBy(result, step);  break;
+      case 'topN':     result = executeTopN(result, step);     break;
+      case 'filter':   result = applyFilter(result, step);     break;
+      case 'compute':  result = applyCompute(result, step);    break;
+      case 'sort':     result = applySort(result, step);       break;
+      default: break;
+    }
+  }
+  return result;
+}
+
+function executeGroupBy(data, step) {
+  if (!step.fields?.length || !step.aggregations?.length) return data;
+  const groups = new Map();
+  for (const row of data) {
+    const key = step.fields.map(f => String(row[f] ?? '')).join('|||');
+    if (!groups.has(key)) groups.set(key, { keyParts: step.fields.map(f => row[f]), rows: [] });
+    groups.get(key).rows.push(row);
+  }
+  return Array.from(groups.values()).map(({ keyParts, rows }) => {
+    const result = {};
+    step.fields.forEach((f, i) => { result[f] = keyParts[i]; });
+    for (const agg of step.aggregations) {
+      const vals = agg.fn === 'count'
+        ? rows.map(() => 1)
+        : rows.map(r => +r[agg.field] || 0);
+      result[agg.as || `${agg.fn}_${agg.field}`] = aggregate(vals, agg.fn);
+    }
+    return result;
+  });
+}
+
+function executeTopN(data, step) {
+  const n = step.n || 1;
+  const dir = step.direction || 'desc';
+  const cmp = (a, b) => dir === 'desc'
+    ? (+b[step.orderBy] || 0) - (+a[step.orderBy] || 0)
+    : (+a[step.orderBy] || 0) - (+b[step.orderBy] || 0);
+
+  if (!step.groupBy?.length) {
+    return [...data].sort(cmp).slice(0, n);
+  }
+  const groups = new Map();
+  for (const row of data) {
+    const key = step.groupBy.map(f => String(row[f] ?? '')).join('|||');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const result = [];
+  groups.forEach(rows => {
+    rows.sort(cmp);
+    result.push(...rows.slice(0, n));
+  });
+  return result;
+}
+
+// Returns the output column names after running a pipeline (for field selectors)
+export function getPipelineOutputColumns(data, steps) {
+  if (!data?.length) return [];
+  const output = executeMeasurePipeline(data.slice(0, 100), steps);
+  if (!output.length) return [];
+  return Object.keys(output[0]);
+}
+
+// Returns column types of pipeline output
+export function getPipelineOutputTypes(data, steps) {
+  if (!data?.length) return {};
+  const output = executeMeasurePipeline(data.slice(0, 100), steps);
+  return detectColumnTypes(output);
+}

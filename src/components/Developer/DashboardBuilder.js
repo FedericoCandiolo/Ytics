@@ -19,6 +19,11 @@ const WIDGET_TYPES = [
   { type: 'bump',      label: 'Bump Chart',   icon: '🏅' },
   { type: 'stream',    label: 'Stream Graph', icon: '〰' },
   { type: 'violin',    label: 'Violin Plot',  icon: '🎻' },
+  { type: 'boxplot',   label: 'Box Plot',     icon: '📦' },
+  { type: 'radar',     label: 'Radar Chart',  icon: '🕸' },
+  { type: 'waffle',    label: 'Waffle Chart', icon: '🧇' },
+  { type: 'sankey',    label: 'Sankey',       icon: '🔀' },
+  { type: 'geo',       label: 'Geo Map',      icon: '🌍' },
   { type: 'carousel',  label: 'Carousel',     icon: '🎠' },
 ];
 
@@ -68,7 +73,7 @@ export default function DashboardBuilder() {
   const [dropTargetPageId, setDropTargetPageId] = useState(null);
 
   const [editingPageName, setEditingPageName] = useState(null); // page id being renamed
-  const [stylesOpen, setStylesOpen] = useState(true);
+  const [stylesOpen, setStylesOpen] = useState(false);
 
   const onLayoutChange = (_layout, allLayouts) => {
     dispatch({ type: 'UPDATE_LAYOUT', payload: allLayouts.lg || _layout });

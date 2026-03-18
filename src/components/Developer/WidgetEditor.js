@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
-import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS } from '../../utils/dataUtils';
+import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
 import { getSwatchColors } from '../../utils/colorUtils';
+import { TYPE_ICONS } from '../Widgets/WidgetContainer';
+import MeasurePipeline from './MeasurePipeline';
 
 // ── Field selector ────────────────────────────────────────────────────────────
 function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) {
@@ -30,13 +32,14 @@ function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) 
 const AGG_VALUE_KEY = {
   bar: 'yField', line: 'yField',
   treemap: 'valueField', heatmap: 'valueField', bump: 'valueField', stream: 'valueField',
+  radar: 'valueField', waffle: 'valueField', sankey: 'valueField', boxplot: 'yField',
 };
 
-// ── Fields tab content ────────────────────────────────────────────────────────
-function FieldsTab({ widget, dataset, onUpdate }) {
-  const cols = dataset ? getColumnInfo(dataset.data) : [];
+// Charts that support the measure pipeline
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table'];
 
-  // For aggregating charts: value field accepts any type (count works on strings too)
+// ── Fields tab content ────────────────────────────────────────────────────────
+function FieldsTab({ widget, dataset, columns, onUpdate }) {
   const fieldMap = {
     bar: [
       { key: 'xField',    label: 'X Axis (category)',       filter: null },
@@ -87,49 +90,61 @@ function FieldsTab({ widget, dataset, onUpdate }) {
       { key: 'yField',    label: 'Value (Y, numeric)',      filter: ['number'] },
     ],
     carousel: [],
+    // New chart types
+    boxplot: [
+      { key: 'xField',    label: 'Category (X)',            filter: null },
+      { key: 'yField',    label: 'Value (Y, numeric)',      filter: ['number'] },
+    ],
+    radar: [
+      { key: 'axisField',  label: 'Axis (category)',        filter: null },
+      { key: 'valueField', label: 'Value (numeric)',        filter: ['number'] },
+      { key: 'colorField', label: 'Series (optional)',      filter: null, optional: true },
+    ],
+    waffle: [
+      { key: 'labelField', label: 'Label (category)',       filter: null },
+      { key: 'valueField', label: 'Value (numeric)',        filter: ['number'] },
+    ],
+    sankey: [
+      { key: 'sourceField', label: 'Source (category)',     filter: null },
+      { key: 'targetField', label: 'Target (category)',     filter: null },
+      { key: 'valueField',  label: 'Value (numeric)',       filter: ['number'] },
+    ],
+    geo: [
+      { key: 'geoField',    label: 'Geography (country name)', filter: null },
+      { key: 'valueField',  label: 'Value (numeric)',          filter: ['number'] },
+    ],
   };
 
+  const cols = columns;
   const fields = fieldMap[widget.type] || [];
 
   // Determine aggregations available based on the selected value field's type
   const valueFieldKey = AGG_VALUE_KEY[widget.type];
   const valueFieldName = valueFieldKey ? widget[valueFieldKey] : null;
   const valueCol = valueFieldName ? cols.find(c => c.name === valueFieldName) : null;
-  // If a non-numeric field is selected → only Count makes sense
   const isNumericValue = !valueFieldName || !valueCol || valueCol.type === 'number';
   const availableAggs = isNumericValue
     ? Object.entries(AGGREGATIONS)
     : [['count', AGGREGATIONS.count]];
 
-  // onChange wrapper: auto-switch aggregation when value field type changes
   const handleFieldChange = (fieldKey, value) => {
     const updates = { [fieldKey]: value };
     if (fieldKey === valueFieldKey) {
       const col = value ? cols.find(c => c.name === value) : null;
       const nowNumeric = !col || col.type === 'number';
       if (!nowNumeric && widget.aggregation !== 'count') {
-        updates.aggregation = 'count'; // force count for non-numeric
+        updates.aggregation = 'count';
       } else if (nowNumeric && widget.aggregation === 'count' && !value) {
-        updates.aggregation = 'sum';   // reset when field cleared
+        updates.aggregation = 'sum';
       }
     }
     onUpdate(updates);
   };
 
+  const showAgg = ['bar', 'line', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey'].includes(widget.type);
+
   return (
     <div>
-      <div className="form-group" style={{ marginBottom: 12 }}>
-        <label className="form-label">Dataset</label>
-        <select
-          className="select select-sm"
-          value={widget.datasetId || ''}
-          onChange={e => onUpdate({ datasetId: e.target.value || null })}
-        >
-          <option value="">— none —</option>
-          {/* rendered from parent via prop? no, use context */}
-        </select>
-      </div>
-
       {fields.map(f => (
         <FieldSelect
           key={f.key}
@@ -142,7 +157,7 @@ function FieldsTab({ widget, dataset, onUpdate }) {
         />
       ))}
 
-      {['bar', 'line', 'treemap', 'heatmap', 'bump', 'stream'].includes(widget.type) && (
+      {showAgg && (
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label className="form-label">
             Aggregation
@@ -180,7 +195,6 @@ function AestheticsTab({ widget, onUpdate }) {
       <div className="form-group" style={{ marginBottom: 12 }}>
         <label className="form-label">Color scheme</label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* Inherit from theme */}
           <div
             className={`color-scheme-option ${widget.colorScheme == null ? 'color-scheme-option--active' : ''}`}
             onClick={() => onUpdate({ colorScheme: null })}
@@ -283,6 +297,15 @@ function OptionsTab({ widget, onUpdate }) {
           <option value="horizontal">Horizontal</option>
         </select>
       </div>
+      {widget.groupField && (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Bar mode</label>
+          <select className="select select-sm" value={widget.barMode || 'stacked'} onChange={e => onUpdate({ barMode: e.target.value })}>
+            <option value="stacked">Stacked</option>
+            <option value="grouped">Grouped (side by side)</option>
+          </select>
+        </div>
+      )}
       <div className="form-group" style={{ marginBottom: 10 }}>
         <label className="form-label">Sort by</label>
         <select className="select select-sm" value={widget.sortBy || 'value'} onChange={e => onUpdate({ sortBy: e.target.value })}>
@@ -317,10 +340,20 @@ function OptionsTab({ widget, onUpdate }) {
         <input type="checkbox" checked={!!widget.showPoints} onChange={e => onUpdate({ showPoints: e.target.checked })} />
         Show data points
       </label>
-      <label className="checkbox-row">
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={!!widget.showArea} onChange={e => onUpdate({ showArea: e.target.checked })} />
         Fill area under line
       </label>
+      {widget.showArea && widget.colorField && (
+        <div className="form-group" style={{ marginTop: 8 }}>
+          <label className="form-label">Area stack mode</label>
+          <select className="select select-sm" value={widget.stackMode || 'none'} onChange={e => onUpdate({ stackMode: e.target.value })}>
+            <option value="none">Overlapping (no stack)</option>
+            <option value="stacked">Stacked</option>
+            <option value="percent">Stacked 100%</option>
+          </select>
+        </div>
+      )}
     </div>
   );
 
@@ -372,6 +405,20 @@ function OptionsTab({ widget, onUpdate }) {
     </div>
   );
 
+  if (widget.type === 'geo') return (
+    <div>
+      <div className="form-group">
+        <label className="form-label">Map projection</label>
+        <select className="select select-sm" value={widget.mapProjection || 'naturalEarth'} onChange={e => onUpdate({ mapProjection: e.target.value })}>
+          <option value="naturalEarth">Natural Earth</option>
+          <option value="mercator">Mercator</option>
+          <option value="equalEarth">Equal Earth</option>
+          <option value="orthographic">Orthographic (globe)</option>
+        </select>
+      </div>
+    </div>
+  );
+
   return <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 8 }}>No options for this chart type.</div>;
 }
 
@@ -385,6 +432,9 @@ const SLIDE_TYPES = [
   { type: 'treemap', label: 'Treemap', icon: '⬛' },
   { type: 'heatmap', label: 'Heat Map', icon: '🌡' },
   { type: 'violin', label: 'Violin Plot', icon: '🎻' },
+  { type: 'boxplot', label: 'Box Plot', icon: '📦' },
+  { type: 'radar', label: 'Radar', icon: '🕸' },
+  { type: 'waffle', label: 'Waffle', icon: '🧇' },
 ];
 
 const SLIDE_FIELD_MAP = {
@@ -421,6 +471,19 @@ const SLIDE_FIELD_MAP = {
     { key: 'xField', label: 'Category', filter: null },
     { key: 'yField', label: 'Value (numeric)', filter: ['number'] },
   ],
+  boxplot: [
+    { key: 'xField', label: 'Category', filter: null },
+    { key: 'yField', label: 'Value (numeric)', filter: ['number'] },
+  ],
+  radar: [
+    { key: 'axisField', label: 'Axis', filter: null },
+    { key: 'valueField', label: 'Value', filter: ['number'] },
+    { key: 'colorField', label: 'Series (optional)', filter: null, optional: true },
+  ],
+  waffle: [
+    { key: 'labelField', label: 'Label', filter: null },
+    { key: 'valueField', label: 'Value', filter: ['number'] },
+  ],
 };
 
 function CarouselTab({ widget, dataset, onUpdate }) {
@@ -432,6 +495,7 @@ function CarouselTab({ widget, dataset, onUpdate }) {
     const s = {
       id: uuid(), type: 'bar', title: `Chart ${slides.length + 1}`,
       xField: null, yField: null, colorField: null, labelField: null, valueField: null,
+      axisField: null,
       colorScheme: widget.colorScheme || 'vivid', aggregation: 'sum', showGrid: true,
       orientation: 'vertical',
     };
@@ -543,19 +607,38 @@ export default function WidgetEditor({ widgetId }) {
   const widget = state.dashboard.pages.flatMap(p => p.widgets).find(w => w.id === widgetId);
   const dataset = state.datasets.find(d => d.id === widget?.datasetId);
 
+  // Compute effective columns (raw or pipeline output)
+  const columns = useMemo(() => {
+    if (!dataset?.data?.length) return [];
+    if (widget?.measures?.length > 0) {
+      try {
+        const output = executeMeasurePipeline(dataset.data.slice(0, 100), widget.measures);
+        if (output.length > 0) {
+          const types = detectColumnTypes(output);
+          return Object.keys(types).map(name => ({ name, type: types[name] }));
+        }
+      } catch { /* fallback */ }
+    }
+    return getColumnInfo(dataset.data);
+  }, [dataset, widget?.measures]);
+
   if (!widget) return null;
 
   const onUpdate = (updates) => dispatch({ type: 'UPDATE_WIDGET', payload: { id: widgetId, updates } });
 
+  const hasPipeline = PIPELINE_TYPES.includes(widget.type);
+
   const tabs = widget.type === 'carousel'
     ? ['slides', 'aesthetics']
-    : ['fields', 'aesthetics', 'options'];
+    : hasPipeline
+      ? ['fields', 'measures', 'aesthetics', 'options']
+      : ['fields', 'aesthetics', 'options'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <span style={{ fontSize: 20 }}>
-          {{ bar: '📊', line: '📈', scatter: '⬤', pie: '🥧', histogram: '▬', table: '🔢', treemap: '⬛', heatmap: '🌡', bump: '🏅', stream: '〰', violin: '🎻', carousel: '🎠' }[widget.type] || '📊'}
+          {TYPE_ICONS[widget.type] || '📊'}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{widget.title || 'Untitled'}</div>
@@ -585,7 +668,8 @@ export default function WidgetEditor({ widgetId }) {
 
       <div className="editor-body">
         {tab === 'slides'     && <CarouselTab widget={widget} dataset={dataset} onUpdate={onUpdate} />}
-        {tab === 'fields'     && <FieldsTab widget={widget} dataset={dataset} onUpdate={onUpdate} />}
+        {tab === 'fields'     && <FieldsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} />}
+        {tab === 'measures'   && <MeasurePipeline measures={widget.measures || []} dataset={dataset} onUpdate={m => onUpdate({ measures: m })} />}
         {tab === 'aesthetics' && <AestheticsTab widget={widget} onUpdate={onUpdate} />}
         {tab === 'options'    && <OptionsTab widget={widget} onUpdate={onUpdate} />}
       </div>

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp } from '../../context/AppContext';
-import { applyFilters } from '../../utils/dataUtils';
+import { applyFilters, executeMeasurePipeline } from '../../utils/dataUtils';
 import BarChart from './BarChart';
 import LineChart from './LineChart';
 import ScatterPlot from './ScatterPlot';
@@ -14,19 +14,28 @@ import BumpChart from './BumpChart';
 import StreamGraph from './StreamGraph';
 import ViolinPlot from './ViolinPlot';
 import Carousel from './Carousel';
+import BoxPlot from './BoxPlot';
+import RadarChart from './RadarChart';
+import WaffleChart from './WaffleChart';
+import SankeyDiagram from './SankeyDiagram';
+import GeoMap from './GeoMap';
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
   histogram: Histogram, table: DataTable,
   treemap: Treemap, heatmap: HeatMap, bump: BumpChart, stream: StreamGraph, violin: ViolinPlot,
   carousel: Carousel,
+  boxplot: BoxPlot, radar: RadarChart, waffle: WaffleChart, sankey: SankeyDiagram, geo: GeoMap,
 };
 
 const TYPE_ICONS = {
   bar: '📊', line: '📈', scatter: '⬤', pie: '🥧', histogram: '▬', table: '🔢',
   treemap: '⬛', heatmap: '🌡', bump: '🏅', stream: '〰', violin: '🎻',
   carousel: '🎠',
+  boxplot: '📦', radar: '🕸', waffle: '🧇', sankey: '🔀', geo: '🌍',
 };
+
+export { TYPE_ICONS };
 
 export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage }) {
   const { state } = useApp();
@@ -35,7 +44,12 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
 
   const dataset = state.datasets.find(d => d.id === widget.datasetId);
   const raw = dataset?.data ?? [];
-  const data = isEditing ? raw : applyFilters(raw, state.filters);
+
+  // Apply filters (viewer mode) then measure pipeline
+  let data = isEditing ? raw : applyFilters(raw, state.filters);
+  if (widget.measures?.length > 0) {
+    try { data = executeMeasurePipeline(data, widget.measures); } catch { /* fallback to unprocessed */ }
+  }
 
   const Chart = CHART_MAP[widget.type] || BarChart;
   const closeMaximize = useCallback(() => setMaximized(false), []);

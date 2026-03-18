@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Measures Pipeline Guide — ytics</title>
+<style>
+  :root { --primary: #3b82f6; --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #1e293b; --muted: #64748b; --accent: #eff6ff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--text); background: var(--bg); line-height: 1.65; }
+  .container { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  h1 span { color: var(--primary); }
+  .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 40px; }
+  h2 { font-size: 20px; font-weight: 650; margin: 36px 0 12px; padding-top: 20px; border-top: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+  p, li { font-size: 14.5px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 20px; }
+  li { margin-bottom: 6px; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0; }
+  .card-title { font-weight: 600; font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .card-title .icon { font-size: 18px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--accent); border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #f8fafc; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  .step-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); border: 1px solid #bfdbfe; border-radius: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; color: var(--primary); }
+  .arrow { text-align: center; color: var(--muted); font-size: 20px; margin: 8px 0; }
+  .example { background: #fefce8; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .example-title { font-weight: 600; font-size: 13px; color: #92400e; margin-bottom: 8px; }
+  .tip { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .tip-title { font-weight: 600; font-size: 13px; color: #166534; margin-bottom: 6px; }
+  .schema-table { font-size: 12.5px; }
+  .schema-table th { font-size: 11px; }
+  .schema-table td:first-child { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+  .schema-table .type { color: var(--primary); font-size: 11px; font-weight: 500; }
+  .pipeline-visual { display: flex; flex-direction: column; gap: 0; margin: 16px 0; }
+  .pipeline-step { display: flex; align-items: stretch; gap: 12px; }
+  .pipeline-line { width: 28px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .pipeline-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid #fff; box-shadow: 0 0 0 2px var(--primary); flex-shrink: 0; margin-top: 14px; }
+  .pipeline-connector { width: 2px; flex: 1; background: #bfdbfe; }
+  .pipeline-content { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; }
+  .pipeline-content h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .pipeline-content p { font-size: 12.5px; color: var(--muted); margin-bottom: 0; }
+  .result-label { font-size: 11px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  @media (max-width: 600px) { .container { padding: 24px 16px 60px; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Measures Pipeline <span>Guide</span></h1>
+<p class="subtitle">Build multi-step data calculations in ytics — no code required.</p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>What is the Measures Pipeline?</h2>
+<p>
+  The Measures Pipeline lets you define <strong>multi-step data transformations</strong> directly on a chart widget.
+  Instead of being limited to "group by X, aggregate Y," you can chain operations to answer complex questions like:
+</p>
+<ul>
+  <li><em>"What is the average salary in the most populated city of each country?"</em></li>
+  <li><em>"Show the top 3 products by revenue for each region."</em></li>
+  <li><em>"Compare total sales only for stores that exceeded 1 million in revenue."</em></li>
+</ul>
+<p>
+  Each step transforms the data, and the next step operates on the <strong>output of the previous one</strong> — like a pipeline.
+</p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Sample Dataset: <code>world_cities</code></h2>
+<p>Throughout this guide we'll use an imaginary CSV dataset with the following schema:</p>
+
+<div class="card">
+  <div class="card-title"><span class="icon">📋</span> world_cities.csv — 50,000 rows</div>
+  <table class="schema-table">
+    <thead><tr><th>Column</th><th>Type</th><th>Description</th><th>Example Values</th></tr></thead>
+    <tbody>
+      <tr><td>country</td><td><span class="type">string</span></td><td>Country name</td><td>Brazil, Japan, Germany</td></tr>
+      <tr><td>region</td><td><span class="type">string</span></td><td>Geographic region</td><td>South America, East Asia</td></tr>
+      <tr><td>city</td><td><span class="type">string</span></td><td>City name</td><td>São Paulo, Tokyo, Berlin</td></tr>
+      <tr><td>population</td><td><span class="type">number</span></td><td>City population</td><td>12,300,000</td></tr>
+      <tr><td>avg_salary</td><td><span class="type">number</span></td><td>Average annual salary (USD)</td><td>42,500</td></tr>
+      <tr><td>cost_of_living</td><td><span class="type">number</span></td><td>Monthly cost index</td><td>2,800</td></tr>
+      <tr><td>universities</td><td><span class="type">number</span></td><td>Number of universities</td><td>15</td></tr>
+      <tr><td>founded_year</td><td><span class="type">number</span></td><td>Year the city was founded</td><td>1554</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>The 5 Step Types</h2>
+
+<div class="card">
+  <div class="card-title"><span class="icon">⊞</span> Group &amp; Aggregate</div>
+  <p style="font-size:13px; color: var(--muted); margin-bottom: 10px;">Collapses many rows into fewer rows by grouping, then computes summary values per group.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Group by columns</strong></td><td>One or more columns to group by (hold Ctrl/Cmd for multi-select)</td></tr>
+      <tr><td><strong>Aggregations</strong></td><td>For each group, compute values: <code>Sum</code>, <code>Count</code>, <code>Average</code>, <code>Min</code>, <code>Max</code>, <code>Median</code>, <code>Std Dev</code>, percentiles. Each aggregation has a source field, a function, and an output name ("as").</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">⊤</span> Top / Bottom N</div>
+  <p style="font-size:13px; color: var(--muted); margin-bottom: 10px;">Keeps only the top (or bottom) N rows, optionally within each group.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>N</strong></td><td>Number of rows to keep (e.g., 1, 3, 10)</td></tr>
+      <tr><td><strong>Order by</strong></td><td>The column to rank by</td></tr>
+      <tr><td><strong>Direction</strong></td><td>Top (descending) or Bottom (ascending)</td></tr>
+      <tr><td><strong>Per group</strong></td><td>Optional. If set, picks top N <em>within each group</em> independently.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">⊘</span> Filter</div>
+  <p style="font-size:13px; color: var(--muted); margin-bottom: 10px;">Removes rows that don't match a condition.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Column</strong></td><td>The column to test</td></tr>
+      <tr><td><strong>Operator</strong></td><td><code>=</code> <code>!=</code> <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code> <code>contains</code> <code>is null</code> …</td></tr>
+      <tr><td><strong>Value</strong></td><td>The comparison value</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">ƒ</span> Compute Column</div>
+  <p style="font-size:13px; color: var(--muted); margin-bottom: 10px;">Creates a new column from a JavaScript expression using existing column names as variables.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>New column name</strong></td><td>Name for the computed column (e.g., <code>salary_ratio</code>)</td></tr>
+      <tr><td><strong>Expression</strong></td><td>A formula: <code>avg_salary / cost_of_living</code>, <code>population &gt; 1000000 ? "large" : "small"</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">↕</span> Sort</div>
+  <p style="font-size:13px; color: var(--muted); margin-bottom: 10px;">Reorders rows by a column value.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Sort by</strong></td><td>Column to sort on</td></tr>
+      <tr><td><strong>Direction</strong></td><td>Ascending or Descending</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>How to Access</h2>
+<ol>
+  <li>In <strong>Developer Mode</strong>, click on any chart widget (or create a new one).</li>
+  <li>The widget editor sidebar opens. You'll see tabs: <strong>Fields</strong>, <strong>Measures</strong>, <strong>Aesthetics</strong>, <strong>Options</strong>.</li>
+  <li>Click the <strong>Measures</strong> tab.</li>
+  <li>Add steps using the buttons at the bottom: <span class="step-badge">⊞ Group &amp; Aggregate</span> <span class="step-badge">⊤ Top / Bottom N</span> etc.</li>
+  <li>Configure each step by clicking its header to expand it.</li>
+  <li>Use <strong>Preview output</strong> at the bottom to inspect intermediate results.</li>
+  <li>Go back to the <strong>Fields</strong> tab — the column dropdowns now show <em>pipeline output columns</em> instead of raw dataset columns.</li>
+</ol>
+
+<div class="tip">
+  <div class="tip-title">Tip: Backward compatible</div>
+  <p style="font-size: 13px; margin: 0;">If the Measures pipeline is empty (no steps), charts work exactly as before — using their built-in aggregation from the Fields tab. You only need the pipeline for multi-step calculations.</p>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Example 1: Average Salary in the Most Populated City per Country</h2>
+<p><strong>Question:</strong> <em>"For each country, find the most populated city, then show that city's average salary in a bar chart."</em></p>
+
+<div class="pipeline-visual">
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 1 — Group &amp; Aggregate</h4>
+      <p>Group by: <code>country</code>, <code>city</code><br>
+        Aggregations: Sum of <code>population</code> → <code>total_pop</code>, Average of <code>avg_salary</code> → <code>salary</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 2 — Top 1 per Country</h4>
+      <p>N: <code>1</code> · Order by: <code>total_pop</code> · Direction: Top (desc) · Per group: <code>country</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 3 — Sort</h4>
+      <p>Sort by: <code>salary</code> · Direction: Descending</p>
+    </div>
+  </div>
+</div>
+
+<p><strong>After pipeline, set in Fields tab:</strong> X Axis = <code>country</code>, Value = <code>salary</code></p>
+
+<div class="card" style="overflow-x: auto;">
+  <div class="result-label">Pipeline Output (preview)</div>
+  <table>
+    <thead><tr><th>country</th><th>city</th><th>total_pop</th><th>salary</th></tr></thead>
+    <tbody>
+      <tr><td>Switzerland</td><td>Zurich</td><td>434,000</td><td>92,400</td></tr>
+      <tr><td>United States</td><td>New York</td><td>8,300,000</td><td>78,500</td></tr>
+      <tr><td>Japan</td><td>Tokyo</td><td>13,960,000</td><td>61,200</td></tr>
+      <tr><td>Germany</td><td>Berlin</td><td>3,645,000</td><td>55,800</td></tr>
+      <tr><td>Brazil</td><td>São Paulo</td><td>12,300,000</td><td>24,100</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Example 2: Top 3 Cities by Universities per Region</h2>
+<p><strong>Question:</strong> <em>"For each region, which 3 cities have the most universities?"</em></p>
+
+<div class="pipeline-visual">
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 1 — Top 3 per Region</h4>
+      <p>N: <code>3</code> · Order by: <code>universities</code> · Direction: Top (desc) · Per group: <code>region</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 2 — Sort</h4>
+      <p>Sort by: <code>universities</code> · Direction: Descending</p>
+    </div>
+  </div>
+</div>
+
+<p><strong>Fields tab:</strong> X = <code>city</code>, Value = <code>universities</code>, Group by = <code>region</code> (for stacked/grouped bars)</p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Example 3: Salary-to-Cost Ratio for Large Cities</h2>
+<p><strong>Question:</strong> <em>"Among cities with over 1 million population, which have the best salary-to-cost-of-living ratio?"</em></p>
+
+<div class="pipeline-visual">
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 1 — Filter</h4>
+      <p>Column: <code>population</code> · Operator: <code>&gt;</code> · Value: <code>1000000</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 2 — Compute Column</h4>
+      <p>Name: <code>salary_ratio</code> · Expression: <code>avg_salary / (cost_of_living * 12)</code></p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div><div class="pipeline-connector"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 3 — Sort</h4>
+      <p>Sort by: <code>salary_ratio</code> · Direction: Descending</p>
+    </div>
+  </div>
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 4 — Top 15</h4>
+      <p>N: <code>15</code> · Order by: <code>salary_ratio</code> · Direction: Top</p>
+    </div>
+  </div>
+</div>
+
+<p><strong>Fields tab:</strong> X = <code>city</code>, Value = <code>salary_ratio</code></p>
+
+<div class="card" style="overflow-x: auto;">
+  <div class="result-label">Pipeline Output (preview)</div>
+  <table>
+    <thead><tr><th>country</th><th>city</th><th>population</th><th>avg_salary</th><th>cost_of_living</th><th>salary_ratio</th></tr></thead>
+    <tbody>
+      <tr><td>Switzerland</td><td>Zurich</td><td>1,400,000</td><td>92,400</td><td>3,800</td><td>2.03</td></tr>
+      <tr><td>United States</td><td>Austin</td><td>1,028,000</td><td>74,000</td><td>2,400</td><td>2.57</td></tr>
+      <tr><td>Germany</td><td>Munich</td><td>1,472,000</td><td>62,000</td><td>2,200</td><td>2.35</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Example 4: Country-Level Summary for a Geo Map</h2>
+<p><strong>Question:</strong> <em>"Show total population per country on a world map."</em></p>
+
+<div class="pipeline-visual">
+  <div class="pipeline-step">
+    <div class="pipeline-line"><div class="pipeline-dot"></div></div>
+    <div class="pipeline-content">
+      <h4>Step 1 — Group &amp; Aggregate</h4>
+      <p>Group by: <code>country</code><br>
+        Aggregation: Sum of <code>population</code> → <code>total_pop</code></p>
+    </div>
+  </div>
+</div>
+
+<p><strong>Use with a Geo Map widget:</strong> Geography = <code>country</code>, Value = <code>total_pop</code></p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>How Data Flows</h2>
+
+<div class="card">
+<pre style="font-size: 12.5px; line-height: 1.8; color: var(--muted); overflow-x: auto; white-space: pre;">
+  Raw Dataset (CSV)
+       │
+       ▼
+  ┌─────────────────────────┐
+  │  Dataset Transforms      │  ← Applied globally (Data Integration tab)
+  │  (filter, rename, etc.)  │    Affects ALL widgets using this dataset
+  └────────────┬────────────┘
+               │
+               ▼
+  ┌─────────────────────────┐
+  │  Viewer Filters          │  ← Applied in Viewer mode only
+  │  (Filter Panel)          │    Interactive category/range filters
+  └────────────┬────────────┘
+               │
+               ▼
+  ┌─────────────────────────┐
+  │  <strong>Measures Pipeline</strong>        │  ← Per-widget (Measures tab)
+  │  Step 1 → Step 2 → …    │    Multi-step aggregation chain
+  └────────────┬────────────┘
+               │
+               ▼
+  ┌─────────────────────────┐
+  │  Chart Rendering         │  ← Uses Fields tab mappings
+  │  (X, Y, Color, etc.)    │    Columns come from pipeline output
+  └─────────────────────────┘
+</pre>
+</div>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Key Concepts</h2>
+
+<h3>Pipeline is per-widget</h3>
+<p>
+  Each chart has its own independent pipeline. Two bar charts using the same dataset can have
+  completely different measure pipelines. This is different from <strong>Dataset Transforms</strong>
+  (in the Data Integration tab), which apply globally to all widgets sharing that dataset.
+</p>
+
+<h3>Empty pipeline = classic behavior</h3>
+<p>
+  If you don't add any pipeline steps, the chart works exactly as before — it uses its built-in
+  aggregation (the Aggregation dropdown in the Fields tab). The pipeline is purely opt-in.
+</p>
+
+<h3>Output columns replace raw columns</h3>
+<p>
+  Once you add pipeline steps, the <strong>Fields tab</strong> column dropdowns automatically switch to show
+  the pipeline's output columns. For example, after a Group &amp; Aggregate step that outputs
+  <code>country</code> and <code>total_pop</code>, those are the only columns available for X/Y mapping.
+</p>
+
+<h3>Preview before committing</h3>
+<p>
+  Click <strong>"Preview output"</strong> at the bottom of the Measures tab to see a sample table of
+  what the pipeline produces. This runs on the first 100 rows of your dataset for quick feedback.
+</p>
+
+<h3>Step ordering matters</h3>
+<p>
+  Steps execute top-to-bottom. A <strong>Filter</strong> after a <strong>Group &amp; Aggregate</strong>
+  filters the <em>aggregated</em> rows, not the raw data. Use the ↑↓ arrows to reorder steps.
+</p>
+
+<!-- ──────────────────────────────────────────────── -->
+<h2>Quick Reference</h2>
+
+<table>
+  <thead><tr><th>I want to…</th><th>Use this step</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>Summarize by category</td><td><span class="step-badge">⊞ Group &amp; Aggregate</span></td><td>Total population per country</td></tr>
+    <tr><td>Keep only the best/worst N</td><td><span class="step-badge">⊤ Top / Bottom N</span></td><td>Top 5 cities by salary</td></tr>
+    <tr><td>Keep best N within each group</td><td><span class="step-badge">⊤ Top / Bottom N</span> with "Per group"</td><td>Top 1 city per country by population</td></tr>
+    <tr><td>Remove rows by condition</td><td><span class="step-badge">⊘ Filter</span></td><td>Only cities with pop &gt; 500K</td></tr>
+    <tr><td>Create a derived metric</td><td><span class="step-badge">ƒ Compute Column</span></td><td>salary / (cost_of_living * 12)</td></tr>
+    <tr><td>Control row order</td><td><span class="step-badge">↕ Sort</span></td><td>Sort by salary descending</td></tr>
+    <tr><td>Chain multiple operations</td><td>Add multiple steps in sequence</td><td>Group → Top N → Sort</td></tr>
+  </tbody>
+</table>
+
+<div class="tip" style="margin-top: 32px;">
+  <div class="tip-title">Common pattern: Group → Top N → Chart</div>
+  <p style="font-size: 13px; margin: 0;">
+    Most complex questions follow this pattern:<br>
+    <strong>1.</strong> Group &amp; Aggregate to summarize data at a finer level than you need.<br>
+    <strong>2.</strong> Top/Bottom N (per group) to pick the representative row per group.<br>
+    <strong>3.</strong> Optionally Sort or Filter the result.<br>
+    <strong>4.</strong> Map the output columns to chart fields.
+  </p>
+</div>
+
+</div>
+</body>
+</html>

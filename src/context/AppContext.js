@@ -24,7 +24,7 @@ const _firstPage = makePage();
 
 const initialState = {
   mode: 'developer',
-  developerTab: 'data',
+  developerTab: 'dashboard',
   datasets: [],
   activeDatasetId: null,
   dashboard: {
@@ -82,7 +82,19 @@ function defaultWidget(overrides = {}) {
     bins: 20,
     dotSizeMin: 4,
     dotSizeMax: 20,
-    slides: [],        // for carousel widget
+    barMode: 'stacked',    // 'stacked' | 'grouped'
+    stackMode: 'none',     // 'none' | 'stacked' | 'percent' (line chart area)
+    // Sankey fields
+    sourceField: null,
+    targetField: null,
+    // Radar
+    axisField: null,
+    // Geo
+    geoField: null,
+    mapProjection: 'naturalEarth',
+    // Measure pipeline
+    measures: [],           // array of pipeline steps
+    slides: [],             // for carousel widget
     autoPlay: false,
     autoPlayInterval: 5000,
     ...overrides,
@@ -93,7 +105,7 @@ function reducer(state, action) {
   switch (action.type) {
 
     case 'SET_MODE':
-      return { ...state, mode: action.payload, editingWidgetId: null };
+      return { ...state, mode: action.payload, editingWidgetId: null, developerTab: action.payload === 'developer' ? 'dashboard' : state.developerTab };
 
     case 'SET_DEVELOPER_TAB':
       return { ...state, developerTab: action.payload };
