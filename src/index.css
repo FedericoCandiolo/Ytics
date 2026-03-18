@@ -33,6 +33,12 @@
   --shadow-md:    0 4px 8px -1px rgba(13,27,42,.10), 0 2px 4px -1px rgba(13,27,42,.06);
   --shadow-lg:    0 12px 28px -4px rgba(13,27,42,.14), 0 6px 12px -4px rgba(13,27,42,.06);
 
+  /* ── Card shadow presets ── */
+  --card-shadow-none: none;
+  --card-shadow-sm:   0 1px 3px rgba(0,0,0,.08);
+  --card-shadow-md:   0 2px 8px rgba(0,0,0,.10);
+  --card-shadow-lg:   0 8px 24px rgba(0,0,0,.12);
+
   /* ── Shape ── */
   --radius:       6px;
   --radius-lg:    12px;

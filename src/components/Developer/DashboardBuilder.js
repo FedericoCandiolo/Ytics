@@ -1,10 +1,11 @@
-import { useRef, useEffect, useState } from 'react';
-import { ResponsiveGridLayout } from 'react-grid-layout';
+import { useRef, useEffect, useState, forwardRef } from 'react';
+import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import WidgetEditor from './WidgetEditor';
+import { ALL_SCHEMES, getSwatchColors } from '../../utils/colorUtils';
 
-const ResponsiveGrid = ResponsiveGridLayout;
+const ResponsiveGrid = WidthProvider(Responsive);
 
 const WIDGET_TYPES = [
   { type: 'bar',       label: 'Bar Chart',    icon: '📊' },
@@ -21,22 +22,38 @@ const WIDGET_TYPES = [
   { type: 'carousel',  label: 'Carousel',     icon: '🎠' },
 ];
 
+// Custom resize handles with inline styles — bypasses library CSS specificity issues
+const HANDLE_STYLES = {
+  n:  { position: 'absolute', top: 0, left: 0, right: 0, height: 8, cursor: 'ns-resize', zIndex: 20 },
+  ne: { position: 'absolute', top: 0, right: 0, width: 16, height: 16, cursor: 'ne-resize', zIndex: 20 },
+  e:  { position: 'absolute', top: 0, right: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 20 },
+  se: { position: 'absolute', right: 0, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize', zIndex: 20 },
+  s:  { position: 'absolute', left: 0, right: 0, bottom: 0, height: 8, cursor: 'ns-resize', zIndex: 20 },
+  sw: { position: 'absolute', bottom: 0, left: 0, width: 16, height: 16, cursor: 'nesw-resize', zIndex: 20 },
+  w:  { position: 'absolute', top: 0, left: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 20 },
+  nw: { position: 'absolute', top: 0, left: 0, width: 16, height: 16, cursor: 'nwse-resize', zIndex: 20 },
+};
+
+const ResizeHandle = forwardRef(({ axis, ...rest }, ref) => (
+  <div ref={ref} className={`rh rh-${axis}`} style={HANDLE_STYLES[axis] || {}} {...rest} />
+));
+
 export default function DashboardBuilder() {
   const { state, dispatch } = useApp();
   const { dashboard, editingWidgetId } = state;
+  const theme = dashboard.theme || {};
 
   // Square grid: measure canvas width → compute rowHeight = columnWidth
   const canvasRef = useRef(null);
   const [rowHeight, setRowHeight] = useState(80);
+  const cols = 12;
+  const margin = 12;
 
   useEffect(() => {
     if (!canvasRef.current) return;
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width;
-      const cols = 12;
-      const margin = 12;
-      const padding = 32; // 16px each side from .db-canvas
-      const colWidth = (w - padding - (cols - 1) * margin) / cols;
+      const colWidth = (w - margin * (cols + 1)) / cols;
       setRowHeight(Math.max(40, Math.round(colWidth)));
     });
     ro.observe(canvasRef.current);
@@ -46,11 +63,31 @@ export default function DashboardBuilder() {
   const currentPage = dashboard.pages.find(p => p.id === dashboard.currentPageId) || dashboard.pages[0];
   const layouts = { lg: currentPage.layout };
 
+  // ── Widget drag-to-page state ──
+  const [draggingWidgetId, setDraggingWidgetId] = useState(null);
+  const [dropTargetPageId, setDropTargetPageId] = useState(null);
+
   const [editingPageName, setEditingPageName] = useState(null); // page id being renamed
+  const [stylesOpen, setStylesOpen] = useState(true);
 
   const onLayoutChange = (_layout, allLayouts) => {
     dispatch({ type: 'UPDATE_LAYOUT', payload: allLayouts.lg || _layout });
   };
+
+  // Compute grid background style
+  const gridBgStyle = (() => {
+    const period = rowHeight + margin;
+    const offset = 16 + margin;
+    return {
+      backgroundImage: [
+        'linear-gradient(rgba(255,255,255,.55) 1px, transparent 1px)',
+        'linear-gradient(90deg, rgba(255,255,255,.55) 1px, transparent 1px)',
+      ].join(', '),
+      backgroundSize: `${period}px ${period}px`,
+      backgroundPosition: `${offset}px ${offset}px`,
+      background: theme.canvasColor || '#f0f4f8',
+    };
+  })();
 
   return (
     <div className="db-layout">
@@ -61,9 +98,117 @@ export default function DashboardBuilder() {
           : (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <div className="db-sidebar-header">
-                <span style={{ fontWeight: 600, fontSize: 13 }}>Add Chart</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>Dashboard</span>
               </div>
               <div className="db-sidebar-body">
+                {/* ── Dashboard Styles Section ── */}
+                <div style={{ marginBottom: 16 }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      cursor: 'pointer', marginBottom: stylesOpen ? 10 : 0,
+                    }}
+                    onClick={() => setStylesOpen(o => !o)}
+                  >
+                    <div className="section-title" style={{ marginBottom: 0 }}>Dashboard Styles</div>
+                    <span style={{ fontSize: 10, color: 'var(--text-light)' }}>{stylesOpen ? '▲' : '▼'}</span>
+                  </div>
+
+                  {stylesOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div className="form-group">
+                        <label className="form-label">Font size — {theme.fontSize || 13}px</label>
+                        <input
+                          type="range" min={10} max={18} step={1}
+                          value={theme.fontSize || 13}
+                          onChange={e => dispatch({ type: 'SET_THEME', payload: { fontSize: parseInt(e.target.value) } })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Canvas background</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="color"
+                            value={theme.canvasColor || '#f0f4f8'}
+                            onChange={e => dispatch({ type: 'SET_THEME', payload: { canvasColor: e.target.value } })}
+                            style={{ width: 32, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 2 }}
+                          />
+                          <input
+                            className="input input-sm"
+                            value={theme.canvasColor || '#f0f4f8'}
+                            onChange={e => dispatch({ type: 'SET_THEME', payload: { canvasColor: e.target.value } })}
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Default card color</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            type="color"
+                            value={theme.cardColor || '#ffffff'}
+                            onChange={e => dispatch({ type: 'SET_THEME', payload: { cardColor: e.target.value } })}
+                            style={{ width: 32, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 2 }}
+                          />
+                          <input
+                            className="input input-sm"
+                            value={theme.cardColor || '#ffffff'}
+                            onChange={e => dispatch({ type: 'SET_THEME', payload: { cardColor: e.target.value } })}
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Border radius — {theme.cardRadius ?? 8}px</label>
+                        <input
+                          type="range" min={0} max={20} step={1}
+                          value={theme.cardRadius ?? 8}
+                          onChange={e => dispatch({ type: 'SET_THEME', payload: { cardRadius: parseInt(e.target.value) } })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Card shadow</label>
+                        <select
+                          className="select select-sm"
+                          value={theme.cardShadow || 'md'}
+                          onChange={e => dispatch({ type: 'SET_THEME', payload: { cardShadow: e.target.value } })}
+                        >
+                          <option value="none">None</option>
+                          <option value="sm">Small</option>
+                          <option value="md">Medium</option>
+                          <option value="lg">Large</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Color scheme</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {Object.keys(ALL_SCHEMES).map(key => (
+                            <div
+                              key={key}
+                              className={`color-scheme-option ${(theme.colorScheme || 'vivid') === key ? 'color-scheme-option--active' : ''}`}
+                              onClick={() => dispatch({ type: 'SET_THEME', payload: { colorScheme: key } })}
+                            >
+                              <div className="color-swatches">
+                                {getSwatchColors(key).slice(0, 8).map((c, i) => (
+                                  <div key={i} className="color-swatch" style={{ background: c }} />
+                                ))}
+                              </div>
+                              <span style={{ fontSize: 12, textTransform: 'capitalize' }}>{key}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <hr className="divider" />
+
                 <div className="section-title">Chart types</div>
                 <div className="widget-type-grid">
                   {WIDGET_TYPES.map(wt => (
@@ -114,7 +259,7 @@ export default function DashboardBuilder() {
 
       {/* ── Canvas + page tabs ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="db-canvas" ref={canvasRef}>
+        <div className="db-canvas" ref={canvasRef} style={gridBgStyle}>
           {currentPage.widgets.length === 0 ? (
             <div className="empty-state" style={{ height: '100%' }}>
               <div className="empty-state-icon">🎨</div>
@@ -126,15 +271,18 @@ export default function DashboardBuilder() {
               className="layout"
               layouts={layouts}
               breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-              cols={{ lg: 12, md: 10, sm: 6 }}
+              cols={{ lg: cols, md: 10, sm: 6 }}
               rowHeight={rowHeight}
               draggableHandle=".widget-header"
-              resizeHandles={['se', 'e', 's']}
+              resizeHandles={['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']}
+              resizeHandle={(axis, ref) => <ResizeHandle axis={axis} ref={ref} />}
               onLayoutChange={onLayoutChange}
-              margin={[12, 12]}
+              margin={[margin, margin]}
+              compactType={null}
+              preventCollision={true}
             >
               {currentPage.widgets.map(widget => (
-                <div key={widget.id}>
+                <div key={widget.id} style={{ height: '100%' }}>
                   <WidgetContainer
                     widget={widget}
                     isEditing={true}
@@ -142,6 +290,7 @@ export default function DashboardBuilder() {
                     onSelect={() => dispatch({ type: 'SET_EDITING_WIDGET', payload: widget.id })}
                     onRemove={() => dispatch({ type: 'REMOVE_WIDGET', payload: widget.id })}
                     onDuplicate={() => dispatch({ type: 'DUPLICATE_WIDGET', payload: widget.id })}
+                    onDragToPage={dashboard.pages.length > 1 ? setDraggingWidgetId : undefined}
                   />
                 </div>
               ))}
@@ -154,9 +303,28 @@ export default function DashboardBuilder() {
           {dashboard.pages.map(page => (
             <div
               key={page.id}
-              className={`page-tab ${page.id === dashboard.currentPageId ? 'page-tab--active' : ''}`}
+              className={`page-tab ${page.id === dashboard.currentPageId ? 'page-tab--active' : ''} ${dropTargetPageId === page.id ? 'page-tab--drop-target' : ''}`}
               onClick={() => dispatch({ type: 'SET_CURRENT_PAGE', payload: page.id })}
               onDoubleClick={() => setEditingPageName(page.id)}
+              onDragOver={e => {
+                if (!draggingWidgetId || page.id === dashboard.currentPageId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = e.shiftKey ? 'copy' : 'move';
+                setDropTargetPageId(page.id);
+              }}
+              onDragLeave={() => setDropTargetPageId(null)}
+              onDrop={e => {
+                e.preventDefault();
+                const widgetId = e.dataTransfer.getData('application/widget-id') || draggingWidgetId;
+                if (widgetId && page.id !== dashboard.currentPageId) {
+                  dispatch({
+                    type: 'MOVE_WIDGET_TO_PAGE',
+                    payload: { widgetId, targetPageId: page.id, copy: e.shiftKey },
+                  });
+                }
+                setDraggingWidgetId(null);
+                setDropTargetPageId(null);
+              }}
             >
               {editingPageName === page.id ? (
                 <input

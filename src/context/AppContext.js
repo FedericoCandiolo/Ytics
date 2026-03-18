@@ -5,6 +5,17 @@ import { v4 as uuid } from 'uuid';
 
 const AppContext = createContext(null);
 
+export const defaultTheme = {
+  fontFamily: 'Inter, sans-serif',
+  fontSize: 13,
+  canvasColor: '#f0f4f8',
+  cardColor: '#ffffff',
+  cardRadius: 8,
+  cardShadow: 'md',      // 'none' | 'sm' | 'md' | 'lg'
+  accentColor: '#3b82f6',
+  colorScheme: 'vivid',  // global palette applied to all charts by default
+};
+
 function makePage(overrides = {}) {
   return { id: uuid(), name: 'Page 1', widgets: [], layout: [], ...overrides };
 }
@@ -20,6 +31,7 @@ const initialState = {
     title: 'My Dashboard',
     pages: [_firstPage],
     currentPageId: _firstPage.id,
+    theme: { ...defaultTheme },
   },
   filters: {},
   editingWidgetId: null,
@@ -46,8 +58,9 @@ function defaultWidget(overrides = {}) {
     type: 'bar',
     datasetId: null,
     title: 'New Chart',
-    colorScheme: 'vivid',
-    backgroundColor: '#ffffff',
+    colorScheme: null,    // null = inherit from theme
+    backgroundColor: null,
+    cardRadius: null,
     showLegend: true,
     showGrid: true,
     opacity: 1,
@@ -84,6 +97,15 @@ function reducer(state, action) {
 
     case 'SET_DEVELOPER_TAB':
       return { ...state, developerTab: action.payload };
+
+    case 'SET_THEME':
+      return {
+        ...state,
+        dashboard: {
+          ...state.dashboard,
+          theme: { ...state.dashboard.theme, ...action.payload },
+        },
+      };
 
     // ── Datasets ──────────────────────────────────────────────
     case 'LOAD_DATASET': {
@@ -219,7 +241,9 @@ function reducer(state, action) {
         datasetId: state.datasets[0]?.id ?? null,
         ...action.payload,
       });
-      const layoutItem = { i: widget.id, x: 0, y: Infinity, w: 6, h: 6 };
+      const pageLayout = state.dashboard.pages.find(p => p.id === state.dashboard.currentPageId)?.layout ?? [];
+      const nextY = pageLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+      const layoutItem = { i: widget.id, x: 0, y: nextY, w: 8, h: 5 };
       const pages = state.dashboard.pages.map(p =>
         p.id === state.dashboard.currentPageId
           ? { ...p, widgets: [...p.widgets, widget], layout: [...p.layout, layoutItem] }
@@ -260,14 +284,57 @@ function reducer(state, action) {
         const src = p.widgets.find(w => w.id === action.payload);
         if (!src) return p;
         newWidget = { ...src, id: uuid(), title: src.title + ' (copy)' };
+        const pageLayout = p.layout;
+        const nextY = pageLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
         return {
           ...p,
           widgets: [...p.widgets, newWidget],
-          layout: [...p.layout, { i: newWidget.id, x: 0, y: Infinity, w: 6, h: 6 }],
+          layout: [...p.layout, { i: newWidget.id, x: 0, y: nextY, w: 8, h: 5 }],
         };
       });
       if (!newWidget) return state;
       return { ...state, dashboard: { ...state.dashboard, pages }, editingWidgetId: newWidget.id };
+    }
+
+    case 'MOVE_WIDGET_TO_PAGE': {
+      const { widgetId, targetPageId, copy } = action.payload;
+      let srcWidget = null;
+      let srcLayout = null;
+      // Find the widget and its layout item in any page
+      for (const p of state.dashboard.pages) {
+        const w = p.widgets.find(w => w.id === widgetId);
+        if (w) {
+          srcWidget = w;
+          srcLayout = p.layout.find(l => l.i === widgetId);
+          break;
+        }
+      }
+      if (!srcWidget) return state;
+      const newId = copy ? uuid() : srcWidget.id;
+      const movedWidget = copy
+        ? { ...srcWidget, id: newId, title: srcWidget.title + ' (copy)' }
+        : srcWidget;
+      const pages = state.dashboard.pages.map(p => {
+        if (p.id === targetPageId) {
+          const nextY = p.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+          return {
+            ...p,
+            widgets: [...p.widgets, movedWidget],
+            layout: [...p.layout, { i: newId, x: 0, y: nextY, w: srcLayout?.w ?? 8, h: srcLayout?.h ?? 5 }],
+          };
+        }
+        if (!copy) {
+          // Remove from source page
+          return {
+            ...p,
+            widgets: p.widgets.filter(w => w.id !== widgetId),
+            layout: p.layout.filter(l => l.i !== widgetId),
+          };
+        }
+        return p;
+      });
+      const editingWidgetId = state.editingWidgetId === widgetId && !copy ? null : state.editingWidgetId;
+      return { ...state, dashboard: { ...state.dashboard, pages }, editingWidgetId };
     }
 
     case 'UPDATE_LAYOUT': {
@@ -310,6 +377,7 @@ function reducer(state, action) {
         pages = [migratedPage];
       }
       const currentPageId = pages[0]?.id ?? uuid();
+      const theme = dashboard.theme || defaultTheme;
       const dicts = {};
       const tables = {};
       const processed = datasets.map(d => {
@@ -322,7 +390,7 @@ function reducer(state, action) {
         mode: 'viewer',
         datasets: processed,
         activeDatasetId: processed[0]?.id ?? null,
-        dashboard: { ...dashboard, pages, currentPageId },
+        dashboard: { ...dashboard, pages, currentPageId, theme },
         colStore: { dicts, tables },
       };
     }

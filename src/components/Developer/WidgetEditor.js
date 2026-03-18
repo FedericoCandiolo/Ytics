@@ -167,6 +167,9 @@ function FieldsTab({ widget, dataset, onUpdate }) {
 
 // ── Aesthetics tab content ────────────────────────────────────────────────────
 function AestheticsTab({ widget, onUpdate }) {
+  const useDefaultBg = widget.backgroundColor === null || widget.backgroundColor === undefined;
+  const useDefaultRadius = widget.cardRadius === null || widget.cardRadius === undefined;
+
   return (
     <div>
       <div className="form-group" style={{ marginBottom: 12 }}>
@@ -177,6 +180,18 @@ function AestheticsTab({ widget, onUpdate }) {
       <div className="form-group" style={{ marginBottom: 12 }}>
         <label className="form-label">Color scheme</label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Inherit from theme */}
+          <div
+            className={`color-scheme-option ${widget.colorScheme == null ? 'color-scheme-option--active' : ''}`}
+            onClick={() => onUpdate({ colorScheme: null })}
+          >
+            <div className="color-swatches" style={{ opacity: 0.4 }}>
+              {[1,2,3,4,5,6,7,8].map(i => (
+                <div key={i} className="color-swatch" style={{ background: `hsl(${i*40},40%,60%)` }} />
+              ))}
+            </div>
+            <span style={{ fontSize: 12, fontStyle: 'italic' }}>Use theme default</span>
+          </div>
           {Object.entries(COLOR_SCHEMES).map(([key, label]) => (
             <div
               key={key}
@@ -211,16 +226,47 @@ function AestheticsTab({ widget, onUpdate }) {
         />
       </div>
 
-      <div className="form-group">
+      <div className="form-group" style={{ marginBottom: 12 }}>
         <label className="form-label">Background color</label>
-        <div className="flex gap-2 items-center">
-          <input type="color" value={widget.backgroundColor || '#ffffff'}
-            onChange={e => onUpdate({ backgroundColor: e.target.value })}
-            style={{ width: 32, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 2 }}
+        <label className="checkbox-row" style={{ marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={useDefaultBg}
+            onChange={e => onUpdate({ backgroundColor: e.target.checked ? null : '#ffffff' })}
           />
-          <input className="input input-sm" value={widget.backgroundColor || '#ffffff'}
-            onChange={e => onUpdate({ backgroundColor: e.target.value })} style={{ flex: 1 }} />
-        </div>
+          <span style={{ fontSize: 12 }}>Use default (from theme)</span>
+        </label>
+        {!useDefaultBg && (
+          <div className="flex gap-2 items-center">
+            <input type="color" value={widget.backgroundColor || '#ffffff'}
+              onChange={e => onUpdate({ backgroundColor: e.target.value })}
+              style={{ width: 32, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 2 }}
+            />
+            <input className="input input-sm" value={widget.backgroundColor || '#ffffff'}
+              onChange={e => onUpdate({ backgroundColor: e.target.value })} style={{ flex: 1 }} />
+          </div>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Corner radius</label>
+        <label className="checkbox-row" style={{ marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={useDefaultRadius}
+            onChange={e => onUpdate({ cardRadius: e.target.checked ? null : 8 })}
+          />
+          <span style={{ fontSize: 12 }}>Inherit from theme</span>
+        </label>
+        {!useDefaultRadius && (
+          <div>
+            <span className="form-label">{widget.cardRadius ?? 8}px</span>
+            <input type="range" min={0} max={20} step={1}
+              value={widget.cardRadius ?? 8}
+              onChange={e => onUpdate({ cardRadius: parseInt(e.target.value) })}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

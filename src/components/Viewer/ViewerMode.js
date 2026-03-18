@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { ResponsiveGridLayout } from 'react-grid-layout';
+import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import FilterPanel from './FilterPanel';
 import { exportDashboard } from '../../utils/exportUtils';
 
-const ResponsiveGrid = ResponsiveGridLayout;
+const ResponsiveGrid = WidthProvider(Responsive);
 
 export default function ViewerMode() {
   const { state, dispatch } = useApp();
   const { dashboard } = state;
+  const theme = dashboard.theme || {};
   const pages = dashboard.pages || [];
   const [pageIdx, setPageIdx] = useState(0);
 
@@ -42,7 +43,7 @@ export default function ViewerMode() {
       </div>
 
       {/* ── Dashboard canvas ── */}
-      <div className="viewer-canvas">
+      <div className="viewer-canvas" style={{ background: theme.canvasColor || '#f0f4f8' }}>
         {totalWidgets === 0 ? (
           <div className="empty-state" style={{ height: '60vh' }}>
             <div className="empty-state-icon">👁</div>

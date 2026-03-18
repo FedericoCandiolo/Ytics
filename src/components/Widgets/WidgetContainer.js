@@ -28,9 +28,10 @@ const TYPE_ICONS = {
   carousel: '🎠',
 };
 
-export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate }) {
+export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage }) {
   const { state } = useApp();
   const [maximized, setMaximized] = useState(false);
+  const theme = state.dashboard.theme || {};
 
   const dataset = state.datasets.find(d => d.id === widget.datasetId);
   const raw = dataset?.data ?? [];
@@ -39,8 +40,14 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   const Chart = CHART_MAP[widget.type] || BarChart;
   const closeMaximize = useCallback(() => setMaximized(false), []);
 
+  // Resolve color scheme: widget override → theme default → fallback
+  const effectiveWidget = {
+    ...widget,
+    colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
+  };
+
   const chartBody = dataset
-    ? <Chart widget={widget} data={data} />
+    ? <Chart widget={effectiveWidget} data={data} />
     : (
       <div className="empty-state" style={{ height: '100%' }}>
         <div style={{ fontSize: 28, opacity: .3 }}>🗄</div>
@@ -48,11 +55,25 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
       </div>
     );
 
+  const shadowMap = {
+    none: 'none',
+    sm: '0 1px 3px rgba(0,0,0,.08)',
+    md: '0 2px 8px rgba(0,0,0,.10)',
+    lg: '0 8px 24px rgba(0,0,0,.12)',
+  };
+  const cardBg = widget.backgroundColor ?? theme.cardColor ?? '#ffffff';
+  const cardRadius = widget.cardRadius ?? theme.cardRadius ?? 8;
+  const cardShadow = shadowMap[theme.cardShadow] ?? shadowMap.md;
+
   return (
     <>
       <div
         className={`widget-card ${isSelected ? 'widget-card--selected' : ''}`}
-        style={{ backgroundColor: widget.backgroundColor || '#fff' }}
+        style={{
+          backgroundColor: cardBg,
+          borderRadius: cardRadius,
+          boxShadow: isSelected ? undefined : cardShadow,
+        }}
         onClick={isEditing ? onSelect : undefined}
       >
         <div className="widget-header">
@@ -70,6 +91,20 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
                 title="Duplicate"
                 onClick={e => { e.stopPropagation(); onDuplicate(); }}
               >⧉</button>
+            )}
+            {isEditing && onDragToPage && (
+              <button
+                className="btn btn-ghost btn-icon btn-sm widget-drag-to-page"
+                title="Drag to another page"
+                draggable
+                onDragStart={e => {
+                  e.stopPropagation();
+                  e.dataTransfer.setData('application/widget-id', widget.id);
+                  e.dataTransfer.effectAllowed = 'copyMove';
+                  onDragToPage(widget.id);
+                }}
+                onDragEnd={() => onDragToPage(null)}
+              >⇱</button>
             )}
             {isEditing && onRemove && (
               <button
