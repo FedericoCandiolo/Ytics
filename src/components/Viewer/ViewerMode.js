@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
@@ -13,6 +13,23 @@ export default function ViewerMode() {
   const theme = dashboard.theme || {};
   const pages = dashboard.pages || [];
   const [pageIdx, setPageIdx] = useState(0);
+
+  // 24×12 grid: compute rowHeight so 12 rows fit the visible canvas height
+  const canvasRef = useRef(null);
+  const [rowHeight, setRowHeight] = useState(30);
+  const rows = 12;
+  const margin = 8;
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      const rh = (h - margin * (rows + 1)) / rows;
+      setRowHeight(Math.max(10, Math.round(rh)));
+    });
+    ro.observe(canvasRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   const currentPage = pages[Math.min(pageIdx, pages.length - 1)] || pages[0] || { widgets: [], layout: [] };
   const layouts = { lg: currentPage.layout };
@@ -43,7 +60,7 @@ export default function ViewerMode() {
       </div>
 
       {/* ── Dashboard canvas ── */}
-      <div className="viewer-canvas" style={{ background: theme.canvasColor || '#f0f4f8' }}>
+      <div ref={canvasRef} className="viewer-canvas" style={{ background: theme.canvasColor || '#f0f4f8' }}>
         {totalWidgets === 0 ? (
           <div className="empty-state" style={{ height: '60vh' }}>
             <div className="empty-state-icon">👁</div>
@@ -64,11 +81,11 @@ export default function ViewerMode() {
             className="layout"
             layouts={layouts}
             breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-            cols={{ lg: 12, md: 10, sm: 6 }}
-            rowHeight={80}
+            cols={{ lg: 24, md: 16, sm: 8 }}
+            rowHeight={rowHeight}
             isDraggable={false}
             isResizable={false}
-            margin={[12, 12]}
+            margin={[margin, margin]}
           >
             {currentPage.widgets.map(widget => (
               <div key={widget.id}>

@@ -326,12 +326,6 @@ function GroupByEditor({ step, cols, onChange }) {
         );
       })}
       <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, marginTop: 4 }} onClick={addAgg}>+ Add aggregation</button>
-
-      {/* Hint about multi-level */}
-      <div style={{ marginTop: 10, padding: '6px 8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 10, color: '#166534', lineHeight: 1.5 }}>
-        <strong>Multi-level:</strong> Add another Group &amp; Aggregate step after this one to compute
-        averages-of-averages (e.g., avg per country of avg per state). Each step sees the output columns of the previous step.
-      </div>
     </div>
   );
 }

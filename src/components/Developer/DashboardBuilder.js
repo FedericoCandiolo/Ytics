@@ -48,18 +48,20 @@ export default function DashboardBuilder() {
   const { dashboard, editingWidgetId } = state;
   const theme = dashboard.theme || {};
 
-  // Square grid: measure canvas width → compute rowHeight = columnWidth
+  // 24×12 grid: compute rowHeight so 12 rows fit the visible canvas height
   const canvasRef = useRef(null);
-  const [rowHeight, setRowHeight] = useState(80);
-  const cols = 12;
-  const margin = 12;
+  const [rowHeight, setRowHeight] = useState(30);
+  const cols = 24;
+  const rows = 12;
+  const margin = 8;
 
   useEffect(() => {
     if (!canvasRef.current) return;
     const ro = new ResizeObserver(([entry]) => {
-      const w = entry.contentRect.width;
-      const colWidth = (w - margin * (cols + 1)) / cols;
-      setRowHeight(Math.max(40, Math.round(colWidth)));
+      const h = entry.contentRect.height;
+      // rowHeight so that exactly `rows` rows fit: h = rows * rowHeight + (rows + 1) * margin
+      const rh = (h - margin * (rows + 1)) / rows;
+      setRowHeight(Math.max(10, Math.round(rh)));
     });
     ro.observe(canvasRef.current);
     return () => ro.disconnect();
@@ -276,7 +278,7 @@ export default function DashboardBuilder() {
               className="layout"
               layouts={layouts}
               breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-              cols={{ lg: cols, md: 10, sm: 6 }}
+              cols={{ lg: cols, md: 16, sm: 8 }}
               rowHeight={rowHeight}
               draggableHandle=".widget-header"
               resizeHandles={['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']}

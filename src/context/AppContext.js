@@ -255,7 +255,7 @@ function reducer(state, action) {
       });
       const pageLayout = state.dashboard.pages.find(p => p.id === state.dashboard.currentPageId)?.layout ?? [];
       const nextY = pageLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
-      const layoutItem = { i: widget.id, x: 0, y: nextY, w: 8, h: 5 };
+      const layoutItem = { i: widget.id, x: 0, y: nextY, w: 12, h: 5 };
       const pages = state.dashboard.pages.map(p =>
         p.id === state.dashboard.currentPageId
           ? { ...p, widgets: [...p.widgets, widget], layout: [...p.layout, layoutItem] }
@@ -301,7 +301,7 @@ function reducer(state, action) {
         return {
           ...p,
           widgets: [...p.widgets, newWidget],
-          layout: [...p.layout, { i: newWidget.id, x: 0, y: nextY, w: 8, h: 5 }],
+          layout: [...p.layout, { i: newWidget.id, x: 0, y: nextY, w: 12, h: 5 }],
         };
       });
       if (!newWidget) return state;
@@ -332,7 +332,7 @@ function reducer(state, action) {
           return {
             ...p,
             widgets: [...p.widgets, movedWidget],
-            layout: [...p.layout, { i: newId, x: 0, y: nextY, w: srcLayout?.w ?? 8, h: srcLayout?.h ?? 5 }],
+            layout: [...p.layout, { i: newId, x: 0, y: nextY, w: srcLayout?.w ?? 12, h: srcLayout?.h ?? 5 }],
           };
         }
         if (!copy) {
