@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
@@ -37,7 +37,22 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
 
     const xDomain = [...nested.keys()];
     const series = [...new Set(data.map(d => String(d[widget.colorField] ?? '')))];
-    const colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      // Color each series by its total value
+      const totals = series.map(s => {
+        let total = 0;
+        nested.forEach(yCols => { total += yCols.get(s) || 0; });
+        return total;
+      });
+      const ext = [Math.min(...totals), Math.max(...totals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const totalMap = new Map(series.map((s, i) => [s, totals[i]]));
+      colors = d => seq(totalMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
+    }
     const opacity = widget.opacity ?? 1;
 
     // Build ranked data: for each x step, rank series by value

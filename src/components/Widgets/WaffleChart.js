@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -61,7 +61,35 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
       }
     });
 
-    const colors = getColorScaleWithOverrides(widget.colorScheme, cellCats.map(c => c.key), widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const gradField = widget.colorGradientField || widget.valueField;
+      let colorVals;
+      if (gradField !== widget.valueField) {
+        const gMap = new Map();
+        for (const row of data) {
+          const key = String(row[widget.labelField] ?? '(blank)');
+          const val = +row[gradField] || 0;
+          if (!gMap.has(key)) gMap.set(key, []);
+          gMap.get(key).push(val);
+        }
+        colorVals = cellCats.map(c => {
+          const vals = gMap.get(c.key) || [0];
+          return aggregate(vals, widget.aggregation || 'sum');
+        });
+      } else {
+        colorVals = cellCats.map(c => c.value);
+      }
+      const ext = [Math.min(...colorVals), Math.max(...colorVals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      colors = d => {
+        const idx = cellCats.findIndex(c => c.key === d);
+        return seq(colorVals[idx] ?? 0);
+      };
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, cellCats.map(c => c.key), widget.dimensionColors);
+    }
     const opacity = widget.opacity ?? 1;
 
     const cols = 10;

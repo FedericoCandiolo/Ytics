@@ -184,7 +184,8 @@ function defaultWidget(overrides = {}) {
     conditionalFormatting: [],  // [{ id, column, mode:'gradient'|'rules', gradient, rules:[{op,value,bg,text}] }]
     // Color mode for charts
     colorMode: 'categorical',  // 'categorical' | 'gradient'
-    colorGradient: null,       // gradient scheme key when colorMode is 'gradient'
+    colorGradient: null,       // gradient override (null = follows palette)
+    colorGradientField: null,  // numeric field for gradient (null = use chart's value field)
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget

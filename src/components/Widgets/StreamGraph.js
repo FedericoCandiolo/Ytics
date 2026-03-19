@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -47,7 +47,21 @@ export default function StreamGraph({ widget, data, onCrossFilter }) {
       return row;
     });
 
-    const colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const totals = series.map(s => {
+        let total = 0;
+        matrix.forEach(row => { total += row[s] || 0; });
+        return total;
+      });
+      const ext = [Math.min(...totals), Math.max(...totals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const totalMap = new Map(series.map((s, i) => [s, totals[i]]));
+      colors = d => seq(totalMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
+    }
     const opacity = widget.opacity ?? 0.9;
 
     const stack = d3.stack().keys(series).offset(d3.stackOffsetWiggle).order(d3.stackOrderInsideOut);

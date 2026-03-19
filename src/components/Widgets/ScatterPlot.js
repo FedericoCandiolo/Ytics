@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides, getPrimaryColor } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -37,6 +37,20 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     const colors = widget.colorField ? getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors) : null;
     const primaryColor = getPrimaryColor(widget.colorScheme);
 
+    // Gradient mode: color by a numeric field
+    let gradientFn;
+    if (widget.colorMode === 'gradient') {
+      const gradField = widget.colorGradientField || widget.yField;
+      const gradVals = pts.map(d => gradField === widget.yField ? d.y : (+d.raw[gradField] || 0));
+      const ext = d3.extent(gradVals);
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      gradientFn = (d) => {
+        const val = gradField === widget.yField ? d.y : (+d.raw[gradField] || 0);
+        return seq(val);
+      };
+    }
+
     const sMin = widget.dotSizeMin ?? 4, sMax = widget.dotSizeMax ?? 20;
     const sizeExt = widget.sizeField ? d3.extent(pts, d => d.size) : [1, 1];
     const sizeScale = d3.scaleSqrt().domain(sizeExt).range([sMin, sMax]).clamp(true);
@@ -63,7 +77,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     const dots = g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
       .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
       .attr('r', 0)
-      .attr('fill', d => widget.colorField ? colors(d.color) : primaryColor)
+      .attr('fill', d => gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor)
       .attr('opacity', opacity).attr('stroke', 'rgba(255,255,255,.6)').attr('stroke-width', 1);
 
     dots.transition().duration(400).delay((_, i) => i * 0.5).ease(d3.easeCubicOut)
@@ -74,7 +88,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
         d3.select(ev.currentTarget).raise().transition().duration(80)
           .attr('r', (widget.sizeField ? sizeScale(d.size) : sMin + 2) * 1.5)
           .attr('opacity', 1).attr('stroke-width', 2.5);
-        showTooltip(ev, <ScatterTip d={d} widget={widget} color={widget.colorField ? colors(d.color) : primaryColor} />);
+        showTooltip(ev, <ScatterTip d={d} widget={widget} color={gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev, d) => {

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
@@ -49,7 +49,17 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
       return { cat, vals, n, q1, median, q3, iqr, whiskerLo, whiskerHi, outliers, mean };
     });
 
-    const colors = getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const medians = stats.map(s => s.median);
+      const ext = [Math.min(...medians), Math.max(...medians)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const medianMap = new Map(stats.map(s => [s.cat, s.median]));
+      colors = d => seq(medianMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors);
+    }
     const opacity = widget.opacity ?? 1;
 
     const allVals = data.map(d => +d[widget.yField]).filter(v => !isNaN(v));

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
-import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray } from '../../utils/colorUtils';
+import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray, resolveGradient } from '../../utils/colorUtils';
 import { TYPE_ICONS } from '../Widgets/WidgetContainer';
 import MeasurePipeline from './MeasurePipeline';
 
@@ -438,8 +438,11 @@ function ConditionalFormattingSection({ widget, columns, onUpdate }) {
   );
 }
 
-function GradientColorSection({ widget, onUpdate }) {
+function GradientColorSection({ widget, columns, onUpdate }) {
   const isGradient = widget.colorMode === 'gradient';
+  const effectiveGradient = resolveGradient(widget.colorScheme, widget.colorGradient);
+  const hasCustomGradient = !!widget.colorGradient;
+  const numericCols = columns.filter(c => c.type === 'number');
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -452,27 +455,66 @@ function GradientColorSection({ widget, onUpdate }) {
         </label>
         <label className="checkbox-row" style={{ fontSize: 12 }}>
           <input type="radio" name="colorMode" checked={isGradient}
-            onChange={() => onUpdate({ colorMode: 'gradient', colorGradient: widget.colorGradient || 'blues' })} />
+            onChange={() => onUpdate({ colorMode: 'gradient' })} />
           Gradient
         </label>
       </div>
 
       {isGradient && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {Object.entries(GRADIENT_SCHEMES).map(([key, label]) => (
-            <div key={key}
-              className={`color-scheme-option ${widget.colorGradient === key ? 'color-scheme-option--active' : ''}`}
-              onClick={() => onUpdate({ colorGradient: key })}
-              style={{ padding: '3px 6px' }}
-            >
-              <div className="color-swatches">
-                {getGradientSwatches(key, 8).map((c, i) => (
-                  <div key={i} className="color-swatch" style={{ background: c }} />
-                ))}
-              </div>
-              <span style={{ fontSize: 11 }}>{label}</span>
+        <div>
+          {/* Default gradient from palette */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Default from palette: <strong>{GRADIENT_SCHEMES[resolveGradient(widget.colorScheme, null)] || 'Blues'}</strong>
             </div>
-          ))}
+            <div className="color-swatches" style={{ marginBottom: 6 }}>
+              {getGradientSwatches(resolveGradient(widget.colorScheme, null), 8).map((c, i) => (
+                <div key={i} className="color-swatch" style={{ background: c }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Override toggle */}
+          <label className="checkbox-row" style={{ fontSize: 12, marginBottom: 8 }}>
+            <input type="checkbox" checked={hasCustomGradient}
+              onChange={e => onUpdate({ colorGradient: e.target.checked ? effectiveGradient : null })} />
+            Override gradient
+          </label>
+
+          {hasCustomGradient && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+              {Object.entries(GRADIENT_SCHEMES).map(([key, label]) => (
+                <div key={key}
+                  className={`color-scheme-option ${widget.colorGradient === key ? 'color-scheme-option--active' : ''}`}
+                  onClick={() => onUpdate({ colorGradient: key })}
+                  style={{ padding: '3px 6px' }}
+                >
+                  <div className="color-swatches">
+                    {getGradientSwatches(key, 8).map((c, i) => (
+                      <div key={i} className="color-swatch" style={{ background: c }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11 }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Gradient measure field */}
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label className="form-label">Color by field</label>
+            <select className="select select-sm"
+              value={widget.colorGradientField || ''}
+              onChange={e => onUpdate({ colorGradientField: e.target.value || null })}>
+              <option value="">Same as value field (default)</option>
+              {numericCols.map(c => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              Choose a different numeric field to drive the color gradient.
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -578,7 +620,7 @@ function ColorsTab({ widget, dataset, columns, onUpdate, dispatch, dimensionColo
 
       {/* Gradient color mode for charts */}
       {isChart && (
-        <GradientColorSection widget={widget} onUpdate={onUpdate} />
+        <GradientColorSection widget={widget} columns={columns} onUpdate={onUpdate} />
       )}
 
       {/* Dimension color pinning for charts */}

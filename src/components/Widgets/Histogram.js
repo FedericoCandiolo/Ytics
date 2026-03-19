@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getPrimaryColor } from '../../utils/colorUtils';
+import { getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -30,7 +30,14 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     const bins = d3.bin().domain(xScale.domain()).thresholds(xScale.ticks(widget.bins ?? 20))(vals);
     const yScale = d3.scaleLinear().domain([0, d3.max(bins, d => d.length) * 1.08]).range([H, 0]).nice();
 
+    const useGradient = widget.colorMode === 'gradient';
     const fillColor = getPrimaryColor(widget.colorScheme);
+    let binColorFn;
+    if (useGradient) {
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const ext = [0, d3.max(bins, d => d.length)];
+      binColorFn = getSequentialScale(gradKey, ext[0], ext[1]);
+    }
     const opacity = widget.opacity ?? 1;
     const mean = d3.mean(vals), median = d3.median(vals), std = d3.deviation(vals);
 
@@ -50,7 +57,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     const bars = g.selectAll('.bin').data(bins).join('rect').attr('class', 'bin')
       .attr('x', d => xScale(d.x0) + 1).attr('y', H)
       .attr('width', d => Math.max(0, xScale(d.x1) - xScale(d.x0) - 2))
-      .attr('height', 0).attr('fill', fillColor).attr('opacity', opacity).attr('rx', 3);
+      .attr('height', 0).attr('fill', d => useGradient ? binColorFn(d.length) : fillColor).attr('opacity', opacity).attr('rx', 3);
 
     bars.transition().duration(500).ease(d3.easeCubicOut)
       .attr('y', d => yScale(d.length)).attr('height', d => H - yScale(d.length));
@@ -59,7 +66,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
       .on('mouseover', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1);
         const pct = ((d.length / vals.length) * 100).toFixed(1);
-        showTooltip(ev, <HistTip d={d} color={fillColor} pct={pct} total={vals.length} />);
+        showTooltip(ev, <HistTip d={d} color={useGradient ? binColorFn(d.length) : fillColor} pct={pct} total={vals.length} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev) => {
@@ -82,7 +89,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     if (std > 0) {
       const binW = bins[0] ? xScale(bins[0].x1) - xScale(bins[0].x0) : 1;
       g.append('path').datum(xScale.ticks(80))
-        .attr('fill', 'none').attr('stroke', fillColor).attr('stroke-width', 2)
+        .attr('fill', 'none').attr('stroke', useGradient ? 'var(--text-muted)' : fillColor).attr('stroke-width', 2)
         .attr('stroke-dasharray', '5,3').attr('opacity', 0.45)
         .attr('d', d3.line()
           .x(d => xScale(d))

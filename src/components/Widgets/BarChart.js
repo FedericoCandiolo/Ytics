@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
@@ -69,9 +69,31 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
   const domain = pts.map(d => d.key);
   let colors;
   if (widget.colorMode === 'gradient') {
-    const ext = [Math.min(...pts.map(d => d.value)), Math.max(...pts.map(d => d.value))];
-    const seq = getSequentialScale(widget.colorGradient || 'blues', ext[0], ext[1]);
-    colors = d => seq(pts.find(p => p.key === d)?.value ?? 0);
+    // If a custom gradient field is set, aggregate that field instead
+    const gradField = widget.colorGradientField || widget.yField;
+    let colorVals;
+    if (gradField !== widget.yField) {
+      const gMap = new Map();
+      for (const row of data) {
+        const key = String(row[widget.xField] ?? '(blank)');
+        const val = +row[gradField] || 0;
+        if (!gMap.has(key)) gMap.set(key, []);
+        gMap.get(key).push(val);
+      }
+      colorVals = pts.map(d => {
+        const vals = gMap.get(d.key) || [0];
+        return aggregate(vals, widget.aggregation || 'sum');
+      });
+    } else {
+      colorVals = pts.map(d => d.value);
+    }
+    const ext = [Math.min(...colorVals), Math.max(...colorVals)];
+    const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+    colors = d => {
+      const idx = pts.findIndex(p => p.key === d);
+      return seq(colorVals[idx] ?? 0);
+    };
   } else {
     colors = getColorScaleWithOverrides(widget.colorScheme, domain, widget.dimensionColors);
   }

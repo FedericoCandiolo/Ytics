@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -70,7 +70,21 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
       return; // circular links or other sankey issues
     }
 
-    const colors = getColorScaleWithOverrides(widget.colorScheme, nodeNames, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const nodeVals = graph.nodes.map(n => {
+        const outflow = (n.sourceLinks || []).reduce((s, l) => s + l.value, 0);
+        const inflow = (n.targetLinks || []).reduce((s, l) => s + l.value, 0);
+        return Math.max(outflow, inflow);
+      });
+      const ext = [Math.min(...nodeVals), Math.max(...nodeVals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const valMap = new Map(graph.nodes.map((n, i) => [n.name, nodeVals[i]]));
+      colors = d => seq(valMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, nodeNames, widget.dimensionColors);
+    }
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();

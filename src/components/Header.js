@@ -2,7 +2,7 @@ import { useApp } from '../context/AppContext';
 import { exportDashboard, importDashboard } from '../utils/exportUtils';
 import { useRef } from 'react';
 
-export default function Header() {
+export default function Header({ onHelpOpen }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
 
@@ -50,6 +50,13 @@ export default function Header() {
       </div>
 
       <div className="flex gap-2">
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={onHelpOpen}
+          title="Help & Documentation"
+        >
+          ? Help
+        </button>
         <button
           className="btn btn-secondary btn-sm"
           onClick={() => importRef.current?.click()}

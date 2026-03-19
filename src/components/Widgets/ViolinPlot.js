@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -39,7 +39,17 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
 
     const allVals = [...groups.values()].flat();
     const yExtent = d3.extent(allVals);
-    const colors = getColorScaleWithOverrides(widget.colorScheme, xDomain, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const medians = xDomain.map(cat => d3.median(groups.get(cat)));
+      const ext = [Math.min(...medians), Math.max(...medians)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const medianMap = new Map(xDomain.map((cat, i) => [cat, medians[i]]));
+      colors = d => seq(medianMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, xDomain, widget.dimensionColors);
+    }
     const opacity = widget.opacity ?? 1;
 
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.3);

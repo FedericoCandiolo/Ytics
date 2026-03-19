@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -43,9 +43,7 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
     }
 
     const seriesNames = [...seriesMap.keys()];
-    const colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
-
-    // Aggregate each series × axis
+    // Aggregate each series × axis (moved before colors for gradient computation)
     const seriesData = seriesNames.map(name => {
       const axisMap = seriesMap.get(name);
       return {
@@ -56,6 +54,18 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
         }),
       };
     });
+
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const totals = seriesData.map(s => d3.sum(s.values));
+      const ext = [Math.min(...totals), Math.max(...totals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const totalMap = new Map(seriesNames.map((n, i) => [n, totals[i]]));
+      colors = d => seq(totalMap.get(d) ?? 0);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
+    }
 
     const maxVal = d3.max(seriesData.flatMap(s => s.values)) || 1;
     const rScale = d3.scaleLinear().domain([0, maxVal]).range([0, radius]);

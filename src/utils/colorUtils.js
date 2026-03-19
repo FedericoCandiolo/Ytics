@@ -52,6 +52,28 @@ export const GRADIENT_SCHEMES = {
   viridis: 'Viridis', plasma: 'Plasma', inferno: 'Inferno', turbo: 'Turbo', spectral: 'Spectral',
 };
 
+// Maps each categorical palette to its default gradient
+const PALETTE_DEFAULT_GRADIENT = {
+  vivid:    'turbo',
+  spectrum: 'spectral',
+  muted:    'viridis',
+  soft:     'plasma',
+  pastel:   'blues',
+  contrast: 'inferno',
+  duo:      'warmCool',
+  bold:     'turbo',
+  // Sequential palettes map to themselves
+  blues: 'blues', greens: 'greens', reds: 'reds', purples: 'purples', oranges: 'oranges',
+  // Diverging
+  warmCool: 'warmCool', brownGreen: 'brownGreen',
+};
+
+/** Resolves the gradient key: explicit override → palette default → 'blues' fallback */
+export function resolveGradient(colorScheme, gradientOverride) {
+  if (gradientOverride) return gradientOverride;
+  return PALETTE_DEFAULT_GRADIENT[colorScheme] || 'blues';
+}
+
 // Returns a d3 ordinal scale for the given palette key
 export function getColorScale(schemeKey, domain) {
   const arr = ALL_SCHEMES[schemeKey] || CATEGORICAL.vivid;

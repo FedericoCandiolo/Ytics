@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -52,7 +52,18 @@ export default function Treemap({ widget, data, onCrossFilter }) {
     const topKeys = widget.groupField
       ? [...new Set(data.map(d => String(d[widget.groupField] ?? '')))]
       : [...new Set(data.map(d => String(d[widget.labelField] ?? '')))];
-    const colors = getColorScaleWithOverrides(widget.colorScheme, topKeys, widget.dimensionColors);
+    let colors, leafColorFn;
+    if (widget.colorMode === 'gradient') {
+      const leafVals = root.leaves().map(d => d.value);
+      const ext = [Math.min(...leafVals), Math.max(...leafVals)];
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      leafColorFn = val => seq(val);
+      colors = getColorScaleWithOverrides(widget.colorScheme, topKeys, widget.dimensionColors);
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, topKeys, widget.dimensionColors);
+      leafColorFn = null;
+    }
     const opacity = widget.opacity ?? 1;
 
     d3.treemap().size([w, h]).paddingInner(2).paddingOuter(4).paddingTop(widget.groupField ? 18 : 2).round(true)(root);
@@ -70,6 +81,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
       .attr('width', d => Math.max(0, d.x1 - d.x0))
       .attr('height', d => Math.max(0, d.y1 - d.y0))
       .attr('fill', d => {
+        if (leafColorFn) return leafColorFn(d.value);
         const key = widget.groupField ? d.parent.data.name : d.data.name;
         return colors(key);
       })
@@ -108,7 +120,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
       .on('mouseover', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1).attr('stroke-width', 3);
         const parentKey = widget.groupField ? d.parent.data.name : null;
-        const color = colors(widget.groupField ? parentKey : d.data.name);
+        const color = leafColorFn ? leafColorFn(d.value) : colors(widget.groupField ? parentKey : d.data.name);
         const pct = ((d.data.value / total) * 100).toFixed(1);
         showTooltip(ev, <TreeTip d={d} widget={widget} color={color} pct={pct} parent={parentKey} />);
       })

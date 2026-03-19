@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides, getOrdinalWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -60,7 +60,17 @@ function renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hide
     seriesMap.get(key).push({ x: row[widget.xField], y: +row[widget.yField] || 0, raw: row });
   }
   const seriesNames = Array.from(seriesMap.keys());
-  const colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
+  let colors;
+  if (widget.colorMode === 'gradient') {
+    const totals = seriesNames.map(name => d3.sum(seriesMap.get(name), d => d.y));
+    const ext = [Math.min(...totals), Math.max(...totals)];
+    const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+    const totalMap = new Map(seriesNames.map((n, i) => [n, totals[i]]));
+    colors = d => seq(totalMap.get(d) ?? 0);
+  } else {
+    colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
+  }
   const opacity = widget.opacity ?? 1;
 
   const allX = [...seriesMap.values()].flat().map(d => d.x);
@@ -214,7 +224,17 @@ function renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveT
   const yMax = stackMode === 'percent' ? 1 : d3.max(stacked, layer => d3.max(layer, d => d[1])) * 1.05 || 1;
   const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]).nice();
 
-  const colorScale = getOrdinalWithOverrides(widget.colorScheme, seriesKeys, widget.dimensionColors);
+  let colorScale;
+  if (widget.colorMode === 'gradient') {
+    const totals = seriesKeys.map(k => d3.sum(pivotData, d => d[k] || 0));
+    const ext = [Math.min(...totals), Math.max(...totals)];
+    const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+    const totalMap = new Map(seriesKeys.map((k, i) => [k, totals[i]]));
+    colorScale = d => seq(totalMap.get(d) ?? 0);
+  } else {
+    colorScale = getOrdinalWithOverrides(widget.colorScheme, seriesKeys, widget.dimensionColors);
+  }
 
   const svg = d3.select(svgRef.current);
   svg.selectAll('*').remove();

@@ -8,6 +8,7 @@ import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
+import { resolveGradient } from '../../utils/colorUtils';
 
 // Sequential interpolators mapped to scheme keys
 const SEQ_INTERPOLATORS = {
@@ -63,7 +64,8 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
     });
 
     const [vMin, vMax] = d3.extent(flat, d => d.value);
-    const interp = SEQ_INTERPOLATORS[widget.colorScheme] || d3.interpolateBlues;
+    const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+    const interp = SEQ_INTERPOLATORS[gradKey] || SEQ_INTERPOLATORS[widget.colorScheme] || d3.interpolateBlues;
     const colorScale = d3.scaleSequential(interp).domain([vMin, vMax]);
     const opacity = widget.opacity ?? 1;
 
