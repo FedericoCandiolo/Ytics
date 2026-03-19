@@ -10,7 +10,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
-export default function Treemap({ widget, data }) {
+export default function Treemap({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -116,8 +116,10 @@ export default function Treemap({ widget, data }) {
       .on('mouseleave', (ev) => {
         d3.select(ev.currentTarget).transition().duration(120).attr('opacity', opacity).attr('stroke-width', 2);
         hideTooltip();
-      });
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.labelField, value: d.data.name }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

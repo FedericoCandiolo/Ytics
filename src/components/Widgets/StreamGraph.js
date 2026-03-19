@@ -10,7 +10,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
-export default function StreamGraph({ widget, data }) {
+export default function StreamGraph({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -89,7 +89,9 @@ export default function StreamGraph({ widget, data }) {
       .on('mouseleave', () => {
         g.selectAll('.stream').transition().duration(150).attr('opacity', opacity);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField, value: d.key }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Series labels — place at widest point
     stacked.forEach(layer => {
@@ -108,7 +110,7 @@ export default function StreamGraph({ widget, data }) {
 
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
       .attr('text-anchor', 'middle').attr('x', W / 2).attr('y', H + 42).text(widget.xField);
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

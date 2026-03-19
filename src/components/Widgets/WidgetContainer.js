@@ -41,10 +41,30 @@ const TYPE_ICONS = {
 export { TYPE_ICONS };
 
 export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage, onTypeReplace }) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [maximized, setMaximized] = useState(false);
   const [dropHover, setDropHover] = useState(false);
   const theme = state.dashboard.theme || {};
+
+  // Cross-filter: clicking a chart element in viewer mode creates/toggles a filter
+  const onCrossFilter = useCallback(({ field, value }) => {
+    if (isEditing || !widget.datasetId || !field) return;
+    const strVal = String(value);
+    const filterId = `cross_${widget.datasetId}_${field}`;
+    const existing = state.filters[filterId];
+    // Toggle: if already filtering to exactly this value, remove the filter
+    if (existing && existing.values?.length === 1 && existing.values[0] === strVal) {
+      dispatch({ type: 'REMOVE_FILTER', payload: filterId });
+    } else {
+      dispatch({
+        type: 'SET_FILTER',
+        payload: {
+          id: filterId, datasetId: widget.datasetId, field,
+          filterType: 'categorical', active: true, values: [strVal],
+        },
+      });
+    }
+  }, [isEditing, widget.datasetId, state.filters, dispatch]);
 
   const dataset = state.datasets.find(d => d.id === widget.datasetId);
   const raw = dataset?.data ?? [];
@@ -64,8 +84,9 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
   };
 
+  const crossFilter = isEditing ? undefined : onCrossFilter;
   const chartBody = dataset
-    ? <Chart widget={effectiveWidget} data={data} />
+    ? <Chart widget={effectiveWidget} data={data} onCrossFilter={crossFilter} />
     : (
       <div className="empty-state" style={{ height: '100%' }}>
         <div style={{ fontSize: 28, opacity: .3 }}>🗄</div>

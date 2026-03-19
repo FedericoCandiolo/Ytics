@@ -11,7 +11,7 @@ const CURVES = {
   stepAfter: d3.curveStepAfter, cardinal: d3.curveCardinal,
 };
 
-export default function LineChart({ widget, data }) {
+export default function LineChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -28,11 +28,11 @@ export default function LineChart({ widget, data }) {
     const hasMultiSeries = !!widget.colorField;
 
     if (hasMultiSeries && widget.showArea && stackMode !== 'none') {
-      renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveTooltip, hideTooltip);
+      renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
     } else {
-      renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hideTooltip);
+      renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 
@@ -46,7 +46,7 @@ export default function LineChart({ widget, data }) {
 }
 
 // ── Normal (non-stacked) line/area ────────────────────────────────────────────
-function renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hideTooltip) {
+function renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
   const m = { top: 16, right: widget.showLegend ? 110 : 20, bottom: 52, left: 60 };
   const W = w - m.left - m.right;
@@ -142,11 +142,11 @@ function renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hide
     .attr('text-anchor', 'middle').attr('x', W / 2).attr('y', H + 46).text(widget.xField);
 
   // Hover overlay
-  addHoverOverlay(g, svg, data, widget, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip);
+  addHoverOverlay(g, svg, data, widget, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
 }
 
 // ── Stacked area line chart ───────────────────────────────────────────────────
-function renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveTooltip, hideTooltip) {
+function renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
   const m = { top: 16, right: widget.showLegend ? 110 : 20, bottom: 52, left: 60 };
   const W = w - m.left - m.right;
@@ -272,7 +272,7 @@ function renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveT
 }
 
 // ── Hover overlay for normal line chart ────────────────────────────────────────
-function addHoverOverlay(g, svg, data, widget, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip) {
+function addHoverOverlay(g, svg, data, widget, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const allX = [...seriesMap.values()].flat().map(d => d.x);
   const sortedXs = isNum || isDate
     ? [...new Set(allX.map(v => isDate ? new Date(v).getTime() : +v))].sort((a, b) => a - b)
@@ -288,21 +288,31 @@ function addHoverOverlay(g, svg, data, widget, seriesMap, seriesNames, colors, x
     return { name, dot };
   });
 
+  const findClosestX = (mx) => {
+    if (isNum || isDate) {
+      const bisect = d3.bisectCenter(sortedXs, isDate ? mx + xScale.domain()[0].getTime() - xScale(xScale.domain()[0]) : xScale.invert(mx));
+      return sortedXs[Math.max(0, Math.min(sortedXs.length - 1, bisect))];
+    } else {
+      const each = W / sortedXs.length;
+      const idx = Math.max(0, Math.min(sortedXs.length - 1, Math.round(mx / each)));
+      return sortedXs[idx];
+    }
+  };
+
   svg.append('rect')
     .attr('width', W).attr('height', H)
     .attr('transform', `translate(${m.left},${m.top})`)
     .attr('fill', 'none').attr('pointer-events', 'all')
+    .on('click', (ev) => {
+      if (!onCrossFilter) return;
+      const [mx] = d3.pointer(ev, g.node());
+      const closestX = findClosestX(mx);
+      const xValue = isDate ? new Date(closestX) : closestX;
+      onCrossFilter({ field: widget.xField, value: xValue });
+    })
     .on('mousemove', (ev) => {
       const [mx] = d3.pointer(ev, g.node());
-      let closestX;
-      if (isNum || isDate) {
-        const bisect = d3.bisectCenter(sortedXs, isDate ? mx + xScale.domain()[0].getTime() - xScale(xScale.domain()[0]) : xScale.invert(mx));
-        closestX = sortedXs[Math.max(0, Math.min(sortedXs.length - 1, bisect))];
-      } else {
-        const each = W / sortedXs.length;
-        const idx = Math.max(0, Math.min(sortedXs.length - 1, Math.round(mx / each)));
-        closestX = sortedXs[idx];
-      }
+      const closestX = findClosestX(mx);
 
       const cx = isDate ? xScale(new Date(closestX)) : isNum ? xScale(closestX) : xScale(String(closestX));
       focusLine.style('display', null).attr('transform', `translate(${cx},0)`);

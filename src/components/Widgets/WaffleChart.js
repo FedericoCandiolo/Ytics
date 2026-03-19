@@ -7,7 +7,7 @@ import { useChartDims, Placeholder } from './chartHelpers';
 
 const TOTAL_CELLS = 100; // 10×10 waffle grid
 
-export default function WaffleChart({ widget, data }) {
+export default function WaffleChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -94,6 +94,8 @@ export default function WaffleChart({ widget, data }) {
         .on('mouseover', ev => showTooltip(ev, <WaffleTip cat={cat} color={colors(cat.key)} widget={widget} />))
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
+        .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.labelField, value: cat.key }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null)
         .transition().delay(i * 8).duration(200)
         .attr('opacity', opacity);
     });
@@ -109,7 +111,7 @@ export default function WaffleChart({ widget, data }) {
           .text(`${cat.key.length > 10 ? cat.key.slice(0, 10) + '…' : cat.key} (${(cat.pct * 100).toFixed(0)}%)`);
       });
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

@@ -5,7 +5,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
-export default function RadarChart({ widget, data }) {
+export default function RadarChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -126,7 +126,9 @@ export default function RadarChart({ widget, data }) {
           .attr('opacity', opacity)
           .on('mouseover', ev => showTooltip(ev, <RadarTip axis={axes[i]} value={val} series={series.name} color={color} hasSeries={hasSeries} widget={widget} />))
           .on('mousemove', moveTooltip)
-          .on('mouseleave', hideTooltip);
+          .on('mouseleave', hideTooltip)
+          .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: hasSeries ? widget.colorField : widget.axisField, value: hasSeries ? series.name : axes[i] }); } : null)
+          .style('cursor', onCrossFilter ? 'pointer' : null);
       });
     });
 
@@ -140,7 +142,7 @@ export default function RadarChart({ widget, data }) {
           .text(name.length > 15 ? name.slice(0, 15) + '…' : name);
       });
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

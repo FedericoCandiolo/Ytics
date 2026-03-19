@@ -22,7 +22,7 @@ function exportTableCSV(data, cols, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ widget, data }) {
+export default function DataTable({ widget, data, onCrossFilter }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
   const PAGE_SIZE = 20;
@@ -81,7 +81,12 @@ export default function DataTable({ widget, data }) {
             {pageRows.map((row, i) => (
               <tr key={i}>
                 {cols.map(c => (
-                  <td key={c.name} title={String(row[c.name] ?? '')}>
+                  <td
+                    key={c.name}
+                    title={String(row[c.name] ?? '')}
+                    onClick={onCrossFilter && c.type !== 'number' ? () => onCrossFilter({ field: c.name, value: row[c.name] }) : undefined}
+                    style={onCrossFilter && c.type !== 'number' ? { cursor: 'pointer' } : undefined}
+                  >
                     {row[c.name] === null || row[c.name] === undefined
                       ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>null</span>
                       : String(row[c.name])}

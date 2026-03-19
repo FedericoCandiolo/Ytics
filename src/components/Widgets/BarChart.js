@@ -5,7 +5,7 @@ import { getColorScale, getColorArray } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
-export default function BarChart({ widget, data }) {
+export default function BarChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -24,11 +24,11 @@ export default function BarChart({ widget, data }) {
     const opacity = widget.opacity ?? 1;
 
     if (hasGroup) {
-      renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip);
+      renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
     } else {
-      renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip);
+      renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 
@@ -42,7 +42,7 @@ export default function BarChart({ widget, data }) {
 }
 
 // ── Simple bar (no groupField) ─────────────────────────────────────────────────
-function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip) {
+function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
   const m = { top: 14, right: 18, bottom: isH ? 46 : 70, left: isH ? 130 : 58 };
   const W = w - m.left - m.right;
@@ -88,6 +88,8 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .on('mouseover', (ev, d) => { d3.select(ev.currentTarget).attr('opacity', 1); showTooltip(ev, <BarTip d={d} widget={widget} color={colors(d.key)} total={total} />); })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev) => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTooltip(); })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.key }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null)
       .transition().duration(500).ease(d3.easeCubicOut).attr('width', d => xScale(d.value));
 
     axisLabel(g, widget.yField, W / 2, H + 38, false);
@@ -105,6 +107,8 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .on('mouseover', (ev, d) => { d3.select(ev.currentTarget).attr('opacity', 1); showTooltip(ev, <BarTip d={d} widget={widget} color={colors(d.key)} total={total} />); })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev) => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTooltip(); })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.key }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null)
       .transition().duration(500).ease(d3.easeCubicOut).attr('y', d => yScale(d.value)).attr('height', d => H - yScale(d.value));
 
     axisLabel(g, widget.xField, W / 2, H + 56, false);
@@ -113,7 +117,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
 }
 
 // ── Grouped/Stacked bar ────────────────────────────────────────────────────────
-function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip) {
+function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
   const m = { top: 14, right: 18, bottom: isH ? 46 : 70, left: isH ? 130 : 58 };
   const W = w - m.left - m.right;
@@ -165,9 +169,9 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
   const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
   if (barMode === 'stacked') {
-    renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip);
+    renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
   } else {
-    renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip);
+    renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
   }
 
   // Legend
@@ -182,7 +186,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
   }
 }
 
-function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip) {
+function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const stack = d3.stack().keys(groupKeys);
   const stacked = stack(pivotData);
 
@@ -205,6 +209,8 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         })
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
+        .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.data.__x }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null)
         .transition().duration(500).ease(d3.easeCubicOut)
         .attr('width', d => xScale(d[1]) - xScale(d[0]));
     });
@@ -227,6 +233,8 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         })
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
+        .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.data.__x }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null)
         .transition().duration(500).ease(d3.easeCubicOut)
         .attr('y', d => yScale(d[1])).attr('height', d => yScale(d[0]) - yScale(d[1]));
     });
@@ -235,7 +243,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
   }
 }
 
-function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip) {
+function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const maxVal = d3.max(pivotData, d => d3.max(groupKeys, k => d[k] || 0)) * 1.05 || 1;
 
   if (isH) {
@@ -257,6 +265,8 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           })
           .on('mousemove', moveTooltip)
           .on('mouseleave', hideTooltip)
+          .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: row.__x }); } : null)
+          .style('cursor', onCrossFilter ? 'pointer' : null)
           .transition().duration(500).ease(d3.easeCubicOut).attr('width', xScale(row[gk] || 0));
       });
     });
@@ -281,6 +291,8 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           })
           .on('mousemove', moveTooltip)
           .on('mouseleave', hideTooltip)
+          .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: row.__x }); } : null)
+          .style('cursor', onCrossFilter ? 'pointer' : null)
           .transition().duration(500).ease(d3.easeCubicOut)
           .attr('y', yScale(row[gk] || 0)).attr('height', H - yScale(row[gk] || 0));
       });

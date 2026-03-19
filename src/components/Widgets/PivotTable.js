@@ -29,7 +29,7 @@ const TOTAL_KEY = '__TOTAL__';
 // MIME type for pivot dim drag-and-drop (internal only)
 const DIM_MIME = 'application/pivot-dim';
 
-export default function PivotTable({ widget, data }) {
+export default function PivotTable({ widget, data, onCrossFilter }) {
   const { dispatch } = useApp();
   const [expanded, setExpanded] = useState(new Set());
   const [dragOver, setDragOver] = useState(null); // { axis, idx } — where the drop indicator is
@@ -542,7 +542,10 @@ export default function PivotTable({ widget, data }) {
                     ) : (
                       pivotRows.length > 1 && <span style={{ display: 'inline-block', width: 18 }} />
                     )}
-                    {row.label}
+                    <span
+                      onClick={onCrossFilter && row.isLeaf ? () => onCrossFilter({ field: pivotRows[row.depth], value: row.label }) : undefined}
+                      style={onCrossFilter && row.isLeaf ? { cursor: 'pointer' } : undefined}
+                    >{row.label}</span>
                   </td>
                   {colPaths.length > 0 ? (
                     colPaths.map((cp, ci) => {

@@ -5,7 +5,7 @@ import { getPrimaryColor } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
-export default function Histogram({ widget, data }) {
+export default function Histogram({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -65,7 +65,9 @@ export default function Histogram({ widget, data }) {
       .on('mouseleave', (ev) => {
         d3.select(ev.currentTarget).transition().duration(100).attr('opacity', opacity);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.x0 }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     [{ val: mean, label: 'Mean', dash: '5,3', color: '#4f8ef7' },
      { val: median, label: 'Median', dash: '2,3', color: '#0ea572' }].forEach(a => {
@@ -98,7 +100,7 @@ export default function Histogram({ widget, data }) {
       statsG.append('text').attr('x', 0).attr('y', i * 13).attr('text-anchor', 'end')
         .attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').attr('font-family', 'var(--font)').text(t)
     );
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

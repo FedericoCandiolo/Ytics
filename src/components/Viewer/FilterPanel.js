@@ -7,6 +7,11 @@ import { v4 as uuid } from 'uuid';
 function CatFilter({ filter, allData, onUpdate, onClose }) {
   const values = [...new Set(allData.map(d => String(d[filter.field] ?? '')))].sort();
   const selected = filter.values ?? [];
+  const [search, setSearch] = useState('');
+
+  const filtered = search
+    ? values.filter(v => (v || '(blank)').toLowerCase().includes(search.toLowerCase()))
+    : values;
 
   const toggle = (v) => {
     const next = selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v];
@@ -15,8 +20,19 @@ function CatFilter({ filter, allData, onUpdate, onClose }) {
 
   return (
     <div>
+      <input
+        className="input input-sm"
+        placeholder="Search..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ marginBottom: 8, width: '100%' }}
+        autoFocus
+      />
       <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 8 }}>
-        {values.map(v => (
+        {filtered.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: 4 }}>No matches</div>
+        )}
+        {filtered.map(v => (
           <label key={v} className="checkbox-row" style={{ marginBottom: 4 }}>
             <input type="checkbox" checked={selected.includes(v)} onChange={() => toggle(v)} />
             <span style={{ fontSize: 12 }}>{v || '(blank)'}</span>
@@ -24,7 +40,9 @@ function CatFilter({ filter, allData, onUpdate, onClose }) {
         ))}
       </div>
       <div className="flex gap-2">
-        <button className="btn btn-secondary btn-sm" onClick={() => onUpdate({ values: values })}>All</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => onUpdate({ values: search ? filtered : values })}>
+          {search ? `All visible (${filtered.length})` : 'All'}
+        </button>
         <button className="btn btn-ghost btn-sm" onClick={() => onUpdate({ values: [] })}>None</button>
       </div>
     </div>

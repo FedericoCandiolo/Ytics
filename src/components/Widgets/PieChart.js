@@ -5,7 +5,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
-export default function PieChart({ widget, data }) {
+export default function PieChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -76,7 +76,9 @@ export default function PieChart({ widget, data }) {
       .on('mouseleave', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(100).attr('d', arc(d)).attr('opacity', opacity);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.labelField, value: d.data.key }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Labels for larger slices
     g.selectAll('.slice-label').data(arcs.filter(d => (d.endAngle - d.startAngle) > 0.3)).join('text')
@@ -107,7 +109,7 @@ export default function PieChart({ widget, data }) {
           .text(d.key.length > 14 ? d.key.slice(0, 14) + '…' : d.key);
       });
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

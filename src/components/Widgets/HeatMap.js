@@ -29,7 +29,7 @@ const SEQ_INTERPOLATORS = {
   bold:      d3.interpolateInferno,
 };
 
-export default function HeatMap({ widget, data }) {
+export default function HeatMap({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -97,7 +97,9 @@ export default function HeatMap({ widget, data }) {
       .on('mouseleave', (ev) => {
         d3.select(ev.currentTarget).transition().duration(100).attr('rx', 3).attr('stroke-width', 2);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.x }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Axis labels
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
@@ -118,7 +120,7 @@ export default function HeatMap({ widget, data }) {
     legG.append('rect').attr('width', legW).attr('height', legH).attr('rx', 3).attr('fill', `url(#${gradId})`);
     legG.append('text').attr('x', 0).attr('y', 20).attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin));
     legG.append('text').attr('x', legW).attr('y', 20).attr('text-anchor', 'end').attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMax));
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

@@ -515,6 +515,9 @@ function reducer(state, action) {
     case 'RESTORE_STATE':
       return action.payload;
 
+    case 'RESTORE_FILTERS':
+      return { ...state, filters: action.payload };
+
     default:
       return state;
   }
@@ -530,39 +533,73 @@ const UNDOABLE_ACTIONS = new Set([
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
 ]);
 
+const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);
+
 export function AppProvider({ children }) {
   const [state, rawDispatch] = useReducer(reducer, initialState);
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
   const undoStackRef = React.useRef([]);
+  const redoStackRef = React.useRef([]);
+  const filterUndoRef = React.useRef([]);
+  const filterRedoRef = React.useRef([]);
 
   const dispatch = useCallback((action) => {
+    // ── Developer undo/redo ──
     if (action.type === 'UNDO') {
-      const stack = undoStackRef.current;
-      if (stack.length === 0) return;
-      const prev = stack.pop();
-      rawDispatch({ type: 'RESTORE_STATE', payload: prev });
+      if (undoStackRef.current.length === 0) return;
+      redoStackRef.current = [...redoStackRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current];
+      rawDispatch({ type: 'RESTORE_STATE', payload: undoStackRef.current.pop() });
       return;
     }
-    if (UNDOABLE_ACTIONS.has(action.type)) {
-      // Save current state snapshot before applying action
-      // We read state via a sync dispatch trick - use a ref updated by effect
+    if (action.type === 'REDO') {
+      if (redoStackRef.current.length === 0) return;
       undoStackRef.current = [...undoStackRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current];
+      rawDispatch({ type: 'RESTORE_STATE', payload: redoStackRef.current.pop() });
+      return;
+    }
+    // ── Viewer filter undo/redo ──
+    if (action.type === 'FILTER_UNDO') {
+      if (filterUndoRef.current.length === 0) return;
+      filterRedoRef.current = [...filterRedoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
+      rawDispatch({ type: 'RESTORE_FILTERS', payload: filterUndoRef.current.pop() });
+      return;
+    }
+    if (action.type === 'FILTER_REDO') {
+      if (filterRedoRef.current.length === 0) return;
+      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
+      rawDispatch({ type: 'RESTORE_FILTERS', payload: filterRedoRef.current.pop() });
+      return;
+    }
+    // ── Track undoable actions ──
+    if (UNDOABLE_ACTIONS.has(action.type)) {
+      undoStackRef.current = [...undoStackRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current];
+      redoStackRef.current = [];
+    }
+    if (FILTER_ACTIONS.has(action.type)) {
+      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
+      filterRedoRef.current = [];
     }
     rawDispatch(action);
   }, []);
 
-  const stateRef = React.useRef(state);
-  stateRef.current = state;
-
-  // Ctrl+Z handler
+  // Ctrl+Z / Ctrl+Y handler
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        // Don't intercept if user is typing in an input
-        const tag = document.activeElement?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        e.preventDefault();
-        dispatch({ type: 'UNDO' });
-      }
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const key = e.key.toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+
+      const isUndo = key === 'z' && !e.shiftKey;
+      const isRedo = key === 'y' || (key === 'z' && e.shiftKey);
+      if (!isUndo && !isRedo) return;
+      e.preventDefault();
+
+      const inViewer = stateRef.current.mode === 'viewer';
+      if (isUndo) dispatch({ type: inViewer ? 'FILTER_UNDO' : 'UNDO' });
+      else        dispatch({ type: inViewer ? 'FILTER_REDO' : 'REDO' });
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);

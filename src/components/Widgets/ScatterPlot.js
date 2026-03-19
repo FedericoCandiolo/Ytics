@@ -5,7 +5,7 @@ import { getColorScale, getPrimaryColor } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
-export default function ScatterPlot({ widget, data }) {
+export default function ScatterPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -82,7 +82,9 @@ export default function ScatterPlot({ widget, data }) {
           .attr('r', widget.sizeField ? sizeScale(d.size) : sMin + 2)
           .attr('opacity', opacity).attr('stroke-width', 1);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d[widget.colorField || widget.xField] }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Regression line (always shown)
     const xVals = pts.map(d => d.x), yVals = pts.map(d => d.y);
@@ -116,7 +118,7 @@ export default function ScatterPlot({ widget, data }) {
           .attr('fill', 'var(--text-muted)').text(cat.length > 13 ? cat.slice(0, 13) + '…' : cat);
       });
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

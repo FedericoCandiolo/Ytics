@@ -6,7 +6,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
-export default function SankeyDiagram({ widget, data }) {
+export default function SankeyDiagram({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -92,7 +92,9 @@ export default function SankeyDiagram({ widget, data }) {
       .on('mouseleave', (ev) => {
         d3.select(ev.currentTarget).attr('stroke-opacity', 0.3 * opacity);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.sourceField, value: d.source.name }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Nodes
     g.append('g').selectAll('rect').data(graph.nodes).join('rect')
@@ -103,7 +105,9 @@ export default function SankeyDiagram({ widget, data }) {
         showTooltip(ev, <NodeTip d={d} widget={widget} />);
       })
       .on('mousemove', moveTooltip)
-      .on('mouseleave', hideTooltip);
+      .on('mouseleave', hideTooltip)
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.sourceField, value: d.name }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Node labels
     g.append('g').selectAll('text').data(graph.nodes).join('text')
@@ -113,7 +117,7 @@ export default function SankeyDiagram({ widget, data }) {
       .attr('dominant-baseline', 'central')
       .attr('font-size', 10.5).attr('font-family', 'var(--font)').attr('fill', 'var(--text)')
       .text(d => d.name.length > 20 ? d.name.slice(0, 20) + '…' : d.name);
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

@@ -10,7 +10,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
-export default function BumpChart({ widget, data }) {
+export default function BumpChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -107,7 +107,9 @@ export default function BumpChart({ widget, data }) {
         .on('mouseleave', (ev) => {
           d3.select(ev.currentTarget).transition().duration(100).attr('r', 5);
           hideTooltip();
-        });
+        })
+        .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField, value: s }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null);
     });
 
     // Right-side series labels (final rank)
@@ -122,7 +124,7 @@ export default function BumpChart({ widget, data }) {
         .attr('font-size', 10.5).attr('fill', colors(s)).attr('font-family', 'var(--font)').attr('font-weight', 600)
         .text(s.length > 12 ? s.slice(0, 12) + '…' : s);
     });
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

@@ -10,7 +10,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
-export default function ViolinPlot({ widget, data }) {
+export default function ViolinPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -92,7 +92,9 @@ export default function ViolinPlot({ widget, data }) {
         .on('mouseleave', (ev) => {
           d3.select(ev.currentTarget).transition().duration(100).attr('opacity', opacity * 0.75);
           hideTooltip();
-        });
+        })
+        .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: cat }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null);
 
       // Box plot overlay
       const stats = computeStats(vals);
@@ -126,7 +128,7 @@ export default function ViolinPlot({ widget, data }) {
       .attr('text-anchor', 'middle').attr('x', W / 2).attr('y', H + 52).text(widget.xField);
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
       .attr('text-anchor', 'middle').attr('transform', `translate(-44,${H / 2}) rotate(-90)`).text(widget.yField);
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

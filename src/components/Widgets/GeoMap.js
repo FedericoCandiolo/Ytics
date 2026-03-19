@@ -24,7 +24,7 @@ const ALIASES = {
   'uae': 'United Arab Emirates',
 };
 
-export default function GeoMap({ widget, data }) {
+export default function GeoMap({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -125,7 +125,9 @@ export default function GeoMap({ widget, data }) {
       .on('mouseleave', (ev) => {
         d3.select(ev.currentTarget).attr('stroke', '#fff').attr('stroke-width', 0.5);
         hideTooltip();
-      });
+      })
+      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.geoField, value: d.properties.name }); } : null)
+      .style('cursor', onCrossFilter ? 'pointer' : null);
 
     // Color legend bar
     const legendW = Math.min(200, w * 0.4);
@@ -148,7 +150,7 @@ export default function GeoMap({ widget, data }) {
       .text(formatValue(minVal));
     svg.append('text').attr('x', lx + legendW).attr('y', ly - 4).attr('font-size', 9).attr('fill', 'var(--text-muted)')
       .attr('text-anchor', 'end').text(formatValue(maxVal));
-  }, [worldData, data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [worldData, data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 

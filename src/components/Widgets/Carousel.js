@@ -22,7 +22,7 @@ const SLIDE_CHART_MAP = {
   treemap: Treemap, heatmap: HeatMap, bump: BumpChart, stream: StreamGraph, violin: ViolinPlot,
 };
 
-export default function Carousel({ widget, data }) {
+export default function Carousel({ widget, data, onCrossFilter }) {
   const slides = widget.slides || [];
   const [idx, setIdx] = useState(0);
 
@@ -63,7 +63,7 @@ export default function Carousel({ widget, data }) {
 
       {/* Chart area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme }} data={data} />
+        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme }} data={data} onCrossFilter={onCrossFilter} />
       </div>
 
       {/* Navigation */}

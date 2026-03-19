@@ -5,7 +5,7 @@ import { getColorScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
-export default function BoxPlot({ widget, data }) {
+export default function BoxPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
@@ -129,7 +129,9 @@ export default function BoxPlot({ widget, data }) {
       boxRect
         .on('mouseover', ev => showTooltip(ev, <BoxTip s={s} color={color} widget={widget} />))
         .on('mousemove', moveTooltip)
-        .on('mouseleave', hideTooltip);
+        .on('mouseleave', hideTooltip)
+        .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: s.cat }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null);
     });
 
     // Axis labels
@@ -137,7 +139,7 @@ export default function BoxPlot({ widget, data }) {
       .attr('x', W / 2).attr('y', H + 56).text(widget.xField);
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11).attr('text-anchor', 'middle')
       .attr('transform', `translate(${-46},${H / 2}) rotate(-90)`).text(widget.yField);
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 
