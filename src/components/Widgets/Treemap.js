@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -52,7 +52,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
     const topKeys = widget.groupField
       ? [...new Set(data.map(d => String(d[widget.groupField] ?? '')))]
       : [...new Set(data.map(d => String(d[widget.labelField] ?? '')))];
-    const colors = getColorScale(widget.colorScheme, topKeys);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, topKeys, widget.dimensionColors);
     const opacity = widget.opacity ?? 1;
 
     d3.treemap().size([w, h]).paddingInner(2).paddingOuter(4).paddingTop(widget.groupField ? 18 : 2).round(true)(root);

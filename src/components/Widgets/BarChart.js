@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale, getColorArray } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
@@ -66,7 +66,15 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
     pts.sort((a, b) => widget.sortOrder === 'desc' ? b.value - a.value : a.value - b.value);
   }
 
-  const colors = getColorScale(widget.colorScheme, pts.map(d => d.key));
+  const domain = pts.map(d => d.key);
+  let colors;
+  if (widget.colorMode === 'gradient') {
+    const ext = [Math.min(...pts.map(d => d.value)), Math.max(...pts.map(d => d.value))];
+    const seq = getSequentialScale(widget.colorGradient || 'blues', ext[0], ext[1]);
+    colors = d => seq(pts.find(p => p.key === d)?.value ?? 0);
+  } else {
+    colors = getColorScaleWithOverrides(widget.colorScheme, domain, widget.dimensionColors);
+  }
   const maxVal = d3.max(pts, d => d.value) * 1.05 || 1;
   const total = pts.reduce((s, p) => s + p.value, 0);
 
@@ -160,8 +168,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
     });
   }
 
-  const colorArr = getColorArray(widget.colorScheme);
-  const colorScale = d3.scaleOrdinal().domain(groupKeys).range(colorArr);
+  const colorScale = getOrdinalWithOverrides(widget.colorScheme, groupKeys, widget.dimensionColors);
 
   const svg = d3.select(svgRef.current);
   svg.selectAll('*').remove();

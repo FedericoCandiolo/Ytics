@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
-import { getSwatchColors } from '../../utils/colorUtils';
+import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray } from '../../utils/colorUtils';
 import { TYPE_ICONS } from '../Widgets/WidgetContainer';
 import MeasurePipeline from './MeasurePipeline';
 
@@ -38,6 +38,24 @@ const AGG_VALUE_KEY = {
 
 // Charts that support the measure pipeline
 const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table', 'pivot'];
+
+// Which field provides the "color dimension" for each chart type
+const COLOR_DIMENSION_FIELD = {
+  bar: w => w.groupField || w.xField,
+  line: w => w.colorField,
+  scatter: w => w.colorField,
+  pie: w => w.labelField,
+  treemap: w => w.labelField,
+  heatmap: w => w.xField,
+  bump: w => w.colorField,
+  stream: w => w.colorField,
+  violin: w => w.xField,
+  boxplot: w => w.xField,
+  radar: w => w.colorField || w.axisField,
+  waffle: w => w.labelField,
+  sankey: w => w.sourceField,
+  geo: w => w.geoField,
+};
 
 // ── Fields tab content ────────────────────────────────────────────────────────
 function FieldsTab({ widget, dataset, columns, onUpdate }) {
@@ -91,7 +109,6 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'yField',    label: 'Value (Y, numeric)',      filter: ['number'] },
     ],
     carousel: [],
-    // New chart types
     boxplot: [
       { key: 'xField',    label: 'Category (X)',            filter: null },
       { key: 'yField',    label: 'Value (Y, numeric)',      filter: ['number'] },
@@ -122,7 +139,6 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
   const cols = columns;
   const fields = fieldMap[widget.type] || [];
 
-  // Determine aggregations available based on the selected value field's type
   const valueFieldKey = AGG_VALUE_KEY[widget.type];
   const valueFieldName = valueFieldKey ? widget[valueFieldKey] : null;
   const valueCol = valueFieldName ? cols.find(c => c.name === valueFieldName) : null;
@@ -286,6 +302,295 @@ function AestheticsTab({ widget, onUpdate }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Colors tab ────────────────────────────────────────────────────────────────
+
+const COND_OPS = [
+  { value: '>', label: '>' },
+  { value: '>=', label: '>=' },
+  { value: '<', label: '<' },
+  { value: '<=', label: '<=' },
+  { value: '==', label: '==' },
+  { value: '!=', label: '!=' },
+  { value: 'contains', label: 'contains' },
+];
+
+function ConditionalFormattingSection({ widget, columns, onUpdate }) {
+  const formatting = widget.conditionalFormatting || [];
+
+  const addRule = () => {
+    const numCol = columns.find(c => c.type === 'number');
+    onUpdate({
+      conditionalFormatting: [...formatting, {
+        id: uuid(),
+        column: numCol?.name || columns[0]?.name || '',
+        mode: 'gradient',
+        gradient: 'blues',
+        rules: [],
+      }],
+    });
+  };
+
+  const updateCf = (idx, updates) => {
+    onUpdate({
+      conditionalFormatting: formatting.map((cf, i) => i === idx ? { ...cf, ...updates } : cf),
+    });
+  };
+
+  const removeCf = (idx) => {
+    onUpdate({ conditionalFormatting: formatting.filter((_, i) => i !== idx) });
+  };
+
+  const addSubRule = (cfIdx) => {
+    const cf = formatting[cfIdx];
+    const rules = [...(cf.rules || []), { id: uuid(), op: '>', value: '', bg: '#22c55e', text: '' }];
+    updateCf(cfIdx, { rules });
+  };
+
+  const updateSubRule = (cfIdx, rIdx, updates) => {
+    const cf = formatting[cfIdx];
+    const rules = cf.rules.map((r, i) => i === rIdx ? { ...r, ...updates } : r);
+    updateCf(cfIdx, { rules });
+  };
+
+  const removeSubRule = (cfIdx, rIdx) => {
+    const cf = formatting[cfIdx];
+    updateCf(cfIdx, { rules: cf.rules.filter((_, i) => i !== rIdx) });
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="form-label" style={{ marginBottom: 8 }}>Conditional Formatting</div>
+      {formatting.map((cf, cfIdx) => (
+        <div key={cf.id} className="cf-rule-card">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+            <select className="select select-sm" style={{ flex: 1 }} value={cf.column}
+              onChange={e => updateCf(cfIdx, { column: e.target.value })}>
+              {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeCf(cfIdx)} title="Remove">✕</button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <label className="checkbox-row" style={{ fontSize: 12 }}>
+              <input type="radio" name={`cfmode-${cf.id}`} checked={cf.mode === 'gradient'}
+                onChange={() => updateCf(cfIdx, { mode: 'gradient' })} />
+              Gradient
+            </label>
+            <label className="checkbox-row" style={{ fontSize: 12 }}>
+              <input type="radio" name={`cfmode-${cf.id}`} checked={cf.mode === 'rules'}
+                onChange={() => updateCf(cfIdx, { mode: 'rules' })} />
+              Rules
+            </label>
+          </div>
+
+          {cf.mode === 'gradient' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {Object.entries(GRADIENT_SCHEMES).map(([key, label]) => (
+                <div key={key}
+                  className={`color-scheme-option ${cf.gradient === key ? 'color-scheme-option--active' : ''}`}
+                  onClick={() => updateCf(cfIdx, { gradient: key })}
+                  style={{ padding: '3px 6px' }}
+                >
+                  <div className="color-swatches">
+                    {getGradientSwatches(key, 8).map((c, i) => (
+                      <div key={i} className="color-swatch" style={{ background: c }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11 }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {cf.mode === 'rules' && (
+            <div>
+              {(cf.rules || []).map((rule, rIdx) => (
+                <div key={rule.id} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+                  <select className="select select-sm" style={{ width: 70 }} value={rule.op}
+                    onChange={e => updateSubRule(cfIdx, rIdx, { op: e.target.value })}>
+                    {COND_OPS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <input className="input input-sm" style={{ width: 60 }} value={rule.value}
+                    onChange={e => updateSubRule(cfIdx, rIdx, { value: e.target.value })}
+                    placeholder="value" />
+                  <input type="color" value={rule.bg || '#22c55e'}
+                    onChange={e => updateSubRule(cfIdx, rIdx, { bg: e.target.value })}
+                    title="Background" style={{ width: 24, height: 22, border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer', padding: 1 }} />
+                  <input type="color" value={rule.text || '#ffffff'}
+                    onChange={e => updateSubRule(cfIdx, rIdx, { text: e.target.value })}
+                    title="Text color" style={{ width: 24, height: 22, border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer', padding: 1 }} />
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeSubRule(cfIdx, rIdx)}>✕</button>
+                </div>
+              ))}
+              <button className="btn btn-ghost btn-sm" onClick={() => addSubRule(cfIdx)}>+ Rule</button>
+            </div>
+          )}
+        </div>
+      ))}
+      <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={addRule}>
+        + Add formatting
+      </button>
+    </div>
+  );
+}
+
+function GradientColorSection({ widget, onUpdate }) {
+  const isGradient = widget.colorMode === 'gradient';
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="form-label" style={{ marginBottom: 8 }}>Color mode</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <label className="checkbox-row" style={{ fontSize: 12 }}>
+          <input type="radio" name="colorMode" checked={!isGradient}
+            onChange={() => onUpdate({ colorMode: 'categorical' })} />
+          Categorical
+        </label>
+        <label className="checkbox-row" style={{ fontSize: 12 }}>
+          <input type="radio" name="colorMode" checked={isGradient}
+            onChange={() => onUpdate({ colorMode: 'gradient', colorGradient: widget.colorGradient || 'blues' })} />
+          Gradient
+        </label>
+      </div>
+
+      {isGradient && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {Object.entries(GRADIENT_SCHEMES).map(([key, label]) => (
+            <div key={key}
+              className={`color-scheme-option ${widget.colorGradient === key ? 'color-scheme-option--active' : ''}`}
+              onClick={() => onUpdate({ colorGradient: key })}
+              style={{ padding: '3px 6px' }}
+            >
+              <div className="color-swatches">
+                {getGradientSwatches(key, 8).map((c, i) => (
+                  <div key={i} className="color-swatch" style={{ background: c }} />
+                ))}
+              </div>
+              <span style={{ fontSize: 11 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DimensionColorsSection({ widget, dataset, dispatch, dimensionColors }) {
+  const [search, setSearch] = useState('');
+
+  const dimFieldFn = COLOR_DIMENSION_FIELD[widget.type];
+  const dimField = dimFieldFn ? dimFieldFn(widget) : null;
+
+  const uniqueVals = useMemo(() => {
+    if (!dimField || !dataset?.data?.length) return [];
+    return [...new Set(dataset.data.map(r => String(r[dimField] ?? '')))].sort();
+  }, [dimField, dataset]);
+
+  const filtered = search
+    ? uniqueVals.filter(v => v.toLowerCase().includes(search.toLowerCase()))
+    : uniqueVals;
+
+  const paletteArr = getColorArray(widget.colorScheme || 'vivid');
+
+  if (!dimField || uniqueVals.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: 8 }}>
+        Select a category/series field to assign dimension colors.
+      </div>
+    );
+  }
+
+  const setColor = (val, colorDef) => {
+    dispatch({ type: 'SET_DIMENSION_COLOR', payload: { value: val, colorDef } });
+  };
+
+  const removeColor = (val) => {
+    dispatch({ type: 'REMOVE_DIMENSION_COLOR', payload: val });
+  };
+
+  return (
+    <div>
+      <div className="form-label" style={{ marginBottom: 4 }}>
+        Dimension colors <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({dimField})</span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+        Applied across all charts in this dashboard.
+      </div>
+
+      {uniqueVals.length > 10 && (
+        <input className="input input-sm" placeholder="Search values..." value={search}
+          onChange={e => setSearch(e.target.value)} style={{ marginBottom: 8, width: '100%' }} />
+      )}
+
+      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+        {filtered.map((val, i) => {
+          const override = dimensionColors[val];
+          const defaultColor = paletteArr[i % paletteArr.length];
+          const displayColor = override
+            ? (override.type === 'custom' ? override.color : paletteArr[override.index % paletteArr.length])
+            : defaultColor;
+          const isCustom = override?.type === 'custom';
+
+          return (
+            <div key={val} className="dim-color-row">
+              <input
+                type="color"
+                value={displayColor}
+                onChange={e => setColor(val, { type: 'custom', color: e.target.value })}
+                style={{ width: 22, height: 20, border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer', padding: 1, flexShrink: 0 }}
+              />
+              <span style={{ flex: 1, fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {val || '(blank)'}
+              </span>
+              {isCustom && (
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>custom</span>
+              )}
+              {override && (
+                <button className="btn btn-ghost btn-icon btn-sm" style={{ fontSize: 10, padding: 2 }}
+                  onClick={() => removeColor(val)} title="Reset to palette">↺</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+        Palette-based colors change with the scheme. Custom colors stay fixed.
+      </div>
+    </div>
+  );
+}
+
+function ColorsTab({ widget, dataset, columns, onUpdate, dispatch, dimensionColors }) {
+  const isTable = widget.type === 'table' || widget.type === 'pivot';
+  const isChart = !isTable && widget.type !== 'carousel';
+
+  return (
+    <div>
+      {/* Conditional formatting for tables */}
+      {isTable && (
+        <ConditionalFormattingSection widget={widget} columns={columns} onUpdate={onUpdate} />
+      )}
+
+      {/* Gradient color mode for charts */}
+      {isChart && (
+        <GradientColorSection widget={widget} onUpdate={onUpdate} />
+      )}
+
+      {/* Dimension color pinning for charts */}
+      {isChart && (
+        <>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }} />
+          <DimensionColorsSection
+            widget={widget} dataset={dataset}
+            dispatch={dispatch} dimensionColors={dimensionColors}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -635,8 +940,8 @@ export default function WidgetEditor({ widgetId }) {
   const tabs = widget.type === 'carousel'
     ? ['slides', 'aesthetics']
     : hasPipeline
-      ? ['fields', 'measures', 'aesthetics', 'options']
-      : ['fields', 'aesthetics', 'options'];
+      ? ['fields', 'measures', 'colors', 'aesthetics', 'options']
+      : ['fields', 'colors', 'aesthetics', 'options'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -674,6 +979,7 @@ export default function WidgetEditor({ widgetId }) {
         {tab === 'slides'     && <CarouselTab widget={widget} dataset={dataset} onUpdate={onUpdate} />}
         {tab === 'fields'     && <FieldsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} />}
         {tab === 'measures'   && <MeasurePipeline measures={widget.measures || []} dataset={dataset} onUpdate={m => onUpdate({ measures: m })} />}
+        {tab === 'colors'     && <ColorsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} dispatch={dispatch} dimensionColors={state.dashboard.dimensionColors || {}} />}
         {tab === 'aesthetics' && <AestheticsTab widget={widget} onUpdate={onUpdate} />}
         {tab === 'options'    && <OptionsTab widget={widget} onUpdate={onUpdate} />}
       </div>

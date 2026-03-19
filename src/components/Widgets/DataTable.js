@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { getColumnInfo } from '../../utils/dataUtils';
+import { getSequentialScale, contrastText } from '../../utils/colorUtils';
 
 function exportTableCSV(data, cols, filename) {
   const esc = v => {
@@ -22,10 +23,81 @@ function exportTableCSV(data, cols, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Conditional formatting evaluator ──────────────────────────────────────────
+
+const OPS = {
+  '>':  (a, b) => a > b,
+  '>=': (a, b) => a >= b,
+  '<':  (a, b) => a < b,
+  '<=': (a, b) => a <= b,
+  '==': (a, b) => String(a) === String(b),
+  '!=': (a, b) => String(a) !== String(b),
+  'contains': (a, b) => String(a).toLowerCase().includes(String(b).toLowerCase()),
+};
+
+function evaluateRule(rule, cellValue) {
+  const fn = OPS[rule.op];
+  if (!fn) return false;
+  const cmp = rule.op === 'contains' || rule.op === '==' || rule.op === '!='
+    ? rule.value
+    : parseFloat(rule.value);
+  return fn(cellValue, cmp);
+}
+
+function buildFormattingMap(formatting, data) {
+  if (!formatting?.length) return null;
+  const map = {};
+  for (const cf of formatting) {
+    if (cf.mode === 'gradient') {
+      const nums = data.map(r => Number(r[cf.column])).filter(v => !isNaN(v));
+      if (nums.length === 0) continue;
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      const scale = getSequentialScale(cf.gradient || 'blues', min, max);
+      map[cf.column] = { type: 'gradient', scale };
+    } else if (cf.mode === 'rules' && cf.rules?.length) {
+      map[cf.column] = { type: 'rules', rules: cf.rules };
+    }
+  }
+  return Object.keys(map).length > 0 ? map : null;
+}
+
+function getCellStyle(fmtMap, colName, cellValue) {
+  if (!fmtMap || !fmtMap[colName]) return null;
+  const fmt = fmtMap[colName];
+
+  if (fmt.type === 'gradient') {
+    const num = Number(cellValue);
+    if (isNaN(num)) return null;
+    const bg = fmt.scale(num);
+    return { backgroundColor: bg, color: contrastText(bg) };
+  }
+
+  if (fmt.type === 'rules') {
+    for (const rule of fmt.rules) {
+      if (evaluateRule(rule, cellValue)) {
+        const style = {};
+        if (rule.bg) style.backgroundColor = rule.bg;
+        if (rule.text) style.color = rule.text;
+        else if (rule.bg) style.color = contrastText(rule.bg);
+        return Object.keys(style).length > 0 ? style : null;
+      }
+    }
+  }
+  return null;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function DataTable({ widget, data, onCrossFilter }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
   const PAGE_SIZE = 20;
+
+  const fmtMap = useMemo(
+    () => buildFormattingMap(widget.conditionalFormatting, data),
+    [widget.conditionalFormatting, data]
+  );
 
   if (!data?.length) {
     return (
@@ -80,18 +152,26 @@ export default function DataTable({ widget, data, onCrossFilter }) {
           <tbody>
             {pageRows.map((row, i) => (
               <tr key={i}>
-                {cols.map(c => (
-                  <td
-                    key={c.name}
-                    title={String(row[c.name] ?? '')}
-                    onClick={onCrossFilter && c.type !== 'number' ? () => onCrossFilter({ field: c.name, value: row[c.name] }) : undefined}
-                    style={onCrossFilter && c.type !== 'number' ? { cursor: 'pointer' } : undefined}
-                  >
-                    {row[c.name] === null || row[c.name] === undefined
-                      ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>null</span>
-                      : String(row[c.name])}
-                  </td>
-                ))}
+                {cols.map(c => {
+                  const cellVal = row[c.name];
+                  const fmtStyle = getCellStyle(fmtMap, c.name, cellVal);
+                  const clickable = onCrossFilter && c.type !== 'number';
+                  return (
+                    <td
+                      key={c.name}
+                      title={String(cellVal ?? '')}
+                      onClick={clickable ? () => onCrossFilter({ field: c.name, value: cellVal }) : undefined}
+                      style={{
+                        ...(clickable ? { cursor: 'pointer' } : {}),
+                        ...(fmtStyle || {}),
+                      }}
+                    >
+                      {cellVal === null || cellVal === undefined
+                        ? <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>null</span>
+                        : String(cellVal)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

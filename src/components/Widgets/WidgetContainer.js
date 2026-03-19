@@ -82,6 +82,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   const effectiveWidget = {
     ...widget,
     colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
+    dimensionColors: state.dashboard.dimensionColors || {},
   };
 
   const crossFilter = isEditing ? undefined : onCrossFilter;

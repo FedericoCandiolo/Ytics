@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -40,7 +40,7 @@ export default function PieChart({ widget, data, onCrossFilter }) {
     if (widget.sortByValue !== false) pts.sort((a, b) => b.value - a.value);
 
     const total = d3.sum(pts, d => d.value);
-    const colors = getColorScale(widget.colorScheme, pts.map(d => d.key));
+    const colors = getColorScaleWithOverrides(widget.colorScheme, pts.map(d => d.key), widget.dimensionColors);
     const opacity = widget.opacity ?? 1;
 
     const pie = d3.pie().value(d => d.value).sort(null).padAngle(0.015);

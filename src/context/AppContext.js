@@ -116,6 +116,7 @@ const initialState = {
     pages: [_firstPage],
     currentPageId: _firstPage.id,
     theme: { ...defaultTheme },
+    dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
   },
   filters: {},
   editingWidgetId: null,
@@ -179,6 +180,11 @@ function defaultWidget(overrides = {}) {
     // Pivot table
     pivotRows: [],
     pivotCols: [],
+    // Conditional formatting (DataTable / PivotTable)
+    conditionalFormatting: [],  // [{ id, column, mode:'gradient'|'rules', gradient, rules:[{op,value,bg,text}] }]
+    // Color mode for charts
+    colorMode: 'categorical',  // 'categorical' | 'gradient'
+    colorGradient: null,       // gradient scheme key when colorMode is 'gradient'
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget
@@ -480,6 +486,24 @@ function reducer(state, action) {
     case 'CLEAR_FILTERS':
       return { ...state, filters: {} };
 
+    // ── Dimension colors ───────────────────────────────────────
+    case 'SET_DIMENSION_COLOR': {
+      const { value, colorDef } = action.payload; // colorDef: { type: 'custom', color } | { type: 'palette', index }
+      return {
+        ...state,
+        dashboard: {
+          ...state.dashboard,
+          dimensionColors: { ...state.dashboard.dimensionColors, [value]: colorDef },
+        },
+      };
+    }
+
+    case 'REMOVE_DIMENSION_COLOR': {
+      const dc = { ...state.dashboard.dimensionColors };
+      delete dc[action.payload];
+      return { ...state, dashboard: { ...state.dashboard, dimensionColors: dc } };
+    }
+
     // ── Import ────────────────────────────────────────────────
     case 'IMPORT_STATE': {
       const { datasets, dashboard } = action.payload;
@@ -531,6 +555,7 @@ const UNDOABLE_ACTIONS = new Set([
   'SET_THEME', 'SET_DASHBOARD_TITLE',
   'LOAD_DATASET', 'DELETE_DATASET',
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
+  'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR',
 ]);
 
 const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);

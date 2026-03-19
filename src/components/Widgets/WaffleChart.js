@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -61,7 +61,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
       }
     });
 
-    const colors = getColorScale(widget.colorScheme, cellCats.map(c => c.key));
+    const colors = getColorScaleWithOverrides(widget.colorScheme, cellCats.map(c => c.key), widget.dimensionColors);
     const opacity = widget.opacity ?? 1;
 
     const cols = 10;

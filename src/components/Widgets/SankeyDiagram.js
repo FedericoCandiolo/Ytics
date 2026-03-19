@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -70,7 +70,7 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
       return; // circular links or other sankey issues
     }
 
-    const colors = getColorScale(widget.colorScheme, nodeNames);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, nodeNames, widget.dimensionColors);
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();

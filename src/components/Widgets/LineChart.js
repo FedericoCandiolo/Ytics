@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale, getColorArray } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getOrdinalWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -60,7 +60,7 @@ function renderNormal(svgRef, data, widget, dims, showTooltip, moveTooltip, hide
     seriesMap.get(key).push({ x: row[widget.xField], y: +row[widget.yField] || 0, raw: row });
   }
   const seriesNames = Array.from(seriesMap.keys());
-  const colors = getColorScale(widget.colorScheme, seriesNames);
+  const colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
   const opacity = widget.opacity ?? 1;
 
   const allX = [...seriesMap.values()].flat().map(d => d.x);
@@ -214,8 +214,7 @@ function renderStacked(svgRef, data, widget, dims, stackMode, showTooltip, moveT
   const yMax = stackMode === 'percent' ? 1 : d3.max(stacked, layer => d3.max(layer, d => d[1])) * 1.05 || 1;
   const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]).nice();
 
-  const colorArr = getColorArray(widget.colorScheme);
-  const colorScale = d3.scaleOrdinal().domain(seriesKeys).range(colorArr);
+  const colorScale = getOrdinalWithOverrides(widget.colorScheme, seriesKeys, widget.dimensionColors);
 
   const svg = d3.select(svgRef.current);
   svg.selectAll('*').remove();

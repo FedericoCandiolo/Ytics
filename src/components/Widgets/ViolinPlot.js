@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -39,7 +39,7 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
 
     const allVals = [...groups.values()].flat();
     const yExtent = d3.extent(allVals);
-    const colors = getColorScale(widget.colorScheme, xDomain);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, xDomain, widget.dimensionColors);
     const opacity = widget.opacity ?? 1;
 
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.3);

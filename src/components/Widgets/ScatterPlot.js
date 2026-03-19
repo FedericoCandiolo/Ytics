@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScale, getPrimaryColor } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getPrimaryColor } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -34,7 +34,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
 
     const opacity = widget.opacity ?? 0.8;
     const categories = widget.colorField ? [...new Set(pts.map(d => d.color))] : [];
-    const colors = widget.colorField ? getColorScale(widget.colorScheme, categories) : null;
+    const colors = widget.colorField ? getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors) : null;
     const primaryColor = getPrimaryColor(widget.colorScheme);
 
     const sMin = widget.dotSizeMin ?? 4, sMax = widget.dotSizeMax ?? 20;

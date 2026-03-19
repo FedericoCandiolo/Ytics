@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 
@@ -37,7 +37,7 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
 
     const xDomain = [...nested.keys()];
     const series = [...new Set(data.map(d => String(d[widget.colorField] ?? '')))];
-    const colors = getColorScale(widget.colorScheme, series);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
     const opacity = widget.opacity ?? 1;
 
     // Build ranked data: for each x step, rank series by value

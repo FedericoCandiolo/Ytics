@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -43,7 +43,7 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
     }
 
     const seriesNames = [...seriesMap.keys()];
-    const colors = getColorScale(widget.colorScheme, seriesNames);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, seriesNames, widget.dimensionColors);
 
     // Aggregate each series × axis
     const seriesData = seriesNames.map(name => {

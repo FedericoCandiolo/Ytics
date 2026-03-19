@@ -63,7 +63,7 @@ export default function Carousel({ widget, data, onCrossFilter }) {
 
       {/* Chart area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme }} data={data} onCrossFilter={onCrossFilter} />
+        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme, dimensionColors: widget.dimensionColors }} data={data} onCrossFilter={onCrossFilter} />
       </div>
 
       {/* Navigation */}

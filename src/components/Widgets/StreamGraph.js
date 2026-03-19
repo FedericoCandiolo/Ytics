@@ -6,7 +6,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScale } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -47,7 +47,7 @@ export default function StreamGraph({ widget, data, onCrossFilter }) {
       return row;
     });
 
-    const colors = getColorScale(widget.colorScheme, series);
+    const colors = getColorScaleWithOverrides(widget.colorScheme, series, widget.dimensionColors);
     const opacity = widget.opacity ?? 0.9;
 
     const stack = d3.stack().keys(series).offset(d3.stackOffsetWiggle).order(d3.stackOrderInsideOut);
