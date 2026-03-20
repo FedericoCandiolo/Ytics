@@ -145,6 +145,14 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     geo: [
       { key: 'geoField',    label: 'Geography dimension',     filter: null },
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
+      { key: '_geoOverlayFields', label: 'Overlay chart fields', multi: true },
+      { key: 'overlaySizeField', label: 'Overlay size field (opt.)', filter: ['number'], optional: true },
+      { key: 'pointLatField', label: 'Point latitude',        filter: ['number'], optional: true },
+      { key: 'pointLngField', label: 'Point longitude',       filter: ['number'], optional: true },
+      { key: 'pointLabelField', label: 'Point label (opt.)',  filter: null, optional: true },
+      { key: 'pointSizeField', label: 'Point size (opt.)',    filter: ['number'], optional: true },
+      { key: 'pointColorField', label: 'Point color (opt.)',  filter: null, optional: true },
+      { key: '_pointOverlayFields', label: 'Point chart fields', multi: true },
     ],
     pivot: [
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
@@ -214,7 +222,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     onUpdate(updates);
   };
 
-  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko'].includes(widget.type);
+  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'geo'].includes(widget.type);
 
   return (
     <div>
@@ -308,6 +316,68 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
             </div>
           );
         }
+        // Special: multi-select for Geo overlay chart fields
+        if (f.key === '_geoOverlayFields') {
+          const current = widget.overlayFields || [];
+          const numCols = cols.filter(c => c.type === 'number');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {current.map((fld, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
+                      onChange={e => {
+                        const next = [...current];
+                        next[i] = e.target.value;
+                        onUpdate({ overlayFields: next });
+                      }}>
+                      <option value="">— none —</option>
+                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                      onUpdate({ overlayFields: current.filter((_, j) => j !== i) });
+                    }}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ overlayFields: [...current, ''] });
+                }}>+ Add field</button>
+              </div>
+            </div>
+          );
+        }
+        // Special: multi-select for Point layer chart fields
+        if (f.key === '_pointOverlayFields') {
+          const current = widget.pointOverlayFields || [];
+          const numCols = cols.filter(c => c.type === 'number');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {current.map((fld, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
+                      onChange={e => {
+                        const next = [...current];
+                        next[i] = e.target.value;
+                        onUpdate({ pointOverlayFields: next });
+                      }}>
+                      <option value="">— none —</option>
+                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                      onUpdate({ pointOverlayFields: current.filter((_, j) => j !== i) });
+                    }}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ pointOverlayFields: [...current, ''] });
+                }}>+ Add field</button>
+              </div>
+            </div>
+          );
+        }
         // Special: multi-select for Sankey intermediate dimensions
         if (f.key === '_sankeyFields') {
           const current = widget.sankeyFields || [];
@@ -350,6 +420,47 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
           />
         );
       })}
+
+      {/* Visible columns for DataTable — shown in Fields tab */}
+      {widget.type === 'table' && cols.length > 0 && (() => {
+        const allNames = cols.map(c => c.name);
+        const visible = widget.visibleColumns;
+        const allChecked = !Array.isArray(visible) || visible.length === allNames.length;
+        const toggleColumn = (colName) => {
+          let next;
+          if (!Array.isArray(visible)) {
+            next = allNames.filter(n => n !== colName);
+          } else if (visible.includes(colName)) {
+            next = visible.filter(n => n !== colName);
+            if (next.length === 0) return;
+          } else {
+            next = [...visible, colName];
+          }
+          if (next.length === allNames.length) next = null;
+          onUpdate({ visibleColumns: next });
+        };
+        return (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Visible columns</label>
+            <label className="checkbox-row" style={{ marginBottom: 6, fontWeight: 600 }}>
+              <input type="checkbox" checked={allChecked} onChange={() => onUpdate({ visibleColumns: allChecked ? [] : null })} />
+              All columns
+            </label>
+            <div style={{
+              maxHeight: 280, overflowY: 'auto',
+              border: '1px solid var(--border)', borderRadius: 6,
+              padding: '6px 8px',
+            }}>
+              {allNames.map(name => (
+                <label key={name} className="checkbox-row" style={{ marginBottom: 4 }}>
+                  <input type="checkbox" checked={!Array.isArray(visible) || visible.includes(name)} onChange={() => toggleColumn(name)} />
+                  {name}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {showAgg && (
         <div className="form-group" style={{ marginBottom: 10 }}>
@@ -1097,7 +1208,7 @@ function OptionsTab({ widget, columns, onUpdate }) {
         </div>
       </div>
       <label className="checkbox-row" style={{ marginBottom: 8 }}>
-        <input type="checkbox" checked={!!widget.showDataPoints} onChange={e => onUpdate({ showDataPoints: e.target.checked })} />
+        <input type="checkbox" checked={widget.showDataPoints !== false} onChange={e => onUpdate({ showDataPoints: e.target.checked })} />
         Show individual data points
       </label>
     </div>
@@ -1145,6 +1256,38 @@ function OptionsTab({ widget, columns, onUpdate }) {
           value={!['world','north-america','south-america','europe','africa','asia','oceania'].includes(widget.mapScope || 'world') ? (widget.mapScope || '') : ''}
           onChange={e => onUpdate({ mapScope: e.target.value || 'world' })}
         />
+      </div>
+
+      <div className="form-group" style={{ marginTop: 12 }}>
+        <label className="form-label">Country overlay</label>
+        <select className="select select-sm" value={widget.overlayType || ''} onChange={e => onUpdate({ overlayType: e.target.value || null })}>
+          <option value="">None (choropleth only)</option>
+          <option value="pie">Mini pie charts</option>
+          <option value="bar">Mini bar charts</option>
+        </select>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          Set overlay fields in the Fields tab
+        </div>
+      </div>
+
+      <div className="form-group" style={{ marginTop: 12 }}>
+        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={!!widget.pointLayerEnabled} onChange={e => onUpdate({ pointLayerEnabled: e.target.checked })} />
+          Enable point layer
+        </label>
+        {widget.pointLayerEnabled && (
+          <div style={{ marginTop: 6 }}>
+            <label className="form-label">Point type</label>
+            <select className="select select-sm" value={widget.pointType || 'circle'} onChange={e => onUpdate({ pointType: e.target.value })}>
+              <option value="circle">Colored circles</option>
+              <option value="pie">Mini pie charts</option>
+              <option value="bar">Mini bar charts</option>
+            </select>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              Set lat, lng and other point fields in the Fields tab
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

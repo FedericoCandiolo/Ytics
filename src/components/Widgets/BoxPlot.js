@@ -191,7 +191,7 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
       });
 
       // Show data points (all values as jittered semi-transparent dots, hoverable)
-      if (widget.showDataPoints) {
+      if (widget.showDataPoints !== false) {
         s.vals.forEach((v, i) => {
           const row = s.rows[i];
           const circle = g.append('circle')

@@ -509,9 +509,9 @@ function StackedTip({ x, group, value, color, total, widget }) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function drawGrid(g, axis, dir, offset) {
+function drawGrid(g, axis, dir, H) {
   g.append('g').attr('class', 'grid')
-    .attr('transform', dir === 'x' ? `translate(0,0)` : `translate(0,${offset})`)
+    .attr('transform', dir === 'x' ? `translate(0,${H})` : `translate(0,0)`)
     .call(axis).call(a => a.select('.domain').remove())
     .call(a => a.selectAll('.tick line').attr('stroke', 'var(--chart-grid-color)').attr('stroke-dasharray', '3,3'));
 }

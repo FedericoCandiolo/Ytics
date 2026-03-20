@@ -69,7 +69,8 @@ export default function Carousel({ widget, data, onCrossFilter }) {
 
       {/* Navigation */}
       {slides.length > 1 && (
-        <div className="carousel-nav">
+        <div className="carousel-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+          {/* Centered: prev + dots + next */}
           <button className="carousel-arrow" onClick={() => go(-1)}>‹</button>
           <div className="carousel-dots">
             {slides.map((s, i) => (
@@ -81,8 +82,9 @@ export default function Carousel({ widget, data, onCrossFilter }) {
               />
             ))}
           </div>
-          {/* Menu icon button */}
-          <div style={{ position: 'relative' }} ref={menuRef}>
+          <button className="carousel-arrow" onClick={() => go(1)}>›</button>
+          {/* Menu icon pinned to the right */}
+          <div style={{ position: 'absolute', right: 4 }} ref={menuRef}>
             <button
               className="btn btn-ghost btn-icon btn-sm"
               title="Jump to slide"
@@ -119,7 +121,6 @@ export default function Carousel({ widget, data, onCrossFilter }) {
               </div>
             )}
           </div>
-          <button className="carousel-arrow" onClick={() => go(1)}>›</button>
         </div>
       )}
     </div>
