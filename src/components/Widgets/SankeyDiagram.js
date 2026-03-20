@@ -26,15 +26,28 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
 
     const opacity = widget.opacity ?? 1;
 
-    // Aggregate links: (source, target) → value
+    // Build dimension chain: [sourceField, ...sankeyFields, targetField]
+    const dimChain = [widget.sourceField];
+    if (widget.sankeyFields?.length) {
+      dimChain.push(...widget.sankeyFields);
+    }
+    dimChain.push(widget.targetField);
+
+    // Aggregate links for each consecutive pair of dimensions
     const linkMap = new Map();
     for (const row of data) {
-      const src = String(row[widget.sourceField] ?? '');
-      const tgt = String(row[widget.targetField] ?? '');
-      if (!src || !tgt || src === tgt) continue;
-      const key = `${src}|||${tgt}`;
-      if (!linkMap.has(key)) linkMap.set(key, { src, tgt, vals: [] });
-      linkMap.get(key).vals.push(+row[widget.valueField] || 0);
+      for (let i = 0; i < dimChain.length - 1; i++) {
+        const srcRaw = String(row[dimChain[i]] ?? '');
+        const tgtRaw = String(row[dimChain[i + 1]] ?? '');
+        if (!srcRaw || !tgtRaw) continue;
+        // Prefix with level to avoid name collisions across levels
+        const src = dimChain.length > 2 ? `${dimChain[i]}:${srcRaw}` : srcRaw;
+        const tgt = dimChain.length > 2 ? `${dimChain[i + 1]}:${tgtRaw}` : tgtRaw;
+        if (src === tgt) continue;
+        const key = `${src}|||${tgt}`;
+        if (!linkMap.has(key)) linkMap.set(key, { src, tgt, vals: [], srcLabel: srcRaw, tgtLabel: tgtRaw });
+        linkMap.get(key).vals.push(+row[widget.valueField] || 0);
+      }
     }
 
     // Build node set
@@ -123,14 +136,18 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
       .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.sourceField, value: d.name }); } : null)
       .style('cursor', onCrossFilter ? 'pointer' : null);
 
-    // Node labels
+    // Node labels — strip level prefix if multi-level
+    const stripPrefix = name => {
+      const idx = name.indexOf(':');
+      return idx > 0 ? name.slice(idx + 1) : name;
+    };
     g.append('g').selectAll('text').data(graph.nodes).join('text')
       .attr('x', d => d.x0 < W / 2 ? d.x1 + 6 : d.x0 - 6)
       .attr('y', d => (d.y0 + d.y1) / 2)
       .attr('text-anchor', d => d.x0 < W / 2 ? 'start' : 'end')
       .attr('dominant-baseline', 'central')
       .attr('font-size', 10.5).attr('font-family', 'var(--font)').attr('fill', 'var(--text)')
-      .text(d => d.name.length > 20 ? d.name.slice(0, 20) + '…' : d.name);
+      .text(d => { const label = stripPrefix(d.name); return label.length > 20 ? label.slice(0, 20) + '…' : label; });
   }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);

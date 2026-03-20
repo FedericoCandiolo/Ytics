@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
+import { aggregate, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient, contrastText } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -38,6 +38,27 @@ export default function PieChart({ widget, data, onCrossFilter }) {
       key, value: aggregate(vals, 'sum'), count: vals.length,
     }));
     if (widget.sortByValue !== false) pts.sort((a, b) => b.value - a.value);
+
+    // Pareto / Others grouping (requires desc sort first, then re-sort)
+    if (widget.paretoEnabled) {
+      const sortedDesc = [...pts].sort((a, b) => b.value - a.value);
+      const grouped = applyParetoGrouping(sortedDesc, {
+        method: widget.paretoMethod || 'topN',
+        topN: widget.paretoTopN ?? 10,
+        threshold: widget.paretoThreshold ?? 0.8,
+        othersLabel: widget.othersLabel || 'Others',
+      });
+      // Re-apply user's sort, keep Others at end
+      const othersLabel = widget.othersLabel || 'Others';
+      const othersItem = grouped.find(d => d.key === othersLabel);
+      const nonOthers = grouped.filter(d => d.key !== othersLabel);
+      pts = sortAggregated(nonOthers, {
+        sortBy: widget.sortBy || 'value',
+        sortOrder: widget.sortOrder || 'desc',
+        customOrder: widget.customSortOrder,
+      });
+      if (othersItem) pts.push(othersItem);
+    }
 
     const total = d3.sum(pts, d => d.value);
     let colors;
@@ -108,14 +129,33 @@ export default function PieChart({ widget, data, onCrossFilter }) {
       .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.labelField, value: d.data.key }); } : null)
       .style('cursor', onCrossFilter ? 'pointer' : null);
 
-    // Labels for larger slices
-    g.selectAll('.slice-label').data(arcs.filter(d => (d.endAngle - d.startAngle) > 0.3)).join('text')
-      .attr('class', 'slice-label')
-      .attr('transform', d => `translate(${arc.centroid(d)})`)
-      .attr('text-anchor', 'middle').attr('dy', '0.35em')
-      .attr('font-size', 10).attr('font-family', 'var(--font)').attr('fill', '#fff')
-      .attr('font-weight', 600).attr('pointer-events', 'none')
-      .text(d => `${((d.data.value / total) * 100).toFixed(0)}%`);
+    // Labels on slices
+    if (widget.showSliceValues) {
+      const mode = widget.sliceValueMode || 'percent';
+      g.selectAll('.slice-label').data(arcs.filter(d => (d.endAngle - d.startAngle) > 0.25)).join('text')
+        .attr('class', 'slice-label')
+        .attr('transform', d => `translate(${arc.centroid(d)})`)
+        .attr('text-anchor', 'middle').attr('dy', '0.35em')
+        .attr('font-size', 10).attr('font-family', 'var(--font)')
+        .attr('fill', d => contrastText(colors(d.data.key)))
+        .attr('font-weight', 600).attr('pointer-events', 'none')
+        .text(d => {
+          const pct = total > 0 ? `${((d.data.value / total) * 100).toFixed(0)}%` : '0%';
+          const val = formatValue(d.data.value);
+          if (mode === 'value') return val;
+          if (mode === 'both') return `${pct} (${val})`;
+          return pct; // 'percent' or default
+        });
+    } else {
+      // Default: show percentage on larger slices
+      g.selectAll('.slice-label').data(arcs.filter(d => (d.endAngle - d.startAngle) > 0.3)).join('text')
+        .attr('class', 'slice-label')
+        .attr('transform', d => `translate(${arc.centroid(d)})`)
+        .attr('text-anchor', 'middle').attr('dy', '0.35em')
+        .attr('font-size', 10).attr('font-family', 'var(--font)').attr('fill', '#fff')
+        .attr('font-weight', 600).attr('pointer-events', 'none')
+        .text(d => `${((d.data.value / total) * 100).toFixed(0)}%`);
+    }
 
     // Center label for donut
     if (innerR > 0) {

@@ -5,7 +5,7 @@
  */
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue } from '../../utils/dataUtils';
+import { formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
@@ -35,7 +35,16 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
       d => String(d[widget.colorField] ?? '')
     );
 
-    const xDomain = [...nested.keys()];
+    let xDomain = [...nested.keys()];
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      let pts = xDomain.map((xVal, i) => ({ key: xVal, value: i }));
+      pts = sortAggregated(pts, {
+        sortBy: widget.sortBy || 'original',
+        sortOrder: widget.sortOrder || 'asc',
+        customOrder: widget.customSortOrder,
+      });
+      xDomain = pts.map(p => p.key);
+    }
     const series = [...new Set(data.map(d => String(d[widget.colorField] ?? '')))];
     let colors;
     if (widget.colorMode === 'gradient') {
@@ -55,10 +64,23 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
     }
     const opacity = widget.opacity ?? 1;
 
-    // Build ranked data: for each x step, rank series by value
-    const rankData = new Map(); // series → [{x, rank, value}]
+    // Top N filter: only show top N series (those in top N at ANY time step)
+    const topN = widget.bumpTopN;
+    let displaySeries = series;
+    if (topN && topN > 0 && topN < series.length) {
+      const inTopN = new Set();
+      xDomain.forEach(xVal => {
+        const stepVals = series.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
+        stepVals.sort((a, b) => b.v - a.v);
+        stepVals.slice(0, topN).forEach(sv => inTopN.add(sv.s));
+      });
+      displaySeries = series.filter(s => inTopN.has(s));
+    }
+
+    // Build ranked data for visible series
+    const rankData = new Map();
     xDomain.forEach(xVal => {
-      const stepVals = series.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
+      const stepVals = displaySeries.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
       stepVals.sort((a, b) => b.v - a.v);
       stepVals.forEach((sv, rank) => {
         if (!rankData.has(sv.s)) rankData.set(sv.s, []);
@@ -66,7 +88,7 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
       });
     });
 
-    const maxRank = series.length;
+    const maxRank = displaySeries.length;
     const xScale = d3.scalePoint().domain(xDomain).range([0, W]).padding(0.2);
     const yScale = d3.scaleLinear().domain([1, maxRank]).range([0, H]);
 
@@ -95,7 +117,7 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
     // Lines per series
     const lineGen = d3.line().x(d => xScale(d.x)).y(d => yScale(d.rank)).curve(d3.curveBumpX);
 
-    series.forEach(s => {
+    displaySeries.forEach(s => {
       const pts = rankData.get(s) || [];
       const color = colors(s);
       const path = g.append('path').datum(pts)
@@ -128,7 +150,7 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
     });
 
     // Right-side series labels (final rank)
-    const finalRanks = series.map(s => {
+    const finalRanks = displaySeries.map(s => {
       const pts = rankData.get(s) || [];
       const last = pts[pts.length - 1];
       return { s, rank: last?.rank, y: yScale(last?.rank || 1) };

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue } from '../../utils/dataUtils';
+import { formatValue, aggregateData } from '../../utils/dataUtils';
 import { getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
@@ -18,7 +18,15 @@ export default function Histogram({ widget, data, onCrossFilter }) {
       return;
     }
 
-    const vals = data.map(d => +d[widget.xField]).filter(v => !isNaN(v));
+    // When a dimension (colorField) is set, group by it and aggregate xField per group,
+    // then histogram the aggregated values instead of raw values.
+    let vals;
+    if (widget.colorField) {
+      const agg = aggregateData(data, widget.colorField, widget.xField, widget.aggregation || 'sum');
+      vals = agg.map(d => d.value).filter(v => !isNaN(v));
+    } else {
+      vals = data.map(d => +d[widget.xField]).filter(v => !isNaN(v));
+    }
     if (!vals.length) return;
 
     const m = { top: 16, right: 18, bottom: 52, left: 60 };
@@ -27,7 +35,26 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     if (W <= 0 || H <= 0) return;
 
     const xScale = d3.scaleLinear().domain(d3.extent(vals)).nice().range([0, W]);
-    const bins = d3.bin().domain(xScale.domain()).thresholds(xScale.ticks(widget.bins ?? 20))(vals);
+    // Default bin count: Sturges' rule log2(n) + 1
+    const autoBins = Math.max(5, Math.ceil(Math.log2(vals.length) + 1));
+    const nBins = widget.binMode === 'manual' ? Math.max(1, widget.bins ?? autoBins) : autoBins;
+    let bins;
+    if (widget.binMode === 'equalFrequency') {
+      // Equal-frequency: each bin has ~same number of values
+      const sorted = [...vals].sort((a, b) => a - b);
+      const binSize = Math.ceil(sorted.length / nBins);
+      bins = [];
+      for (let i = 0; i < sorted.length; i += binSize) {
+        const chunk = sorted.slice(i, i + binSize);
+        const bin = Object.assign(chunk, {
+          x0: chunk[0],
+          x1: i + binSize >= sorted.length ? chunk[chunk.length - 1] : sorted[Math.min(i + binSize, sorted.length - 1)],
+        });
+        bins.push(bin);
+      }
+    } else {
+      bins = d3.bin().domain(xScale.domain()).thresholds(xScale.ticks(nBins))(vals);
+    }
     const yScale = d3.scaleLinear().domain([0, d3.max(bins, d => d.length) * 1.08]).range([H, 0]).nice();
 
     const useGradient = widget.colorMode === 'gradient';

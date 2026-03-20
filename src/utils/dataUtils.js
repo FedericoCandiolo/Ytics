@@ -368,3 +368,124 @@ export function getPipelineOutputTypes(data, steps) {
   const output = executeMeasurePipeline(data.slice(0, 100), steps);
   return detectColumnTypes(output);
 }
+
+// ── Sorting & Grouping Utilities ─────────────────────────────────────────────
+
+export function sortAggregated(pts, options = {}) {
+  const { sortBy = 'original', sortOrder = 'asc', customOrder = null } = options;
+  if (sortBy === 'original') return [...pts];
+  const sorted = [...pts];
+  const dir = sortOrder === 'desc' ? -1 : 1;
+  switch (sortBy) {
+    case 'value':
+      sorted.sort((a, b) => dir * (a.value - b.value));
+      break;
+    case 'label':
+      sorted.sort((a, b) => dir * String(a.key).localeCompare(String(b.key)));
+      break;
+    case 'custom': {
+      if (!customOrder) return sorted;
+      const orderMap = new Map(customOrder.map((k, i) => [k, i]));
+      sorted.sort((a, b) => {
+        const ia = orderMap.has(a.key) ? orderMap.get(a.key) : Infinity;
+        const ib = orderMap.has(b.key) ? orderMap.get(b.key) : Infinity;
+        return dir * (ia - ib);
+      });
+      break;
+    }
+    default:
+      break;
+  }
+  return sorted;
+}
+
+export function applyParetoGrouping(pts, options = {}) {
+  const { method = 'topN', topN = 10, threshold = 0.8, othersLabel = 'Others' } = options;
+  if (!pts || pts.length === 0) return [];
+
+  let splitIndex = pts.length; // default: keep everything
+
+  switch (method) {
+    case 'topN':
+      splitIndex = Math.min(topN, pts.length);
+      break;
+
+    case 'threshold': {
+      const total = pts.reduce((s, p) => s + p.value, 0);
+      if (total === 0) return [...pts];
+      let cumulative = 0;
+      for (let i = 0; i < pts.length; i++) {
+        cumulative += pts[i].value;
+        if (cumulative / total >= threshold) {
+          splitIndex = i + 1;
+          break;
+        }
+      }
+      break;
+    }
+
+    case 'pareto': {
+      const total = pts.reduce((s, p) => s + p.value, 0);
+      if (total === 0) return [...pts];
+      const n = pts.length;
+      // Walk through items sorted desc by value. Items where
+      // (cumulative count proportion + cumulative value proportion) > 1
+      // are grouped as Others. The first item crossing that threshold
+      // marks the split point.
+      let cumulativeValue = 0;
+      splitIndex = n; // default: keep all
+      for (let i = 0; i < n; i++) {
+        cumulativeValue += pts[i].value;
+        const countProportion = (i + 1) / n;
+        const valueProportion = cumulativeValue / total;
+        if (countProportion + valueProportion > 1) {
+          splitIndex = Math.max(1, i); // keep at least 1 item
+          break;
+        }
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  if (splitIndex >= pts.length) return [...pts];
+
+  const kept = pts.slice(0, splitIndex);
+  const tail = pts.slice(splitIndex);
+  const othersValue = tail.reduce((s, p) => s + p.value, 0);
+  return [...kept, { key: othersLabel, value: othersValue }];
+}
+
+// ── Linear Regression ────────────────────────────────────────────────────────
+
+export function linearRegression(points) {
+  const n = points.length;
+  if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
+
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (const { x, y } of points) {
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumX2 += x * x;
+  }
+
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return { slope: 0, intercept: sumY / n, r2: 0 };
+
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // Coefficient of determination (R²)
+  const meanY = sumY / n;
+  let ssTot = 0, ssRes = 0;
+  for (const { x, y } of points) {
+    ssTot += (y - meanY) ** 2;
+    ssRes += (y - (slope * x + intercept)) ** 2;
+  }
+  const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+
+  return { slope, intercept, r2 };
+}

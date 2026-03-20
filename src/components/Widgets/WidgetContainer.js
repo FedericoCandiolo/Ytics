@@ -20,6 +20,14 @@ import WaffleChart from './WaffleChart';
 import SankeyDiagram from './SankeyDiagram';
 import GeoMap from './GeoMap';
 import PivotTable from './PivotTable';
+import WaterfallChart from './WaterfallChart';
+import WordCloud from './WordCloud';
+import FunnelChart from './FunnelChart';
+import KPICard from './KPICard';
+import BubbleChart from './BubbleChart';
+import ComboChart from './ComboChart';
+import StraightTable from './StraightTable';
+import MekkoChart from './MekkoChart';
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
@@ -28,6 +36,9 @@ const CHART_MAP = {
   carousel: Carousel,
   boxplot: BoxPlot, radar: RadarChart, waffle: WaffleChart, sankey: SankeyDiagram, geo: GeoMap,
   pivot: PivotTable,
+  waterfall: WaterfallChart, wordcloud: WordCloud, funnel: FunnelChart,
+  kpi: KPICard, bubble: BubbleChart, combo: ComboChart,
+  straighttable: StraightTable, mekko: MekkoChart,
 };
 
 const TYPE_ICONS = {
@@ -36,6 +47,8 @@ const TYPE_ICONS = {
   carousel: '🎠',
   boxplot: '📦', radar: '🕸', waffle: '🧇', sankey: '🔀', geo: '🌍',
   pivot: '⊞',
+  waterfall: '📉', wordcloud: '☁', funnel: '🔻', kpi: '🎯',
+  bubble: '🫧', combo: '📊📈', straighttable: '▦', mekko: '▥',
 };
 
 export { TYPE_ICONS };

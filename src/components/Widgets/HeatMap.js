@@ -5,7 +5,7 @@
  */
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
 import { resolveGradient } from '../../utils/colorUtils';
@@ -55,8 +55,20 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
       d => String(d[widget.yField] ?? '')
     );
 
-    const xDomain = [...nested.keys()];
-    const yDomain = [...new Set(data.map(d => String(d[widget.yField] ?? '')))];
+    let xDomain = [...nested.keys()];
+    let yDomain = [...new Set(data.map(d => String(d[widget.yField] ?? '')))];
+
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      const sortOpts = {
+        sortBy: widget.sortBy || 'original',
+        sortOrder: widget.sortOrder || 'asc',
+        customOrder: widget.customSortOrder,
+      };
+      const xPts = xDomain.map(k => ({ key: k, value: 0 }));
+      xDomain = sortAggregated(xPts, sortOpts).map(p => p.key);
+      const yPts = yDomain.map(k => ({ key: k, value: 0 }));
+      yDomain = sortAggregated(yPts, sortOpts).map(p => p.key);
+    }
 
     const flat = [];
     nested.forEach((yCols, xVal) => {

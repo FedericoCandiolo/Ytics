@@ -1,11 +1,11 @@
 /**
  * Violin Plot — shows distribution shape + box plot for each category.
  * Fields: xField (category), yField (numeric).
- * Inspired by d3/violin-plot on Observable.
+ * Supports colorField for sub-grouped violins, iqrMultiplier, showDataPoints.
  */
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue } from '../../utils/dataUtils';
+import { formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
@@ -23,37 +23,77 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
       return;
     }
 
+    const iqrMultiplier = widget.iqrMultiplier ?? 1.5;
+    const hasColorField = !!widget.colorField;
+
     const m = { top: 16, right: 18, bottom: 60, left: 60 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0) return;
 
-    // Group by xField
-    const groups = d3.rollup(data,
-      v => v.map(d => +d[widget.yField]).filter(v => !isNaN(v)).sort(d3.ascending),
-      d => String(d[widget.xField] ?? '')
-    );
+    // Group by xField (and optionally colorField)
+    const groupMap = new Map();
+    const subGroupSet = new Set();
+    for (const row of data) {
+      const cat = String(row[widget.xField] ?? '');
+      const val = +row[widget.yField];
+      if (isNaN(val)) continue;
+      if (hasColorField) {
+        const sub = String(row[widget.colorField] ?? '(blank)');
+        subGroupSet.add(sub);
+        const compKey = `${cat}||${sub}`;
+        if (!groupMap.has(compKey)) groupMap.set(compKey, { cat, sub, vals: [] });
+        groupMap.get(compKey).vals.push(val);
+      } else {
+        if (!groupMap.has(cat)) groupMap.set(cat, { cat, sub: null, vals: [] });
+        groupMap.get(cat).vals.push(val);
+      }
+    }
 
-    const xDomain = [...groups.keys()];
+    // Sort vals
+    for (const grp of groupMap.values()) grp.vals.sort(d3.ascending);
+
+    let xDomain = [...new Set([...groupMap.values()].map(g => g.cat))];
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      const catPts = xDomain.map(cat => {
+        const vals = [...groupMap.values()].filter(g => g.cat === cat).flatMap(g => g.vals);
+        return { key: cat, value: d3.median(vals) || 0 };
+      });
+      xDomain = sortAggregated(catPts, {
+        sortBy: widget.sortBy, sortOrder: widget.sortOrder || 'asc',
+        customOrder: widget.customSortOrder,
+      }).map(d => d.key);
+    }
+    const subGroups = hasColorField ? [...subGroupSet] : [null];
     if (!xDomain.length) return;
 
-    const allVals = [...groups.values()].flat();
+    const allVals = [...groupMap.values()].flatMap(g => g.vals);
     const yExtent = d3.extent(allVals);
+
+    // Color scale
     let colors;
-    if (widget.colorMode === 'gradient') {
-      const medians = xDomain.map(cat => d3.median(groups.get(cat)));
+    const colorDomain = hasColorField ? subGroups : xDomain;
+    if (widget.colorMode === 'gradient' && !hasColorField) {
+      const medians = xDomain.map(cat => d3.median(groupMap.get(cat)?.vals ?? []));
       const ext = [Math.min(...medians), Math.max(...medians)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
       const seq = getSequentialScale(gradKey, ext[0], ext[1]);
       const medianMap = new Map(xDomain.map((cat, i) => [cat, medians[i]]));
       colors = d => seq(medianMap.get(d) ?? 0);
     } else {
-      colors = getColorScaleWithOverrides(widget.colorScheme, xDomain, widget.dimensionColors);
+      colors = getColorScaleWithOverrides(widget.colorScheme, colorDomain, widget.dimensionColors);
     }
     const opacity = widget.opacity ?? 1;
 
+    const yPad = (yExtent[1] - yExtent[0]) * 0.08 || 1;
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.3);
-    const yScale = d3.scaleLinear().domain([yExtent[0] - (yExtent[1] - yExtent[0]) * 0.08, yExtent[1] * 1.04]).range([H, 0]).nice();
+    const yScale = d3.scaleLinear().domain([yExtent[0] - yPad, yExtent[1] + yPad]).range([H, 0]).nice();
+
+    // Sub-group scale within each category band
+    const bw = xScale.bandwidth();
+    const subScale = hasColorField
+      ? d3.scaleBand().domain(subGroups).range([0, bw]).padding(0.06)
+      : null;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
@@ -69,19 +109,38 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
       .call(styledAxis).selectAll('text').attr('transform', 'rotate(-25)').style('text-anchor', 'end');
     g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(fmtTick)).call(styledAxis);
 
-    const bw = xScale.bandwidth();
+    // Seeded PRNG for jitter
+    const jitterRng = mulberry32(42);
 
-    xDomain.forEach(cat => {
-      const vals = groups.get(cat);
-      if (!vals.length) return;
-      const cx = xScale(cat) + bw / 2;
-      const color = colors(cat);
+    for (const [, grp] of groupMap) {
+      const vals = grp.vals;
+      if (!vals.length) continue;
 
-      // KDE
-      const kde = kernelDensityEstimator(epanechnikovKernel(bw * 0.5), yScale.ticks(30));
+      const catX = xScale(grp.cat);
+      let slotX, slotW;
+      if (hasColorField) {
+        slotX = catX + subScale(grp.sub);
+        slotW = subScale.bandwidth();
+      } else {
+        slotX = catX;
+        slotW = bw;
+      }
+      const cx = slotX + slotW / 2;
+      const color = hasColorField ? colors(grp.sub) : colors(grp.cat);
+
+      // KDE — Silverman's rule of thumb for bandwidth (data-space)
+      const n = vals.length;
+      const std = d3.deviation(vals) || 1;
+      const iqr = (d3.quantile(vals, 0.75) - d3.quantile(vals, 0.25)) || std;
+      const kdeBandwidth = n > 1
+        ? 0.9 * Math.min(std, iqr / 1.34) * Math.pow(n, -0.2)
+        : std || 1;
+      const yDomain = yScale.domain();
+      const kdePoints = d3.ticks(yDomain[0], yDomain[1], 50);
+      const kde = kernelDensityEstimator(epanechnikovKernel(kdeBandwidth), kdePoints);
       const density = kde(vals);
       const maxDensity = d3.max(density, d => d[1]);
-      const violinScale = d3.scaleLinear().domain([0, maxDensity]).range([0, bw / 2 - 4]);
+      const violinScale = d3.scaleLinear().domain([0, maxDensity]).range([0, slotW / 2 - 2]);
 
       const violinArea = d3.area()
         .x0(d => cx - violinScale(d[1])).x1(d => cx + violinScale(d[1]))
@@ -92,28 +151,45 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
         .attr('fill', color).attr('opacity', 0).attr('d', violinArea);
       path.transition().duration(600).ease(d3.easeCubicOut).attr('opacity', opacity * 0.75);
 
+      // Compute stats with configurable iqrMultiplier
+      const stats = computeStats(vals, iqrMultiplier);
+
       path
         .on('mouseover', (ev) => {
           d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1);
-          const stats = computeStats(vals);
-          showTooltip(ev, <ViolinTip cat={cat} stats={stats} widget={widget} color={color} n={vals.length} />);
+          showTooltip(ev, <ViolinTip cat={grp.cat} sub={grp.sub} stats={stats} widget={widget} color={color} n={vals.length} iqrMultiplier={iqrMultiplier} />);
         })
         .on('mousemove', moveTooltip)
         .on('mouseleave', (ev) => {
           d3.select(ev.currentTarget).transition().duration(100).attr('opacity', opacity * 0.75);
           hideTooltip();
         })
-        .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: cat }); } : null)
+        .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: grp.cat }); } : null)
         .style('cursor', onCrossFilter ? 'pointer' : null);
 
-      // Box plot overlay
-      const stats = computeStats(vals);
-      const boxW = Math.min(bw * 0.18, 12);
+      // --- Mini box/whisker inside violin ---
+      const boxW = Math.min(slotW * 0.18, 12);
+
+      // Whisker lines (dashed)
+      g.append('line').attr('x1', cx).attr('x2', cx)
+        .attr('y1', yScale(stats.whiskerHigh)).attr('y2', yScale(stats.q3))
+        .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', '3,2').attr('opacity', 0.7);
+      g.append('line').attr('x1', cx).attr('x2', cx)
+        .attr('y1', yScale(stats.q1)).attr('y2', yScale(stats.whiskerLow))
+        .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', '3,2').attr('opacity', 0.7);
+
+      // Whisker caps
+      g.append('line').attr('x1', cx - 4).attr('x2', cx + 4)
+        .attr('y1', yScale(stats.whiskerHigh)).attr('y2', yScale(stats.whiskerHigh))
+        .attr('stroke', color).attr('stroke-width', 1.5);
+      g.append('line').attr('x1', cx - 4).attr('x2', cx + 4)
+        .attr('y1', yScale(stats.whiskerLow)).attr('y2', yScale(stats.whiskerLow))
+        .attr('stroke', color).attr('stroke-width', 1.5);
 
       // IQR box
       g.append('rect')
         .attr('x', cx - boxW / 2).attr('y', yScale(stats.q3))
-        .attr('width', boxW).attr('height', yScale(stats.q1) - yScale(stats.q3))
+        .attr('width', boxW).attr('height', Math.max(0, yScale(stats.q1) - yScale(stats.q3)))
         .attr('fill', '#fff').attr('stroke', color).attr('stroke-width', 1.5).attr('opacity', 0)
         .transition().duration(600).attr('opacity', 0.9);
 
@@ -122,16 +198,45 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
         .attr('y1', yScale(stats.median)).attr('y2', yScale(stats.median))
         .attr('stroke', color).attr('stroke-width', 2.5).attr('stroke-linecap', 'round');
 
-      // Whiskers
-      [stats.whiskerLow, stats.whiskerHigh].forEach(w => {
-        g.append('line').attr('x1', cx).attr('x2', cx)
-          .attr('y1', yScale(stats.q1)).attr('y2', yScale(w))
-          .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', '3,2').attr('opacity', 0.7);
-        g.append('line').attr('x1', cx - 4).attr('x2', cx + 4)
-          .attr('y1', yScale(w)).attr('y2', yScale(w))
-          .attr('stroke', color).attr('stroke-width', 1.5);
+      // Q1 / Q3 tick marks on the box edges
+      [stats.q1, stats.q3].forEach(qv => {
+        g.append('line').attr('x1', cx - boxW / 2).attr('x2', cx + boxW / 2)
+          .attr('y1', yScale(qv)).attr('y2', yScale(qv))
+          .attr('stroke', color).attr('stroke-width', 1).attr('opacity', 0.5);
       });
-    });
+
+      // Outlier dots (outside whisker bounds)
+      stats.outliers.forEach(v => {
+        g.append('circle')
+          .attr('cx', cx + (jitterRng() - 0.5) * slotW * 0.3)
+          .attr('cy', yScale(v))
+          .attr('r', 2.5).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
+      });
+
+      // Show data points (all values as jittered semi-transparent dots)
+      if (widget.showDataPoints) {
+        vals.forEach(v => {
+          g.append('circle')
+            .attr('cx', cx + (jitterRng() - 0.5) * slotW * 0.5)
+            .attr('cy', yScale(v))
+            .attr('r', 2)
+            .attr('fill', color)
+            .attr('fill-opacity', 0.25)
+            .attr('stroke', 'none');
+        });
+      }
+    }
+
+    // Legend for colorField sub-groups
+    if (hasColorField && subGroups.length > 1) {
+      const legend = g.append('g').attr('transform', `translate(${W - subGroups.length * 80},${-10})`);
+      subGroups.forEach((sub, i) => {
+        const lg = legend.append('g').attr('transform', `translate(${i * 80},0)`);
+        lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', colors(sub));
+        lg.append('text').attr('x', 14).attr('y', 9).attr('font-size', 10)
+          .attr('fill', 'var(--chart-axis-color)').text(sub);
+      });
+    }
 
     // Axis labels
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
@@ -151,17 +256,22 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
   );
 }
 
-function computeStats(vals) {
+function computeStats(vals, iqrMultiplier = 1.5) {
   const sorted = [...vals].sort(d3.ascending);
   const q1 = d3.quantile(sorted, 0.25);
   const median = d3.quantile(sorted, 0.5);
   const q3 = d3.quantile(sorted, 0.75);
   const iqr = q3 - q1;
-  const whiskerLow = d3.max(sorted.filter(v => v >= q1 - 1.5 * iqr));
-  const whiskerHigh = d3.min(sorted.filter(v => v <= q3 + 1.5 * iqr));
+  const loBound = q1 - iqrMultiplier * iqr;
+  const hiBound = q3 + iqrMultiplier * iqr;
+  // Whiskers extend to the most extreme data point within bounds
+  const inRange = sorted.filter(v => v >= loBound && v <= hiBound);
+  const whiskerLow = inRange.length ? inRange[0] : q1;
+  const whiskerHigh = inRange.length ? inRange[inRange.length - 1] : q3;
+  const outliers = sorted.filter(v => v < loBound || v > hiBound);
   const mean = d3.mean(sorted);
   const std = d3.deviation(sorted);
-  return { q1, median, q3, iqr, whiskerLow: whiskerLow ?? q1, whiskerHigh: whiskerHigh ?? q3, mean, std };
+  return { q1, median, q3, iqr, whiskerLow, whiskerHigh, outliers, mean, std };
 }
 
 function kernelDensityEstimator(kernel, X) {
@@ -177,12 +287,23 @@ function epanechnikovKernel(bandwidth) {
   };
 }
 
-function ViolinTip({ cat, stats, widget, color, n }) {
+/** Simple seeded PRNG for deterministic jitter */
+function mulberry32(seed) {
+  let s = seed | 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function ViolinTip({ cat, sub, stats, widget, color, n, iqrMultiplier }) {
   return (
     <>
       <div className="chart-tooltip-title">
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
-        {cat}
+        {cat}{sub != null ? ` / ${sub}` : ''}
       </div>
       {[
         ['n', n.toLocaleString()],
@@ -192,6 +313,8 @@ function ViolinTip({ cat, stats, widget, color, n }) {
         ['Q1', formatValue(stats.q1)],
         ['Q3', formatValue(stats.q3)],
         ['IQR', formatValue(stats.iqr)],
+        ['IQR mult', String(iqrMultiplier)],
+        ['Outliers', String(stats.outliers.length)],
       ].map(([label, val]) => (
         <div key={label} className="chart-tooltip-row">
           <span className="tt-label">{label}</span>

@@ -2,7 +2,7 @@
  * Carousel — cycles through multiple chart slides on the same dataset.
  * widget.slides = [{ id, type, title, xField, yField, ... }]
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import BarChart from './BarChart';
 import LineChart from './LineChart';
 import ScatterPlot from './ScatterPlot';
@@ -25,6 +25,8 @@ const SLIDE_CHART_MAP = {
 export default function Carousel({ widget, data, onCrossFilter }) {
   const slides = widget.slides || [];
   const [idx, setIdx] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   // Clamp idx when slides change
   useEffect(() => {
@@ -41,6 +43,16 @@ export default function Carousel({ widget, data, onCrossFilter }) {
     return () => clearInterval(t);
   }, [widget.autoPlay, widget.autoPlayInterval, slides.length]);
 
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
   if (!slides.length) return <Placeholder text="No slides — add charts in the editor" />;
 
   const slide = slides[idx] || slides[0];
@@ -50,17 +62,6 @@ export default function Carousel({ widget, data, onCrossFilter }) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Slide title bar */}
-      {slide.title && (
-        <div style={{
-          padding: '3px 12px', fontSize: 11, fontWeight: 600,
-          color: 'var(--text-muted)', borderBottom: '1px solid var(--border)',
-          background: '#fafafa', flexShrink: 0,
-        }}>
-          {slide.title}
-        </div>
-      )}
-
       {/* Chart area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme, dimensionColors: widget.dimensionColors }} data={data} onCrossFilter={onCrossFilter} />
@@ -79,6 +80,44 @@ export default function Carousel({ widget, data, onCrossFilter }) {
                 title={s.title || `Slide ${i + 1}`}
               />
             ))}
+          </div>
+          {/* Menu icon button */}
+          <div style={{ position: 'relative' }} ref={menuRef}>
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              title="Jump to slide"
+              onClick={() => setMenuOpen(o => !o)}
+              style={{ fontSize: 13 }}
+            >☰</button>
+            {menuOpen && (
+              <div style={{
+                position: 'absolute', bottom: '100%', right: 0, marginBottom: 4,
+                background: 'var(--card-bg, #fff)', border: '1px solid var(--border)',
+                borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.12)',
+                maxHeight: 200, overflowY: 'auto', minWidth: 160, zIndex: 20,
+              }}>
+                {slides.map((s, i) => {
+                  const groupLabel = s.groupValue != null ? ` — ${s.groupValue}` : '';
+                  const label = s.title
+                    ? `${s.title}${groupLabel}`
+                    : `Slide ${i + 1}${groupLabel}`;
+                  return (
+                    <button
+                      key={s.id || i}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '6px 12px', border: 'none', background: i === idx ? 'var(--surface-hover, #f0f0f0)' : 'transparent',
+                        cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font)',
+                        color: 'var(--text)',
+                      }}
+                      onClick={() => { setIdx(i); setMenuOpen(false); }}
+                    >
+                      {i + 1}. {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button className="carousel-arrow" onClick={() => go(1)}>›</button>
         </div>

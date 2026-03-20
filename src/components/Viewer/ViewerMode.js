@@ -14,6 +14,14 @@ export default function ViewerMode() {
   const pages = dashboard.pages || [];
   const [pageIdx, setPageIdx] = useState(0);
 
+  // After page change, fire a window resize so WidthProvider + chart ResizeObservers re-measure
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pageIdx]);
+
   // 24×12 grid: compute rowHeight so 12 rows fit the visible canvas height
   const canvasRef = useRef(null);
   const [rowHeight, setRowHeight] = useState(30);
@@ -78,6 +86,7 @@ export default function ViewerMode() {
           </div>
         ) : (
           <ResponsiveGrid
+            key={currentPage.id}
             className="layout"
             layouts={layouts}
             breakpoints={{ lg: 1200, md: 996, sm: 768 }}

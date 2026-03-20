@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
@@ -37,25 +37,77 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
       key,
       value: aggregate(vals, widget.aggregation || 'sum'),
     }));
-    cats.sort((a, b) => b.value - a.value);
+    cats = sortAggregated(cats, {
+      sortBy: widget.sortBy || 'value',
+      sortOrder: widget.sortOrder || 'desc',
+      customOrder: widget.customSortOrder,
+    });
 
     const total = cats.reduce((s, c) => s + c.value, 0);
     if (total === 0) return;
 
-    // Allocate cells proportionally
-    let remaining = TOTAL_CELLS;
-    const cellCats = [];
-    cats.forEach((cat, i) => {
+    // Allocate cells using largest remainder method.
+    // Categories below 0.5% of total are grouped into "Others".
+    const threshold = 0.005; // 0.5%
+    let mainCats = [];
+    let othersValue = 0;
+    for (const cat of cats) {
       const pct = cat.value / total;
-      let cells = i === cats.length - 1 ? remaining : Math.round(pct * TOTAL_CELLS);
-      cells = Math.max(cells > 0 ? 1 : 0, Math.min(cells, remaining));
-      remaining -= cells;
-      cellCats.push({ ...cat, cells, pct });
-    });
+      if (pct >= threshold) {
+        mainCats.push({ ...cat, pct });
+      } else {
+        othersValue += cat.value;
+      }
+    }
+    if (othersValue > 0) {
+      mainCats.push({ key: 'Others', value: othersValue, pct: othersValue / total });
+    }
+    // Re-sort descending after adding Others
+    mainCats.sort((a, b) => b.value - a.value);
 
-    // Build flat cell array
+    // Largest remainder method: floor each, then distribute leftover to biggest remainders
+    const cellCats = mainCats.map(cat => {
+      const exact = cat.pct * TOTAL_CELLS;
+      return { ...cat, cells: Math.floor(exact), remainder: exact - Math.floor(exact) };
+    });
+    let allocated = cellCats.reduce((s, c) => s + c.cells, 0);
+    let leftover = TOTAL_CELLS - allocated;
+    // Sort indices by remainder descending to distribute leftover
+    const indices = cellCats.map((_, i) => i);
+    indices.sort((a, b) => cellCats[b].remainder - cellCats[a].remainder);
+    for (let i = 0; i < leftover; i++) {
+      cellCats[indices[i]].cells += 1;
+    }
+    // Categories that still got 0 cells after distribution get folded into Others
+    let extraOthers = 0;
+    const finalCats = [];
+    for (const cat of cellCats) {
+      if (cat.cells === 0) {
+        extraOthers += cat.value;
+      } else {
+        finalCats.push(cat);
+      }
+    }
+    if (extraOthers > 0) {
+      const existing = finalCats.find(c => c.key === 'Others');
+      if (existing) {
+        existing.value += extraOthers;
+        existing.pct = existing.value / total;
+      } else {
+        // Steal one cell from the category with the largest remainder that has >1 cell
+        const donor = finalCats.filter(c => c.cells > 1).sort((a, b) => b.remainder - a.remainder)[0] || finalCats[finalCats.length - 1];
+        donor.cells -= 1;
+        finalCats.push({ key: 'Others', value: extraOthers, pct: extraOthers / total, cells: 1, remainder: 0 });
+      }
+    }
+    // Re-sort finalCats descending for fill order
+    finalCats.sort((a, b) => b.value - a.value);
+    // Clean up remainder property
+    finalCats.forEach(c => delete c.remainder);
+
+    // Build flat cell array (largest category first)
     const cellArray = [];
-    cellCats.forEach(cat => {
+    finalCats.forEach(cat => {
       for (let i = 0; i < cat.cells; i++) {
         cellArray.push(cat);
       }
@@ -73,22 +125,22 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
           if (!gMap.has(key)) gMap.set(key, []);
           gMap.get(key).push(val);
         }
-        colorVals = cellCats.map(c => {
+        colorVals = finalCats.map(c => {
           const vals = gMap.get(c.key) || [0];
           return aggregate(vals, widget.aggregation || 'sum');
         });
       } else {
-        colorVals = cellCats.map(c => c.value);
+        colorVals = finalCats.map(c => c.value);
       }
       const ext = [Math.min(...colorVals), Math.max(...colorVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
       const seq = getSequentialScale(gradKey, ext[0], ext[1]);
       colors = d => {
-        const idx = cellCats.findIndex(c => c.key === d);
+        const idx = finalCats.findIndex(c => c.key === d);
         return seq(colorVals[idx] ?? 0);
       };
     } else {
-      colors = getColorScaleWithOverrides(widget.colorScheme, cellCats.map(c => c.key), widget.dimensionColors);
+      colors = getColorScaleWithOverrides(widget.colorScheme, finalCats.map(c => c.key), widget.dimensionColors);
     }
     const opacity = widget.opacity ?? 1;
 
@@ -109,7 +161,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
 
     cellArray.forEach((cat, i) => {
       const col = i % cols;
-      const row = rows - 1 - Math.floor(i / cols); // bottom-up fill
+      const row = Math.floor(i / cols); // top-to-bottom, left-to-right fill
       const x = col * cellSize + gap / 2;
       const y = row * cellSize + gap / 2;
 
@@ -131,7 +183,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
     // Legend
     if (widget.showLegend) {
       const leg = svg.append('g').attr('transform', `translate(${w - m.right + 10},${m.top + 10})`);
-      cellCats.filter(c => c.cells > 0).slice(0, 12).forEach((cat, i) => {
+      finalCats.filter(c => c.cells > 0).slice(0, 12).forEach((cat, i) => {
         const row = leg.append('g').attr('transform', `translate(0,${i * 20})`);
         row.append('rect').attr('width', 12).attr('height', 12).attr('rx', 3).attr('fill', colors(cat.key));
         row.append('text').attr('x', 16).attr('y', 10)

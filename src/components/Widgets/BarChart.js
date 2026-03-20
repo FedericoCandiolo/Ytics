@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
@@ -41,6 +41,64 @@ export default function BarChart({ widget, data, onCrossFilter }) {
   );
 }
 
+// ── Value scale helper (linear or log) ──────────────────────────────────────
+function makeValueScale(widget, domain, range) {
+  if (widget.useLogScale) {
+    // Log scale: clamp domain minimum to 1 to avoid log(0)
+    const [lo, hi] = domain;
+    return d3.scaleLog()
+      .domain([Math.max(1, lo), Math.max(1, hi)])
+      .range(range)
+      .clamp(true);
+  }
+  return d3.scaleLinear().domain(domain).range(range).nice();
+}
+
+// Safe value accessor for log scale — ensures minimum of 1 for log
+function safeLogVal(widget, v) {
+  return widget.useLogScale ? Math.max(1, v) : v;
+}
+
+// ── Reference line drawing ──────────────────────────────────────────────────
+function drawReferenceLine(g, widget, scale, W, H, isH) {
+  if (!widget.referenceLine || widget.referenceLine.value == null) return;
+  const val = +widget.referenceLine.value;
+  const label = widget.referenceLine.label || '';
+
+  if (isH) {
+    const xPos = scale(safeLogVal(widget, val));
+    if (xPos < 0 || xPos > W) return;
+    g.append('line')
+      .attr('x1', xPos).attr('x2', xPos)
+      .attr('y1', 0).attr('y2', H)
+      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '6,4').attr('opacity', 0.8);
+    if (label) {
+      g.append('text')
+        .attr('x', xPos + 4).attr('y', 10)
+        .attr('font-size', 10).attr('fill', 'var(--text-muted)')
+        .attr('font-family', 'var(--font)')
+        .text(label);
+    }
+  } else {
+    const yPos = scale(safeLogVal(widget, val));
+    if (yPos < 0 || yPos > H) return;
+    g.append('line')
+      .attr('x1', 0).attr('x2', W)
+      .attr('y1', yPos).attr('y2', yPos)
+      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '6,4').attr('opacity', 0.8);
+    if (label) {
+      g.append('text')
+        .attr('x', W - 4).attr('y', yPos - 5)
+        .attr('font-size', 10).attr('fill', 'var(--text-muted)')
+        .attr('font-family', 'var(--font)')
+        .attr('text-anchor', 'end')
+        .text(label);
+    }
+  }
+}
+
 // ── Simple bar (no groupField) ─────────────────────────────────────────────────
 function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
@@ -60,10 +118,33 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
     key, value: aggregate(vals, widget.aggregation || 'sum'), count: vals.length,
   }));
 
-  if (widget.sortBy === 'label') {
-    pts.sort((a, b) => widget.sortOrder === 'desc' ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key));
-  } else {
-    pts.sort((a, b) => widget.sortOrder === 'desc' ? b.value - a.value : a.value - b.value);
+  // Sort using sortAggregated
+  pts = sortAggregated(pts, {
+    sortBy: widget.sortBy || 'value',
+    sortOrder: widget.sortOrder || 'desc',
+    customOrder: widget.customSortOrder,
+  });
+
+  // Pareto / Others grouping
+  if (widget.paretoEnabled) {
+    // For pareto methods that work on sorted-desc data, sort by value desc first
+    const sortedDesc = [...pts].sort((a, b) => b.value - a.value);
+    const grouped = applyParetoGrouping(sortedDesc, {
+      method: widget.paretoMethod || 'topN',
+      topN: widget.paretoTopN ?? 10,
+      threshold: widget.paretoThreshold ?? 0.8,
+      othersLabel: widget.othersLabel || 'Others',
+    });
+    // Re-apply user's chosen sort (but keep Others at end)
+    const othersLabel = widget.othersLabel || 'Others';
+    const othersItem = grouped.find(d => d.key === othersLabel);
+    const nonOthers = grouped.filter(d => d.key !== othersLabel);
+    pts = sortAggregated(nonOthers, {
+      sortBy: widget.sortBy || 'value',
+      sortOrder: widget.sortOrder || 'desc',
+      customOrder: widget.customSortOrder,
+    });
+    if (othersItem) pts.push(othersItem);
   }
 
   const domain = pts.map(d => d.key);
@@ -107,7 +188,8 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
 
   if (isH) {
     const yScale = d3.scaleBand().domain(pts.map(d => d.key)).range([0, H]).padding(0.22);
-    const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, W]).nice();
+    const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
+    if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
@@ -120,12 +202,14 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .on('mouseleave', (ev) => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTooltip(); })
       .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.key }); } : null)
       .style('cursor', onCrossFilter ? 'pointer' : null)
-      .transition().duration(500).ease(d3.easeCubicOut).attr('width', d => xScale(d.value));
+      .transition().duration(500).ease(d3.easeCubicOut).attr('width', d => xScale(safeLogVal(widget, d.value)));
 
+    drawReferenceLine(g, widget, xScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pts.map(d => d.key)).range([0, W]).padding(0.22);
-    const yScale = d3.scaleLinear().domain([0, maxVal]).range([H, 0]).nice();
+    const yScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [H, 0]);
+    if (!widget.useLogScale) yScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
@@ -139,8 +223,11 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .on('mouseleave', (ev) => { d3.select(ev.currentTarget).attr('opacity', opacity); hideTooltip(); })
       .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.key }); } : null)
       .style('cursor', onCrossFilter ? 'pointer' : null)
-      .transition().duration(500).ease(d3.easeCubicOut).attr('y', d => yScale(d.value)).attr('height', d => H - yScale(d.value));
+      .transition().duration(500).ease(d3.easeCubicOut)
+      .attr('y', d => yScale(safeLogVal(widget, d.value)))
+      .attr('height', d => H - yScale(safeLogVal(widget, d.value)));
 
+    drawReferenceLine(g, widget, yScale, W, H, false);
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }
@@ -170,7 +257,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
   const xKeys = [...new Set([...pivotMap.values()].map(v => v.xKey))];
 
   // Build pivot table
-  const pivotData = xKeys.map(xKey => {
+  let pivotData = xKeys.map(xKey => {
     const row = { __x: xKey };
     for (const gKey of groupKeys) {
       const entry = pivotMap.get(`${xKey}|||${gKey}`);
@@ -179,15 +266,60 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
     return row;
   });
 
-  // Sort
-  if (widget.sortBy === 'label') {
-    pivotData.sort((a, b) => widget.sortOrder === 'desc' ? b.__x.localeCompare(a.__x) : a.__x.localeCompare(b.__x));
-  } else {
-    pivotData.sort((a, b) => {
-      const sumA = groupKeys.reduce((s, k) => s + (a[k] || 0), 0);
-      const sumB = groupKeys.reduce((s, k) => s + (b[k] || 0), 0);
-      return widget.sortOrder === 'desc' ? sumB - sumA : sumA - sumB;
+  // Sort using sortAggregated — convert to {key, value} format for sorting, then rebuild
+  const pivotForSort = pivotData.map(d => ({
+    key: d.__x,
+    value: groupKeys.reduce((s, k) => s + (d[k] || 0), 0),
+  }));
+  const sortedKeys = sortAggregated(pivotForSort, {
+    sortBy: widget.sortBy || 'value',
+    sortOrder: widget.sortOrder || 'desc',
+    customOrder: widget.customSortOrder,
+  }).map(d => d.key);
+
+  // Pareto grouping on the x-axis categories (based on total value per category)
+  if (widget.paretoEnabled) {
+    const forPareto = pivotForSort.sort((a, b) => b.value - a.value);
+    const grouped = applyParetoGrouping(forPareto, {
+      method: widget.paretoMethod || 'topN',
+      topN: widget.paretoTopN ?? 10,
+      threshold: widget.paretoThreshold ?? 0.8,
+      othersLabel: widget.othersLabel || 'Others',
     });
+    const othersLabel = widget.othersLabel || 'Others';
+    const keptKeys = new Set(grouped.filter(d => d.key !== othersLabel).map(d => d.key));
+    const hasOthers = grouped.some(d => d.key === othersLabel);
+
+    // Rebuild pivot data with Others row if needed
+    const keptPivot = pivotData.filter(d => keptKeys.has(d.__x));
+    if (hasOthers) {
+      const othersRow = { __x: othersLabel };
+      const droppedPivot = pivotData.filter(d => !keptKeys.has(d.__x));
+      for (const gKey of groupKeys) {
+        othersRow[gKey] = droppedPivot.reduce((s, d) => s + (d[gKey] || 0), 0);
+      }
+      keptPivot.push(othersRow);
+    }
+    pivotData = keptPivot;
+
+    // Re-sort kept items, Others at end
+    const nonOthersForSort = pivotData
+      .filter(d => d.__x !== othersLabel)
+      .map(d => ({ key: d.__x, value: groupKeys.reduce((s, k) => s + (d[k] || 0), 0) }));
+    const reSorted = sortAggregated(nonOthersForSort, {
+      sortBy: widget.sortBy || 'value',
+      sortOrder: widget.sortOrder || 'desc',
+      customOrder: widget.customSortOrder,
+    }).map(d => d.key);
+    if (hasOthers) reSorted.push(othersLabel);
+
+    // Reorder pivotData to match
+    const orderMap = new Map(reSorted.map((k, i) => [k, i]));
+    pivotData.sort((a, b) => (orderMap.get(a.__x) ?? Infinity) - (orderMap.get(b.__x) ?? Infinity));
+  } else {
+    // Apply sort order from sortAggregated
+    const orderMap = new Map(sortedKeys.map((k, i) => [k, i]));
+    pivotData.sort((a, b) => (orderMap.get(a.__x) ?? Infinity) - (orderMap.get(b.__x) ?? Infinity));
   }
 
   const colorScale = getOrdinalWithOverrides(widget.colorScheme, groupKeys, widget.dimensionColors);
@@ -223,14 +355,15 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
 
   if (isH) {
     const yScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, H]).padding(0.22);
-    const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, W]).nice();
+    const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
+    if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
     stacked.forEach(layer => {
       g.selectAll(`.bar-${layer.key}`).data(layer).join('rect')
-        .attr('y', d => yScale(d.data.__x)).attr('x', d => xScale(d[0]))
+        .attr('y', d => yScale(d.data.__x)).attr('x', d => xScale(safeLogVal(widget, d[0])))
         .attr('height', yScale.bandwidth()).attr('width', 0)
         .attr('fill', colorScale(layer.key)).attr('opacity', opacity).attr('rx', 2)
         .on('mouseover', (ev, d) => {
@@ -241,12 +374,15 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.data.__x }); } : null)
         .style('cursor', onCrossFilter ? 'pointer' : null)
         .transition().duration(500).ease(d3.easeCubicOut)
-        .attr('width', d => xScale(d[1]) - xScale(d[0]));
+        .attr('width', d => xScale(safeLogVal(widget, d[1])) - xScale(safeLogVal(widget, d[0])));
     });
+
+    drawReferenceLine(g, widget, xScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, W]).padding(0.22);
-    const yScale = d3.scaleLinear().domain([0, maxVal]).range([H, 0]).nice();
+    const yScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [H, 0]);
+    if (!widget.useLogScale) yScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
@@ -265,8 +401,11 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: d.data.__x }); } : null)
         .style('cursor', onCrossFilter ? 'pointer' : null)
         .transition().duration(500).ease(d3.easeCubicOut)
-        .attr('y', d => yScale(d[1])).attr('height', d => yScale(d[0]) - yScale(d[1]));
+        .attr('y', d => yScale(safeLogVal(widget, d[1])))
+        .attr('height', d => yScale(safeLogVal(widget, d[0])) - yScale(safeLogVal(widget, d[1])));
     });
+
+    drawReferenceLine(g, widget, yScale, W, H, false);
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }
@@ -278,7 +417,8 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
   if (isH) {
     const yScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, H]).padding(0.15);
     const yInner = d3.scaleBand().domain(groupKeys).range([0, yScale.bandwidth()]).padding(0.05);
-    const xScale = d3.scaleLinear().domain([0, maxVal]).range([0, W]).nice();
+    const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
+    if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
@@ -296,14 +436,17 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           .on('mouseleave', hideTooltip)
           .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: row.__x }); } : null)
           .style('cursor', onCrossFilter ? 'pointer' : null)
-          .transition().duration(500).ease(d3.easeCubicOut).attr('width', xScale(row[gk] || 0));
+          .transition().duration(500).ease(d3.easeCubicOut).attr('width', xScale(safeLogVal(widget, row[gk] || 0)));
       });
     });
+
+    drawReferenceLine(g, widget, xScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, W]).padding(0.15);
     const xInner = d3.scaleBand().domain(groupKeys).range([0, xScale.bandwidth()]).padding(0.05);
-    const yScale = d3.scaleLinear().domain([0, maxVal]).range([H, 0]).nice();
+    const yScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [H, 0]);
+    if (!widget.useLogScale) yScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
@@ -323,9 +466,12 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: row.__x }); } : null)
           .style('cursor', onCrossFilter ? 'pointer' : null)
           .transition().duration(500).ease(d3.easeCubicOut)
-          .attr('y', yScale(row[gk] || 0)).attr('height', H - yScale(row[gk] || 0));
+          .attr('y', yScale(safeLogVal(widget, row[gk] || 0)))
+          .attr('height', H - yScale(safeLogVal(widget, row[gk] || 0)));
       });
     });
+
+    drawReferenceLine(g, widget, yScale, W, H, false);
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }

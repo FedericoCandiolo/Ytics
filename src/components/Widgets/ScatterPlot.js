@@ -1,9 +1,130 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue } from '../../utils/dataUtils';
+import { formatValue, linearRegression } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+
+/* ── Quadratic (degree-2 polynomial) least-squares fit ──────────────────────
+   Solves the normal equations for y = a*x² + b*x + c via a 3×3 system.
+   Returns { coeffs: [a, b, c], r2 } */
+function polynomialRegression2(points) {
+  const n = points.length;
+  if (n < 3) return null;
+
+  let s0 = n, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+  let t0 = 0, t1 = 0, t2 = 0;
+  for (const { x, y } of points) {
+    const x2 = x * x;
+    s1 += x; s2 += x2; s3 += x2 * x; s4 += x2 * x2;
+    t0 += y; t1 += x * y; t2 += x2 * y;
+  }
+
+  // Solve 3×3 via Cramer's rule:
+  // | s4 s3 s2 | |a|   |t2|
+  // | s3 s2 s1 | |b| = |t1|
+  // | s2 s1 s0 | |c|   |t0|
+  const M = [
+    [s4, s3, s2],
+    [s3, s2, s1],
+    [s2, s1, s0],
+  ];
+  const det3 = (m) =>
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+    m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+    m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+  const D = det3(M);
+  if (Math.abs(D) < 1e-12) return null;
+
+  const replaceCol = (m, col, v) => m.map((row, i) => row.map((c, j) => (j === col ? v[i] : c)));
+  const rhs = [t2, t1, t0];
+  const a = det3(replaceCol(M, 0, rhs)) / D;
+  const b = det3(replaceCol(M, 1, rhs)) / D;
+  const c = det3(replaceCol(M, 2, rhs)) / D;
+
+  const meanY = t0 / n;
+  let ssTot = 0, ssRes = 0;
+  for (const { x, y } of points) {
+    ssTot += (y - meanY) ** 2;
+    ssRes += (y - (a * x * x + b * x + c)) ** 2;
+  }
+  const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+
+  return { coeffs: [a, b, c], r2 };
+}
+
+/* ── Draw a single regression line/curve into the provided d3 group ──────── */
+function drawRegression(g, pts, xScale, yScale, W, H, regressionType, strokeColor, showLabel) {
+  if (pts.length < 2) return;
+  const points = pts.map(d => ({ x: d.x, y: d.y }));
+  const [x0, x1] = xScale.domain();
+
+  if (regressionType === 'polynomial') {
+    const result = polynomialRegression2(points);
+    if (!result) return;
+    const { coeffs: [a, b, c], r2 } = result;
+
+    // Generate curve as a path with ~60 sample points
+    const step = (x1 - x0) / 60;
+    const curvePoints = [];
+    for (let x = x0; x <= x1 + step * 0.5; x += step) {
+      const y = a * x * x + b * x + c;
+      curvePoints.push([xScale(x), yScale(y)]);
+    }
+    const line = d3.line().curve(d3.curveBasis);
+    g.append('path')
+      .attr('d', line(curvePoints))
+      .attr('fill', 'none')
+      .attr('stroke', strokeColor)
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '6,4')
+      .attr('opacity', 0.55)
+      .attr('clip-path', 'url(#scatter-clip)');
+
+    if (showLabel) {
+      // Place R² label at the midpoint of the curve
+      const midX = (x0 + x1) / 2;
+      const midY = a * midX * midX + b * midX + c;
+      g.append('text')
+        .attr('x', xScale(midX) + 4)
+        .attr('y', yScale(midY) - 6)
+        .attr('font-size', 10)
+        .attr('font-family', 'var(--font)')
+        .attr('fill', strokeColor)
+        .attr('opacity', 0.8)
+        .text(`R²=${r2.toFixed(3)}`);
+    }
+  } else {
+    // Linear (default)
+    const { slope, intercept, r2 } = linearRegression(points);
+    const y0 = slope * x0 + intercept;
+    const y1v = slope * x1 + intercept;
+
+    g.append('line')
+      .attr('x1', xScale(x0)).attr('y1', yScale(y0))
+      .attr('x2', xScale(x1)).attr('y2', yScale(y1v))
+      .attr('stroke', strokeColor)
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '6,4')
+      .attr('opacity', 0.55)
+      .attr('clip-path', 'url(#scatter-clip)');
+
+    if (showLabel) {
+      // Place R² near the right end of the line
+      const labelX = x0 + (x1 - x0) * 0.75;
+      const labelY = slope * labelX + intercept;
+      g.append('text')
+        .attr('x', xScale(labelX) + 4)
+        .attr('y', yScale(labelY) - 6)
+        .attr('font-size', 10)
+        .attr('font-family', 'var(--font)')
+        .attr('fill', strokeColor)
+        .attr('opacity', 0.8)
+        .text(`R²=${r2.toFixed(3)}`);
+    }
+  }
+}
 
 export default function ScatterPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -27,6 +148,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       x: +d[widget.xField], y: +d[widget.yField],
       color: widget.colorField ? String(d[widget.colorField] ?? '') : null,
       size: widget.sizeField ? +d[widget.sizeField] || 0 : null,
+      label: widget.labelField ? String(d[widget.labelField] ?? '') : null,
       raw: d,
     })).filter(d => !isNaN(d.x) && !isNaN(d.y));
 
@@ -63,6 +185,11 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     svg.attr('width', w).attr('height', h);
     const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
+    // Clip path so regression lines don't overflow the chart area
+    svg.append('defs').append('clipPath').attr('id', 'scatter-clip')
+      .append('rect').attr('width', W).attr('height', H);
+    g.attr('clip-path', null); // don't clip the whole group — only regression lines
+
     if (widget.showGrid) {
       g.append('g').call(d3.axisLeft(yScale).tickSize(-W).tickFormat(''))
         .call(a => { a.select('.domain').remove(); a.selectAll('.tick line').attr('stroke', 'var(--chart-grid-color)').attr('stroke-dasharray', '3,3'); });
@@ -73,6 +200,25 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
 
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(6).tickFormat(fmtTick)).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtTick)).call(styledAxis);
+
+    // ── Regression lines ─────────────────────────────────────────────────
+    const regressionType = widget.regressionType || 'linear';
+    if (widget.showRegression) {
+      if (widget.colorField && categories.length > 0) {
+        // Draw a separate regression line per color group
+        for (const cat of categories) {
+          const groupPts = pts.filter(d => d.color === cat);
+          if (groupPts.length >= 2) {
+            const color = colors(cat);
+            drawRegression(g, groupPts, xScale, yScale, W, H, regressionType, color, true);
+          }
+        }
+      } else {
+        // Single regression for all points
+        const color = gradientFn ? '#888' : 'var(--chart-axis-color)';
+        drawRegression(g, pts, xScale, yScale, W, H, regressionType, color, true);
+      }
+    }
 
     const dots = g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
       .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
@@ -99,22 +245,6 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       })
       .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d[widget.colorField || widget.xField] }); } : null)
       .style('cursor', onCrossFilter ? 'pointer' : null);
-
-    // Regression line (always shown)
-    const xVals = pts.map(d => d.x), yVals = pts.map(d => d.y);
-    const xMean = d3.mean(xVals), yMean = d3.mean(yVals);
-    const num = d3.sum(pts, d => (d.x - xMean) * (d.y - yMean));
-    const den = d3.sum(pts, d => (d.x - xMean) ** 2);
-    if (den !== 0) {
-      const slope = num / den;
-      const intercept = yMean - slope * xMean;
-      const [x0, x1] = xScale.domain();
-      g.append('line')
-        .attr('x1', xScale(x0)).attr('y1', yScale(slope * x0 + intercept))
-        .attr('x2', xScale(x1)).attr('y2', yScale(slope * x1 + intercept))
-        .attr('stroke', 'var(--chart-axis-color)').attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', '6,4').attr('opacity', 0.5);
-    }
 
     // Axis labels
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
@@ -146,14 +276,22 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
 }
 
 function ScatterTip({ d, widget, color }) {
+  const title = d.label || d.color || 'Data point';
+  const showColorRow = d.label && d.color && d.label !== d.color;
   return (
     <>
       <div className="chart-tooltip-title">
-        {widget.colorField
-          ? <><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, marginRight: 6, verticalAlign: 'middle' }} />{d.color}</>
-          : 'Data point'
+        {(d.label || widget.colorField)
+          ? <><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, marginRight: 6, verticalAlign: 'middle' }} />{title}</>
+          : title
         }
       </div>
+      {showColorRow && (
+        <div className="chart-tooltip-row">
+          <span className="tt-label">{widget.colorField}</span>
+          <span className="tt-value">{d.color}</span>
+        </div>
+      )}
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.xField}</span>
         <span className="tt-value">{formatValue(d.x)}</span>

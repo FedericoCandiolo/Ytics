@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { getColumnInfo } from '../../utils/dataUtils';
 import { getSequentialScale, contrastText } from '../../utils/colorUtils';
 
@@ -89,10 +89,31 @@ function getCellStyle(fmtMap, colName, cellValue) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const ROW_HEIGHT = 29; // approximate height of a data-table row (td padding + font)
+const HEADER_HEIGHT = 34; // approximate height of sticky thead
+const FOOTER_HEIGHT = 36; // bottom bar height
+
 export default function DataTable({ widget, data, onCrossFilter }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
-  const PAGE_SIZE = 20;
+  const [pageSize, setPageSize] = useState(20);
+  const containerRef = useRef(null);
+
+  // Dynamically compute page size based on available height
+  const measure = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const available = el.clientHeight - HEADER_HEIGHT - FOOTER_HEIGHT;
+    const fits = Math.max(1, Math.floor(available / ROW_HEIGHT));
+    setPageSize(fits);
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [measure]);
 
   const fmtMap = useMemo(
     () => buildFormattingMap(widget.conditionalFormatting, data),
@@ -110,7 +131,10 @@ export default function DataTable({ widget, data, onCrossFilter }) {
     );
   }
 
-  const cols = getColumnInfo(data);
+  const allCols = getColumnInfo(data);
+  const cols = Array.isArray(widget.visibleColumns)
+    ? allCols.filter(c => widget.visibleColumns.includes(c.name))
+    : allCols;
   let rows = [...data];
 
   if (sort.field) {
@@ -126,8 +150,9 @@ export default function DataTable({ widget, data, onCrossFilter }) {
     });
   }
 
-  const totalPages = Math.ceil(rows.length / PAGE_SIZE);
-  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(rows.length / pageSize);
+  const safePage = Math.min(page, totalPages - 1);
+  const pageRows = rows.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   const toggleSort = (field) => {
     setSort(s => s.field === field ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: 'asc' });
@@ -135,8 +160,8 @@ export default function DataTable({ widget, data, onCrossFilter }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'auto' }}>
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -191,11 +216,11 @@ export default function DataTable({ widget, data, onCrossFilter }) {
           >Export CSV</button>
           {totalPages > 1 && (
             <>
-              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(0)}>«</button>
-              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹</button>
-              <span>Page {page + 1} / {totalPages}</span>
-              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
-              <button className="btn btn-ghost btn-sm btn-icon" disabled={page === totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={safePage === 0} onClick={() => setPage(0)}>«</button>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={safePage === 0} onClick={() => setPage(p => p - 1)}>‹</button>
+              <span>Page {safePage + 1} / {totalPages}</span>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={safePage === totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
+              <button className="btn btn-ghost btn-sm btn-icon" disabled={safePage === totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
             </>
           )}
         </div>

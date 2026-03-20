@@ -5,7 +5,7 @@
  */
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
@@ -44,7 +44,15 @@ export default function Treemap({ widget, data, onCrossFilter }) {
         if (!flat.has(key)) flat.set(key, []);
         flat.get(key).push(val);
       }
-      root = d3.hierarchy({ name: 'root', children: Array.from(flat, ([name, vals]) => ({ name, value: aggregate(vals, agg) })) })
+      let pts = Array.from(flat, ([name, vals]) => ({ key: name, value: aggregate(vals, agg) }));
+      if (widget.sortBy && widget.sortBy !== 'original') {
+        pts = sortAggregated(pts, {
+          sortBy: widget.sortBy || 'original',
+          sortOrder: widget.sortOrder || 'asc',
+          customOrder: widget.customSortOrder,
+        });
+      }
+      root = d3.hierarchy({ name: 'root', children: pts.map(p => ({ name: p.key, value: p.value })) })
         .sum(d => d.value).sort((a, b) => b.value - a.value);
     }
 

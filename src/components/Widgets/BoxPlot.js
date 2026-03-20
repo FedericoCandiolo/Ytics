@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue } from '../../utils/dataUtils';
+import { formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
@@ -18,47 +18,83 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
       return;
     }
 
+    const iqrMultiplier = widget.iqrMultiplier ?? 1.5;
+    const hasColorField = !!widget.colorField;
+
     const m = { top: 14, right: 18, bottom: 70, left: 58 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0) return;
 
-    // Group by category
+    // Group by category (and optionally by colorField)
     const groups = new Map();
+    const subGroupSet = new Set();
     for (const row of data) {
       const key = String(row[widget.xField] ?? '(blank)');
       const val = +row[widget.yField];
-      if (!isNaN(val)) {
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(val);
+      if (isNaN(val)) continue;
+      if (hasColorField) {
+        const sub = String(row[widget.colorField] ?? '(blank)');
+        subGroupSet.add(sub);
+        const compKey = `${key}||${sub}`;
+        if (!groups.has(compKey)) groups.set(compKey, { cat: key, sub, vals: [], rows: [] });
+        groups.get(compKey).vals.push(val);
+        groups.get(compKey).rows.push(row);
+      } else {
+        if (!groups.has(key)) groups.set(key, { cat: key, sub: null, vals: [], rows: [] });
+        groups.get(key).vals.push(val);
+        groups.get(key).rows.push(row);
       }
     }
 
-    const categories = [...groups.keys()];
-    const stats = categories.map(cat => {
-      const vals = groups.get(cat).sort((a, b) => a - b);
+    // Sort categories if sortBy is set
+    let categories = [...new Set([...groups.values()].map(g => g.cat))];
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      // Build pseudo-points with median as value for sort
+      const catPts = categories.map(cat => {
+        const vals = [...groups.values()].filter(g => g.cat === cat).flatMap(g => g.vals);
+        return { key: cat, value: d3.median(vals) || 0 };
+      });
+      categories = sortAggregated(catPts, {
+        sortBy: widget.sortBy, sortOrder: widget.sortOrder || 'asc',
+        customOrder: widget.customSortOrder,
+      }).map(d => d.key);
+    }
+    const subGroups = hasColorField ? [...subGroupSet] : [null];
+
+    // Compute stats for each group
+    const statsMap = new Map();
+    for (const [key, grp] of groups) {
+      // Sort vals and rows together so indices stay aligned
+      const indexed = grp.vals.map((v, i) => ({ v, row: grp.rows[i] }));
+      indexed.sort((a, b) => a.v - b.v);
+      const vals = indexed.map(d => d.v);
+      const rows = indexed.map(d => d.row);
       const n = vals.length;
+      if (n === 0) continue;
       const q1 = quantile(vals, 0.25);
       const median = quantile(vals, 0.5);
       const q3 = quantile(vals, 0.75);
       const iqr = q3 - q1;
-      const whiskerLo = Math.max(d3.min(vals), q1 - 1.5 * iqr);
-      const whiskerHi = Math.min(d3.max(vals), q3 + 1.5 * iqr);
+      const whiskerLo = Math.max(d3.min(vals), q1 - iqrMultiplier * iqr);
+      const whiskerHi = Math.min(d3.max(vals), q3 + iqrMultiplier * iqr);
       const outliers = vals.filter(v => v < whiskerLo || v > whiskerHi);
       const mean = d3.mean(vals);
-      return { cat, vals, n, q1, median, q3, iqr, whiskerLo, whiskerHi, outliers, mean };
-    });
+      statsMap.set(key, { cat: grp.cat, sub: grp.sub, vals, rows, n, q1, median, q3, iqr, whiskerLo, whiskerHi, outliers, mean });
+    }
 
+    // Color scale
     let colors;
-    if (widget.colorMode === 'gradient') {
-      const medians = stats.map(s => s.median);
+    const colorDomain = hasColorField ? subGroups : categories;
+    if (widget.colorMode === 'gradient' && !hasColorField) {
+      const medians = categories.map(cat => statsMap.get(cat)?.median ?? 0);
       const ext = [Math.min(...medians), Math.max(...medians)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
       const seq = getSequentialScale(gradKey, ext[0], ext[1]);
-      const medianMap = new Map(stats.map(s => [s.cat, s.median]));
+      const medianMap = new Map(categories.map((cat, i) => [cat, medians[i]]));
       colors = d => seq(medianMap.get(d) ?? 0);
     } else {
-      colors = getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors);
+      colors = getColorScaleWithOverrides(widget.colorScheme, colorDomain, widget.dimensionColors);
     }
     const opacity = widget.opacity ?? 1;
 
@@ -69,6 +105,11 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
 
     const xScale = d3.scaleBand().domain(categories).range([0, W]).padding(0.3);
     const yScale = d3.scaleLinear().domain([yMin - pad, yMax + pad]).range([H, 0]).nice();
+
+    // Sub-group scale within each category band
+    const subScale = hasColorField
+      ? d3.scaleBand().domain(subGroups).range([0, xScale.bandwidth()]).padding(0.08)
+      : null;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
@@ -86,13 +127,26 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
     g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(formatValue)).call(styledAxis);
 
     const bw = xScale.bandwidth();
-    const boxW = Math.min(bw, 60);
-    const offset = (bw - boxW) / 2;
 
-    stats.forEach(s => {
-      const cx = xScale(s.cat) + bw / 2;
-      const x0 = xScale(s.cat) + offset;
-      const color = colors(s.cat);
+    // Seeded pseudo-random for consistent jitter
+    const jitterRng = mulberry32(42);
+
+    for (const [, s] of statsMap) {
+      const catX = xScale(s.cat);
+      let slotX, slotW;
+      if (hasColorField) {
+        slotX = catX + subScale(s.sub);
+        slotW = subScale.bandwidth();
+      } else {
+        slotX = catX;
+        slotW = bw;
+      }
+
+      const boxW = Math.min(slotW, 60);
+      const offset = (slotW - boxW) / 2;
+      const cx = slotX + slotW / 2;
+      const x0 = slotX + offset;
+      const color = hasColorField ? colors(s.sub) : colors(s.cat);
 
       // Whisker lines
       g.append('line').attr('x1', cx).attr('x2', cx)
@@ -128,21 +182,57 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
         .attr('d', `M${cx},${my - 4} L${cx + 4},${my} L${cx},${my + 4} L${cx - 4},${my} Z`)
         .attr('fill', '#fff').attr('stroke', color).attr('stroke-width', 1.5);
 
-      // Outliers
+      // Outliers (always drawn — points outside whisker bounds)
       s.outliers.forEach(v => {
         g.append('circle')
-          .attr('cx', cx).attr('cy', yScale(v))
+          .attr('cx', cx + (jitterRng() - 0.5) * boxW * 0.4)
+          .attr('cy', yScale(v))
           .attr('r', 3).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
       });
 
+      // Show data points (all values as jittered semi-transparent dots, hoverable)
+      if (widget.showDataPoints) {
+        s.vals.forEach((v, i) => {
+          const row = s.rows[i];
+          const circle = g.append('circle')
+            .attr('cx', cx + (jitterRng() - 0.5) * boxW * 0.6)
+            .attr('cy', yScale(v))
+            .attr('r', 2.5)
+            .attr('fill', color)
+            .attr('fill-opacity', 0.3)
+            .attr('stroke', 'none');
+          circle
+            .on('mouseover', ev => {
+              circle.attr('r', 4.5).attr('fill-opacity', 0.8).attr('stroke', color).attr('stroke-width', 1.5);
+              showTooltip(ev, <PointTip row={row} widget={widget} value={v} color={color} cat={s.cat} sub={s.sub} />);
+            })
+            .on('mousemove', moveTooltip)
+            .on('mouseleave', () => {
+              circle.attr('r', 2.5).attr('fill-opacity', 0.3).attr('stroke', 'none');
+              hideTooltip();
+            });
+        });
+      }
+
       // Tooltip on box
       boxRect
-        .on('mouseover', ev => showTooltip(ev, <BoxTip s={s} color={color} widget={widget} />))
+        .on('mouseover', ev => showTooltip(ev, <BoxTip s={s} color={color} widget={widget} iqrMultiplier={iqrMultiplier} />))
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
         .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.xField, value: s.cat }); } : null)
         .style('cursor', onCrossFilter ? 'pointer' : null);
-    });
+    }
+
+    // Legend for colorField sub-groups
+    if (hasColorField && subGroups.length > 1) {
+      const legend = g.append('g').attr('transform', `translate(${W - subGroups.length * 80},${-10})`);
+      subGroups.forEach((sub, i) => {
+        const lg = legend.append('g').attr('transform', `translate(${i * 80},0)`);
+        lg.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', colors(sub));
+        lg.append('text').attr('x', 14).attr('y', 9).attr('font-size', 10)
+          .attr('fill', 'var(--chart-axis-color)').text(sub);
+      });
+    }
 
     // Axis labels
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11).attr('text-anchor', 'middle')
@@ -162,12 +252,12 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
   );
 }
 
-function BoxTip({ s, color, widget }) {
+function BoxTip({ s, color, widget, iqrMultiplier }) {
   return (
     <>
       <div className="chart-tooltip-title">
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
-        {s.cat}
+        {s.cat}{s.sub != null ? ` / ${s.sub}` : ''}
       </div>
       <div className="chart-tooltip-row"><span className="tt-label">n</span><span className="tt-value">{s.n}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Median</span><span className="tt-value">{formatValue(s.median)}</span></div>
@@ -175,7 +265,24 @@ function BoxTip({ s, color, widget }) {
       <div className="chart-tooltip-row"><span className="tt-label">Q1</span><span className="tt-value">{formatValue(s.q1)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Q3</span><span className="tt-value">{formatValue(s.q3)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">IQR</span><span className="tt-value">{formatValue(s.iqr)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">IQR mult</span><span className="tt-value">{iqrMultiplier}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Outliers</span><span className="tt-value">{s.outliers.length}</span></div>
+    </>
+  );
+}
+
+function PointTip({ row, widget, value, color, cat, sub }) {
+  const label = widget.labelField ? String(row[widget.labelField] ?? '') : null;
+  return (
+    <>
+      <div className="chart-tooltip-title">
+        <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, marginRight: 6, verticalAlign: 'middle' }} />
+        {label || cat}{sub != null ? ` / ${sub}` : ''}
+      </div>
+      {label && (
+        <div className="chart-tooltip-row"><span className="tt-label">{widget.xField}</span><span className="tt-value">{cat}</span></div>
+      )}
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
     </>
   );
 }
@@ -186,4 +293,15 @@ function quantile(sorted, p) {
   const idx = p * (n - 1);
   const lo = Math.floor(idx), hi = Math.ceil(idx);
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+/** Simple seeded PRNG for deterministic jitter */
+function mulberry32(seed) {
+  let s = seed | 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }

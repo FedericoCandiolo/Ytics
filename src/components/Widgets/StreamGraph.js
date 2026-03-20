@@ -5,7 +5,7 @@
  */
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
@@ -37,7 +37,16 @@ export default function StreamGraph({ widget, data, onCrossFilter }) {
       d => String(d[widget.colorField] ?? '')
     );
 
-    const xDomain = [...nested.keys()];
+    let xDomain = [...nested.keys()];
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      let pts = xDomain.map((xVal, i) => ({ key: xVal, value: i }));
+      pts = sortAggregated(pts, {
+        sortBy: widget.sortBy || 'original',
+        sortOrder: widget.sortOrder || 'asc',
+        customOrder: widget.customSortOrder,
+      });
+      xDomain = pts.map(p => p.key);
+    }
     const series = [...new Set(data.map(d => String(d[widget.colorField] ?? '')))];
 
     // Build stack-compatible matrix

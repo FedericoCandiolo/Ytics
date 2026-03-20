@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
@@ -26,7 +26,13 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
     const hasSeries = !!widget.colorField;
 
     // Compute axes (unique axisField values)
-    const axes = [...new Set(data.map(d => String(d[widget.axisField] ?? '')))];
+    let axes = [...new Set(data.map(d => String(d[widget.axisField] ?? '')))];
+    if (widget.sortBy && widget.sortBy !== 'original') {
+      axes = sortAggregated(
+        axes.map(key => ({ key, value: key })),
+        { sortBy: widget.sortBy, sortOrder: widget.sortOrder || 'asc', customOrder: widget.customSortOrder },
+      ).map(d => d.key);
+    }
     const numAxes = axes.length;
     if (numAxes < 3) return; // radar needs at least 3 axes
 
@@ -110,10 +116,13 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
     });
 
     // Draw series polygons
+    const curveFn = widget.radarCurve === 'curved'
+      ? d3.curveCatmullRomClosed
+      : d3.curveLinearClosed;
     const radarLine = d3.lineRadial()
       .radius(d => rScale(d))
       .angle((d, i) => i * angleSlice)
-      .curve(d3.curveLinearClosed);
+      .curve(curveFn);
 
     seriesData.forEach((series, si) => {
       const color = colors(series.name);

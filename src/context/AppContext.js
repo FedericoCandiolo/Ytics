@@ -27,6 +27,14 @@ export const CHART_REQUIRED_FIELDS = {
   sankey:    ['sourceField', 'targetField', 'valueField'],
   geo:       ['geoField', 'valueField'],
   pivot:     ['valueField'],
+  waterfall: ['xField', 'valueField'],
+  wordcloud: ['xField', 'valueField'],
+  funnel:    ['xField', 'valueField'],
+  kpi:       ['valueField'],
+  bubble:    ['xField', 'valueField'],
+  combo:     ['xField', 'yField', 'y2Field'],
+  straighttable: ['valueField'],
+  mekko:     ['xField', 'yField', 'colorField'],
 };
 
 // Check if converting from one type to another is reasonable
@@ -40,7 +48,7 @@ export function canReplaceType(sourceType, targetType, widget) {
   if ((CHART_REQUIRED_FIELDS[sourceType] || []).length === 0) return false;
   // Check if any of the source widget's assigned fields can map to the target
   const allFieldKeys = ['xField', 'yField', 'colorField', 'groupField', 'sizeField',
-    'labelField', 'valueField', 'axisField', 'sourceField', 'targetField', 'geoField'];
+    'labelField', 'valueField', 'axisField', 'sourceField', 'targetField', 'geoField', 'y2Field'];
   const assignedKeys = allFieldKeys.filter(k => widget[k] != null);
   if (assignedKeys.length === 0) return true; // no fields assigned yet, allow any switch
   // Target needs at least one field that is either directly assigned or can be inferred
@@ -50,7 +58,7 @@ export function canReplaceType(sourceType, targetType, widget) {
   }
   // Also check cross-mappable fields (xField↔labelField↔axisField, yField↔valueField)
   const categoryKeys = new Set(['xField', 'labelField', 'axisField', 'geoField', 'sourceField', 'colorField', 'groupField']);
-  const numericKeys = new Set(['yField', 'valueField', 'sizeField']);
+  const numericKeys = new Set(['yField', 'valueField', 'sizeField', 'y2Field']);
   const hasCategoryAssigned = assignedKeys.some(k => categoryKeys.has(k));
   const hasNumericAssigned = assignedKeys.some(k => numericKeys.has(k));
   const targetNeedsCategory = targetFields.some(k => categoryKeys.has(k));
@@ -84,6 +92,26 @@ export function mapFieldsForTypeChange(sourceType, targetType, widget) {
     updates.groupField = widget.colorField;
   }
   if (targetType !== 'bar' && !widget.colorField && widget.groupField) {
+    updates.colorField = widget.groupField;
+  }
+  // Map y2Field for combo charts from yField if not set
+  if (targetType === 'combo' && !widget.y2Field && assignedNumeric && widget[assignedNumeric]) {
+    updates.y2Field = widget[assignedNumeric];
+  }
+  // Map valueField for bubble charts from yField/sizeField if not set
+  if (targetType === 'bubble' && !widget.valueField && assignedNumeric && widget[assignedNumeric]) {
+    updates.valueField = widget[assignedNumeric];
+  }
+  // Map xField for waterfall/wordcloud/funnel from labelField or other category fields
+  if (['waterfall', 'wordcloud', 'funnel'].includes(targetType) && !widget.xField && assignedCategory && widget[assignedCategory]) {
+    updates.xField = widget[assignedCategory];
+  }
+  // Map valueField for waterfall/wordcloud/funnel/kpi/straighttable from yField or other numeric fields
+  if (['waterfall', 'wordcloud', 'funnel', 'kpi', 'straighttable'].includes(targetType) && !widget.valueField && assignedNumeric && widget[assignedNumeric]) {
+    updates.valueField = widget[assignedNumeric];
+  }
+  // Map colorField for mekko from groupField if not set
+  if (targetType === 'mekko' && !widget.colorField && widget.groupField) {
     updates.colorField = widget.groupField;
   }
   return updates;
@@ -157,26 +185,56 @@ function defaultWidget(overrides = {}) {
     labelField: null,
     valueField: null,
     aggregation: 'sum',
-    sortBy: 'value',
+    // Sort
+    sortBy: 'original',        // 'value' | 'label' | 'custom' | 'original'
     sortOrder: 'desc',
+    customSortOrder: null,      // string[] for custom sort
+    // Pareto / Others
+    paretoEnabled: false,
+    paretoMethod: 'topN',       // 'topN' | 'threshold' | 'pareto'
+    paretoTopN: 10,
+    paretoThreshold: 0.8,
+    othersLabel: 'Others',
+    // Reference line (bar chart)
+    referenceLine: null,        // { value: number, label: string } or null
+    useLogScale: false,
     orientation: 'vertical',
     lineType: 'linear',
     showPoints: true,
     showArea: false,
+    // Line chart
+    showTrendLine: false,
     innerRadius: 0,
+    // Pie chart
+    showSliceValues: false,
+    sliceValueMode: 'percent',  // 'value' | 'percent' | 'both'
+    // Box/Violin
+    iqrMultiplier: 1.5,
+    showDataPoints: false,
+    // Histogram
+    binMode: 'equalWidth',      // 'equalWidth' | 'equalFrequency'
+    histogramDimension: null,   // dimension field for aggregated histogram
     bins: 20,
     dotSizeMin: 4,
     dotSizeMax: 20,
+    // Scatter
+    showRegression: false,
+    regressionType: 'linear',   // 'linear' | 'polynomial'
     barMode: 'stacked',    // 'stacked' | 'grouped'
     stackMode: 'none',     // 'none' | 'stacked' | 'percent' (line chart area)
+    // Bump
+    bumpTopN: null,
     // Sankey fields
     sourceField: null,
     targetField: null,
+    sankeyFields: [],           // array of dimension fields for multi-level sankey
     // Radar
     axisField: null,
+    radarCurve: 'polygon',     // 'polygon' | 'curved'
     // Geo
     geoField: null,
     mapProjection: 'naturalEarth',
+    mapScope: 'world',             // 'world' | 'north-america' | 'south-america' | 'europe' | 'africa' | 'asia' | 'oceania' | country name
     // Pivot table
     pivotRows: [],
     pivotCols: [],
@@ -186,6 +244,34 @@ function defaultWidget(overrides = {}) {
     colorMode: 'categorical',  // 'categorical' | 'gradient'
     colorGradient: null,       // gradient override (null = follows palette)
     colorGradientField: null,  // numeric field for gradient (null = use chart's value field)
+    // Data table
+    visibleColumns: null,       // null = all, string[] for selected columns
+    // Geo map
+    mapZoom: null,
+    mapCenter: null,
+    // Waterfall
+    waterfallMode: 'difference', // 'difference' | 'absolute'
+    // Funnel
+    funnelMode: 'absolute',     // 'absolute' | 'cumulative'
+    // KPI
+    kpiFormat: 'number',       // 'number' | 'currency' | 'percent'
+    kpiTarget: null,
+    kpiGaugeMin: 0,
+    kpiGaugeMax: 100,
+    kpiStyle: 'card',          // 'card' | 'gauge' | 'satellite'
+    // Combo
+    y2Field: null,
+    y2Aggregation: 'sum',
+    comboType: 'barLine',      // 'barLine' | 'lineLine'
+    dualAxis: true,
+    // Mekko
+    mekkoValueMode: 'absolute', // 'absolute' | 'relative' | 'both'
+    // Word cloud
+    wordCloudMode: 'cell',      // 'cell' | 'split'
+    wordCloudMaxWords: 100,
+    // Straight table
+    straightTableMeasures: [],  // additional measure fields
+    straightTableShowTotals: false,
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget
