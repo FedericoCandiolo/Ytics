@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp, canReplaceType } from '../../context/AppContext';
 import { applyFilters, executeMeasurePipeline } from '../../utils/dataUtils';
@@ -58,19 +58,143 @@ const TYPE_ICONS = {
 
 export { TYPE_ICONS };
 
+// ── Dimension Controls (drill breadcrumb + cycle arrows) ────────────────────
+
+function DimensionControls({ boundHierarchies, boundCyclics, dispatch }) {
+  if (!boundHierarchies.length && !boundCyclics.length) return null;
+
+  const controlStyle = {
+    display: 'flex', alignItems: 'center', gap: 4,
+    fontSize: 11, color: 'var(--text-muted)', flexShrink: 0,
+  };
+  const btnStyle = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    padding: '0 2px', fontSize: 13, color: 'var(--accent)',
+    lineHeight: 1, display: 'flex', alignItems: 'center',
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 4 }}>
+      {/* Hierarchic: drill breadcrumb */}
+      {boundHierarchies.map(({ dim: hd }) => {
+        const currentField = hd.levels[hd.currentLevel || 0] || hd.levels[0];
+        const isAtTop = (hd.currentLevel || 0) === 0;
+        const isAtBottom = (hd.currentLevel || 0) >= hd.levels.length - 1;
+        const filters = hd.filters || [];
+        return (
+          <div key={hd.id} style={controlStyle}>
+            {!isAtTop && (
+              <button style={btnStyle} title="Drill up" onClick={e => {
+                e.stopPropagation();
+                dispatch({ type: 'DRILL_UP', payload: hd.id });
+              }}>
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2L2 8h8z" fill="currentColor"/></svg>
+              </button>
+            )}
+            {filters.map((f, i) => (
+              <span key={i} style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                onClick={e => {
+                  e.stopPropagation();
+                  dispatch({ type: 'DRILL_TO_LEVEL', payload: { id: hd.id, level: i } });
+                }}
+                title={`Go back to ${hd.levels[i]}`}
+              >
+                {f.value}
+                <span style={{ margin: '0 2px', opacity: 0.5 }}>/</span>
+              </span>
+            ))}
+            <span style={{ fontWeight: 600 }}>{currentField}</span>
+            {!isAtBottom && (
+              <svg width="12" height="12" viewBox="0 0 12 12" style={{ opacity: 0.4, flexShrink: 0 }}>
+                <path d="M6 10L2 4h8z" fill="currentColor"/>
+              </svg>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Cyclic: single cycle button */}
+      {boundCyclics.map(({ dim: cd }) => {
+        const idx = cd.activeIndex || 0;
+        const currentField = cd.fields[idx] || cd.fields[0];
+        return (
+          <div key={cd.id} style={controlStyle}>
+            <button style={btnStyle} title="Cycle dimension"
+              onClick={e => { e.stopPropagation(); dispatch({ type: 'CYCLE_DIMENSION', payload: { id: cd.id, direction: 1 } }); }}>
+              <svg width="14" height="14" viewBox="0 0 14 14">
+                <path d="M7 1a6 6 0 104.24 1.76" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M12 1v3h-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <span style={{ fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {currentField}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+
 export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage, onTypeReplace }) {
   const { state, dispatch } = useApp();
   const [maximized, setMaximized] = useState(false);
   const [dropHover, setDropHover] = useState(false);
   const theme = state.dashboard.theme || {};
 
-  // Cross-filter: clicking a chart element in viewer mode creates/toggles a filter
+  // ── Resolve dimension references from widget field values ───────────────
+  const dashHierarchies = useMemo(() => state.dashboard.hierarchicDimensions || [], [state.dashboard.hierarchicDimensions]);
+  const dashCyclics = useMemo(() => state.dashboard.cyclicDimensions || [], [state.dashboard.cyclicDimensions]);
+
+  // Scan widget fields for __hier__<id> or __cyclic__<id> references
+  const FIELD_KEYS = ['xField', 'yField', 'colorField', 'groupField', 'labelField',
+    'axisField', 'sourceField', 'targetField', 'geoField'];
+
+  const boundHierarchies = useMemo(() => {
+    const results = [];
+    for (const key of FIELD_KEYS) {
+      const val = widget[key];
+      if (val && typeof val === 'string' && val.startsWith('__hier__')) {
+        const id = val.slice('__hier__'.length);
+        const dim = dashHierarchies.find(h => h.id === id);
+        if (dim) results.push({ dim, targetField: key });
+      }
+    }
+    return results;
+  }, [dashHierarchies, widget]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const boundCyclics = useMemo(() => {
+    const results = [];
+    for (const key of FIELD_KEYS) {
+      const val = widget[key];
+      if (val && typeof val === 'string' && val.startsWith('__cyclic__')) {
+        const id = val.slice('__cyclic__'.length);
+        const dim = dashCyclics.find(c => c.id === id);
+        if (dim) results.push({ dim, targetField: key });
+      }
+    }
+    return results;
+  }, [dashCyclics, widget]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Cross-filter with drill-down interception ───────────────────────────
   const onCrossFilter = useCallback(({ field, value }) => {
     if (isEditing || !widget.datasetId || !field) return;
+
+    // Check if this field is the active level of a bound hierarchy → drill down
+    for (const { dim: hd } of boundHierarchies) {
+      const activeField = hd.levels[hd.currentLevel || 0];
+      if (activeField === field && (hd.currentLevel || 0) < hd.levels.length - 1) {
+        dispatch({ type: 'DRILL_DOWN', payload: { id: hd.id, field, value: String(value) } });
+        return;
+      }
+    }
+
+    // Normal cross-filter
     const strVal = String(value);
     const filterId = `cross_${widget.datasetId}_${field}`;
     const existing = state.filters[filterId];
-    // Toggle: if already filtering to exactly this value, remove the filter
     if (existing && existing.values?.length === 1 && existing.values[0] === strVal) {
       dispatch({ type: 'REMOVE_FILTER', payload: filterId });
     } else {
@@ -82,26 +206,55 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
         },
       });
     }
-  }, [isEditing, widget.datasetId, state.filters, dispatch]);
+  }, [isEditing, widget.datasetId, boundHierarchies, state.filters, dispatch]);
 
+  // ── Data pipeline ───────────────────────────────────────────────────────
   const dataset = state.datasets.find(d => d.id === widget.datasetId);
   const raw = dataset?.data ?? [];
 
-  // Apply filters (viewer mode) then measure pipeline
   let data = isEditing ? raw : applyFilters(raw, state.filters);
   if (widget.measures?.length > 0) {
-    try { data = executeMeasurePipeline(data, widget.measures); } catch { /* fallback to unprocessed */ }
+    try { data = executeMeasurePipeline(data, widget.measures); } catch { /* fallback */ }
   }
+
+  // Apply drill filters from bound hierarchies
+  const drillFilters = useMemo(() => {
+    const filters = [];
+    for (const { dim: hd } of boundHierarchies) {
+      if (hd.filters?.length) filters.push(...hd.filters);
+    }
+    return filters;
+  }, [boundHierarchies]);
+
+  if (drillFilters.length > 0) {
+    data = data.filter(row => drillFilters.every(f => String(row[f.field]) === f.value));
+  }
+
+  // ── Resolve effective widget (field overrides + color scheme) ───────────
+  const effectiveWidget = useMemo(() => {
+    const ew = {
+      ...widget,
+      colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
+      dimensionColors: state.dashboard.dimensionColors || {},
+    };
+
+    // Hierarchic: override target field with current level
+    for (const { dim: hd, targetField } of boundHierarchies) {
+      const activeField = hd.levels[hd.currentLevel || 0] || hd.levels[0];
+      if (targetField && activeField) ew[targetField] = activeField;
+    }
+
+    // Cyclic: override target field with current selection
+    for (const { dim: cd, targetField } of boundCyclics) {
+      const activeField = cd.fields[cd.activeIndex || 0] || cd.fields[0];
+      if (targetField && activeField) ew[targetField] = activeField;
+    }
+
+    return ew;
+  }, [widget, theme.colorScheme, state.dashboard.dimensionColors, boundHierarchies, boundCyclics]);
 
   const Chart = CHART_MAP[widget.type] || BarChart;
   const closeMaximize = useCallback(() => setMaximized(false), []);
-
-  // Resolve color scheme: widget override → theme default → fallback
-  const effectiveWidget = {
-    ...widget,
-    colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
-    dimensionColors: state.dashboard.dimensionColors || {},
-  };
 
   const crossFilter = isEditing ? undefined : onCrossFilter;
   const chartBody = dataset
@@ -123,6 +276,15 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   const cardRadius = widget.cardRadius ?? theme.cardRadius ?? 8;
   const cardShadow = shadowMap[theme.cardShadow] ?? shadowMap.md;
 
+  const hasDimControls = boundHierarchies.length > 0 || boundCyclics.length > 0;
+  const dimControls = hasDimControls ? (
+    <DimensionControls
+      boundHierarchies={boundHierarchies}
+      boundCyclics={boundCyclics}
+      dispatch={dispatch}
+    />
+  ) : null;
+
   return (
     <>
       <div
@@ -142,7 +304,6 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
           }
         } : undefined}
         onDragLeave={isEditing && onTypeReplace ? (e) => {
-          // Only clear if we're leaving the card itself, not entering a child
           if (!e.currentTarget.contains(e.relatedTarget)) setDropHover(false);
         } : undefined}
         onDrop={isEditing && onTypeReplace ? (e) => {
@@ -159,6 +320,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
         <div className="widget-header">
           <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICONS[widget.type] || '📊'}</span>
           <span className="widget-title">{widget.title || 'Untitled'}</span>
+          {dimControls}
           <div className="widget-actions">
             <button
               className="btn btn-ghost btn-icon btn-sm"
@@ -204,6 +366,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
             <div className="widget-header" style={{ cursor: 'default' }}>
               <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICONS[widget.type] || '📊'}</span>
               <span className="widget-title">{widget.title || 'Untitled'}</span>
+              {dimControls}
               <div className="widget-actions">
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={closeMaximize}>✕</button>
               </div>

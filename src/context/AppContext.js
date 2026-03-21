@@ -148,6 +148,9 @@ const initialState = {
     currentPageId: _firstPage.id,
     theme: { ...defaultTheme },
     dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
+    // Shared dimension definitions + state
+    hierarchicDimensions: [], // [{ id, name, levels: [field,...], currentLevel: 0, filters: [] }]
+    cyclicDimensions: [],     // [{ id, name, fields: [field,...], activeIndex: 0 }]
   },
   filters: {},
   editingWidgetId: null,
@@ -602,6 +605,51 @@ function reducer(state, action) {
       const dc = { ...state.dashboard.dimensionColors };
       delete dc[action.payload];
       return { ...state, dashboard: { ...state.dashboard, dimensionColors: dc } };
+    }
+
+    // ── Shared dimensions (dashboard-level) ─────────────────
+    case 'SET_HIERARCHIC_DIMENSIONS':
+      return { ...state, dashboard: { ...state.dashboard, hierarchicDimensions: action.payload } };
+
+    case 'SET_CYCLIC_DIMENSIONS':
+      return { ...state, dashboard: { ...state.dashboard, cyclicDimensions: action.payload } };
+
+    case 'DRILL_DOWN': {
+      const { id: drillId, field: drillField, value: drillValue } = action.payload;
+      const hds = (state.dashboard.hierarchicDimensions || []).map(hd => {
+        if (hd.id !== drillId) return hd;
+        if (hd.currentLevel >= hd.levels.length - 1) return hd;
+        return { ...hd, currentLevel: hd.currentLevel + 1, filters: [...(hd.filters || []), { field: drillField, value: String(drillValue) }] };
+      });
+      return { ...state, dashboard: { ...state.dashboard, hierarchicDimensions: hds } };
+    }
+
+    case 'DRILL_UP': {
+      const hds2 = (state.dashboard.hierarchicDimensions || []).map(hd => {
+        if (hd.id !== action.payload) return hd;
+        if (hd.currentLevel <= 0) return { ...hd, currentLevel: 0, filters: [] };
+        return { ...hd, currentLevel: hd.currentLevel - 1, filters: (hd.filters || []).slice(0, -1) };
+      });
+      return { ...state, dashboard: { ...state.dashboard, hierarchicDimensions: hds2 } };
+    }
+
+    case 'DRILL_TO_LEVEL': {
+      const { id: dtlId, level: dtlLevel } = action.payload;
+      const hds3 = (state.dashboard.hierarchicDimensions || []).map(hd => {
+        if (hd.id !== dtlId) return hd;
+        return { ...hd, currentLevel: dtlLevel, filters: (hd.filters || []).slice(0, dtlLevel) };
+      });
+      return { ...state, dashboard: { ...state.dashboard, hierarchicDimensions: hds3 } };
+    }
+
+    case 'CYCLE_DIMENSION': {
+      const { id: cycId, direction = 1 } = action.payload;
+      const cds = (state.dashboard.cyclicDimensions || []).map(cd => {
+        if (cd.id !== cycId) return cd;
+        const next = ((cd.activeIndex || 0) + direction + cd.fields.length) % cd.fields.length;
+        return { ...cd, activeIndex: next };
+      });
+      return { ...state, dashboard: { ...state.dashboard, cyclicDimensions: cds } };
     }
 
     // ── Import ────────────────────────────────────────────────

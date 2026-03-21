@@ -8,9 +8,14 @@ import MeasurePipeline from './MeasurePipeline';
 
 // ── Field selector ────────────────────────────────────────────────────────────
 function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) {
+  const { state } = useApp();
+  const hierarchies = state.dashboard.hierarchicDimensions || [];
+  const cyclics = state.dashboard.cyclicDimensions || [];
   const filtered = typeFilter
     ? columns.filter(c => typeFilter.includes(c.type))
     : columns;
+  // Only show dimensions on non-numeric fields (dimensions are categorical)
+  const showDims = !typeFilter || !typeFilter.length || typeFilter.includes(null);
   return (
     <div className="form-group editor-section" style={{ marginBottom: 10 }}>
       <label className="form-label">
@@ -18,6 +23,24 @@ function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) 
       </label>
       <select className="select select-sm" value={value || ''} onChange={e => onChange(e.target.value || null)}>
         <option value="">— none —</option>
+        {showDims && hierarchies.length > 0 && (
+          <optgroup label="Hierarchic dimensions">
+            {hierarchies.map(h => (
+              <option key={h.id} value={`__hier__${h.id}`}>
+                {'\u2195'} {h.name || h.levels?.join(' \u203A ')}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {showDims && cyclics.length > 0 && (
+          <optgroup label="Cyclic dimensions">
+            {cyclics.map(c => (
+              <option key={c.id} value={`__cyclic__${c.id}`}>
+                {'\u21BB'} {c.name || c.fields?.join(' / ')}
+              </option>
+            ))}
+          </optgroup>
+        )}
         {filtered.map(c => (
           <option key={c.name} value={c.name}>
             {c.name} ({c.type})

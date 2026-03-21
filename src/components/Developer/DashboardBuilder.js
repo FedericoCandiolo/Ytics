@@ -1,9 +1,10 @@
-import { useRef, useEffect, useState, useCallback, forwardRef } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, forwardRef } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp, GRID_COLS, canReplaceType, mapFieldsForTypeChange } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import WidgetEditor from './WidgetEditor';
 import { ALL_SCHEMES, getSwatchColors } from '../../utils/colorUtils';
+import { v4 as uuid } from 'uuid';
 
 const ResponsiveGrid = WidthProvider(Responsive);
 
@@ -56,6 +57,138 @@ const ResizeHandle = forwardRef(({ axis, ...rest }, ref) => (
   <div ref={ref} className={`rh rh-${axis}`} style={HANDLE_STYLES[axis] || {}} {...rest} />
 ));
 
+// ── Dimensions Panel (dashboard-level hierarchic + cyclic dimensions) ────────
+function DimensionsPanel({ dashboard, allColumns, dispatch }) {
+  const hierarchies = dashboard.hierarchicDimensions || [];
+  const cyclics = dashboard.cyclicDimensions || [];
+
+  const updateHierarchies = (next) => dispatch({ type: 'SET_HIERARCHIC_DIMENSIONS', payload: next });
+  const updateCyclics = (next) => dispatch({ type: 'SET_CYCLIC_DIMENSIONS', payload: next });
+
+  const cardStyle = { border: '1px solid var(--border)', borderRadius: 4, padding: '8px 8px 6px', marginBottom: 6 };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ── Hierarchic ── */}
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2L3 8h8zM7 12L3 6h8z" fill="currentColor" opacity="0.6"/></svg>
+          Hierarchic
+        </div>
+        {hierarchies.map((hd, hi) => (
+          <div key={hd.id} style={cardStyle}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+              <input className="input input-sm" style={{ flex: 1 }} placeholder="Name"
+                value={hd.name || ''} onChange={e => {
+                  const next = [...hierarchies];
+                  next[hi] = { ...next[hi], name: e.target.value };
+                  updateHierarchies(next);
+                }} />
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                updateHierarchies(hierarchies.filter((_, j) => j !== hi));
+              }} title="Remove">{'\u2715'}</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Levels (top → bottom)</div>
+            {(hd.levels || []).map((lvl, li) => (
+              <div key={li} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 16, textAlign: 'center', flexShrink: 0 }}>{li + 1}</span>
+                <select className="select select-sm" style={{ flex: 1 }} value={lvl || ''}
+                  onChange={e => {
+                    const next = [...hierarchies];
+                    const levels = [...(next[hi].levels || [])];
+                    levels[li] = e.target.value;
+                    next[hi] = { ...next[hi], levels };
+                    updateHierarchies(next);
+                  }}>
+                  <option value="">— select —</option>
+                  {allColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button className="btn btn-ghost btn-icon btn-sm" disabled={li === 0} onClick={() => {
+                  const next = [...hierarchies];
+                  const levels = [...(next[hi].levels || [])];
+                  [levels[li - 1], levels[li]] = [levels[li], levels[li - 1]];
+                  next[hi] = { ...next[hi], levels };
+                  updateHierarchies(next);
+                }} title="Move up">{'\u2191'}</button>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                  const next = [...hierarchies];
+                  const levels = (next[hi].levels || []).filter((_, j) => j !== li);
+                  next[hi] = { ...next[hi], levels };
+                  updateHierarchies(next);
+                }}>{'\u2715'}</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => {
+              const next = [...hierarchies];
+              next[hi] = { ...next[hi], levels: [...(next[hi].levels || []), ''] };
+              updateHierarchies(next);
+            }}>+ Add level</button>
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-sm"
+          onClick={() => updateHierarchies([...hierarchies, { id: uuid(), name: '', levels: ['', ''], currentLevel: 0, filters: [] }])}
+        >+ New hierarchy</button>
+      </div>
+
+      {/* ── Cyclic ── */}
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <path d="M7 1a6 6 0 104.24 1.76" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M12 1v3h-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Cyclic
+        </div>
+        {cyclics.map((cd, ci) => (
+          <div key={cd.id} style={cardStyle}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+              <input className="input input-sm" style={{ flex: 1 }} placeholder="Name"
+                value={cd.name || ''} onChange={e => {
+                  const next = [...cyclics];
+                  next[ci] = { ...next[ci], name: e.target.value };
+                  updateCyclics(next);
+                }} />
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                updateCyclics(cyclics.filter((_, j) => j !== ci));
+              }} title="Remove">{'\u2715'}</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Interchangeable fields</div>
+            {(cd.fields || []).map((fld, fi) => (
+              <div key={fi} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                <select className="select select-sm" style={{ flex: 1 }} value={fld || ''}
+                  onChange={e => {
+                    const next = [...cyclics];
+                    const fields = [...(next[ci].fields || [])];
+                    fields[fi] = e.target.value;
+                    next[ci] = { ...next[ci], fields };
+                    updateCyclics(next);
+                  }}>
+                  <option value="">— select —</option>
+                  {allColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                  const next = [...cyclics];
+                  const fields = (next[ci].fields || []).filter((_, j) => j !== fi);
+                  next[ci] = { ...next[ci], fields };
+                  updateCyclics(next);
+                }}>{'\u2715'}</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => {
+              const next = [...cyclics];
+              next[ci] = { ...next[ci], fields: [...(next[ci].fields || []), ''] };
+              updateCyclics(next);
+            }}>+ Add field</button>
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-sm"
+          onClick={() => updateCyclics([...cyclics, { id: uuid(), name: '', fields: ['', ''], activeIndex: 0 }])}
+        >+ New cycle</button>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardBuilder() {
   const { state, dispatch } = useApp();
   const { dashboard, editingWidgetId } = state;
@@ -89,6 +222,21 @@ export default function DashboardBuilder() {
 
   const [editingPageName, setEditingPageName] = useState(null); // page id being renamed
   const [stylesOpen, setStylesOpen] = useState(false);
+  const [dimsOpen, setDimsOpen] = useState(false);
+
+  // Gather all columns from all datasets for dimension field dropdowns
+  const allColumns = useMemo(() => {
+    const seen = new Set();
+    const cols = [];
+    for (const ds of state.datasets) {
+      for (const row of ds.data?.slice(0, 1) || []) {
+        for (const key of Object.keys(row)) {
+          if (!seen.has(key)) { seen.add(key); cols.push(key); }
+        }
+      }
+    }
+    return cols;
+  }, [state.datasets]);
 
   const onLayoutChange = (_layout, allLayouts) => {
     dispatch({ type: 'UPDATE_LAYOUT', payload: allLayouts.lg || _layout });
@@ -236,6 +384,35 @@ export default function DashboardBuilder() {
                         </div>
                       </div>
                     </div>
+                  )}
+                </div>
+
+                {/* ── Dimensions Section ── */}
+                <div style={{ marginBottom: 16 }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      cursor: 'pointer', marginBottom: dimsOpen ? 10 : 0,
+                    }}
+                    onClick={() => setDimsOpen(o => !o)}
+                  >
+                    <div className="section-title" style={{ marginBottom: 0 }}>
+                      Dimensions
+                      {((dashboard.hierarchicDimensions?.length || 0) + (dashboard.cyclicDimensions?.length || 0)) > 0 && (
+                        <span className="badge badge-purple" style={{ marginLeft: 6 }}>
+                          {(dashboard.hierarchicDimensions?.length || 0) + (dashboard.cyclicDimensions?.length || 0)}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--text-light)' }}>{dimsOpen ? '▲' : '▼'}</span>
+                  </div>
+
+                  {dimsOpen && (
+                    <DimensionsPanel
+                      dashboard={dashboard}
+                      allColumns={allColumns}
+                      dispatch={dispatch}
+                    />
                   )}
                 </div>
 
