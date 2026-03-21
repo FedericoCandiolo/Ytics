@@ -65,7 +65,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     if (useGradient) {
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
       const ext = [0, d3.max(bins, d => d.length)];
-      binColorFn = getSequentialScale(gradKey, ext[0], ext[1]);
+      binColorFn = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
     }
     const opacity = widget.opacity ?? 1;
     const mean = d3.mean(vals), median = d3.median(vals), std = d3.deviation(vals);

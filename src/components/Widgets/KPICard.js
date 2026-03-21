@@ -97,6 +97,8 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
   const gaugeMin = widget.kpiGaugeMin ?? 0;
   const gaugeMax = widget.kpiGaugeMax ?? 100;
   const range = gaugeMax - gaugeMin;
+  const segments = widget.kpiGaugeSegments; // [{from, to, color}, ...]
+  const useSegments = Array.isArray(segments) && segments.length > 0;
 
   // Layout: semi-circle occupies top portion, value below
   const margin = 16;
@@ -107,21 +109,7 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
   const cy = margin + radius + 4;
 
   const g = svg.append('g').attr('opacity', opacity);
-
-  // Define gradient
   const defs = svg.append('defs');
-  const gradId = 'gauge-grad-' + Math.random().toString(36).slice(2, 8);
-  const linearGrad = defs.append('linearGradient')
-    .attr('id', gradId)
-    .attr('x1', '0%').attr('y1', '0%')
-    .attr('x2', '100%').attr('y2', '0%');
-  const nStops = 10;
-  for (let i = 0; i <= nStops; i++) {
-    const t = i / nStops;
-    linearGrad.append('stop')
-      .attr('offset', `${t * 100}%`)
-      .attr('stop-color', gradientScale(gaugeMin + t * range));
-  }
 
   // Background arc (light gray track)
   const bgArc = d3.arc()
@@ -136,25 +124,69 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
     .attr('transform', `translate(${cx},${cy})`)
     .attr('fill', 'var(--chart-grid-color, #e5e7eb)');
 
-  // Filled arc proportional to value
   const clampedValue = Math.max(gaugeMin, Math.min(gaugeMax, value));
   const fraction = range > 0 ? (clampedValue - gaugeMin) / range : 0;
-  const endAngle = -Math.PI / 2 + fraction * Math.PI;
 
-  const filledArc = d3.arc()
-    .innerRadius(radius - thickness)
-    .outerRadius(radius)
-    .startAngle(-Math.PI / 2)
-    .endAngle(endAngle)
-    .cornerRadius(thickness / 2);
-
-  g.append('path')
-    .attr('d', filledArc())
-    .attr('transform', `translate(${cx},${cy})`)
-    .attr('fill', `url(#${gradId})`);
+  if (useSegments) {
+    // Draw segments as colored zones across the full gauge (speedometer style)
+    // Sort segments by `from` so they render in order
+    const sorted = [...segments].sort((a, b) => (a.from ?? gaugeMin) - (b.from ?? gaugeMin));
+    const validSegs = sorted.filter(seg => {
+      const sf = Math.max(gaugeMin, seg.from ?? gaugeMin);
+      const st = Math.min(gaugeMax, seg.to ?? gaugeMax);
+      return st > sf;
+    });
+    // Clip segments to the rounded background track shape
+    const segClipId = 'seg-track-' + Math.random().toString(36).slice(2, 8);
+    defs.append('clipPath').attr('id', segClipId)
+      .append('path').attr('d', bgArc())
+      .attr('transform', `translate(${cx},${cy})`);
+    const segG = g.append('g').attr('clip-path', `url(#${segClipId})`);
+    for (const seg of validSegs) {
+      const segFrom = Math.max(gaugeMin, seg.from ?? gaugeMin);
+      const segTo = Math.min(gaugeMax, seg.to ?? gaugeMax);
+      const fracFrom = range > 0 ? (segFrom - gaugeMin) / range : 0;
+      const fracTo = range > 0 ? (segTo - gaugeMin) / range : 0;
+      const arcGen = d3.arc()
+        .innerRadius(radius - thickness - 1)
+        .outerRadius(radius + 1)
+        .startAngle(-Math.PI / 2 + fracFrom * Math.PI)
+        .endAngle(-Math.PI / 2 + fracTo * Math.PI);
+      segG.append('path')
+        .attr('d', arcGen())
+        .attr('transform', `translate(${cx},${cy})`)
+        .attr('fill', seg.color || '#94a3b8');
+    }
+  } else {
+    // Gradient fill (default)
+    const gradId = 'gauge-grad-' + Math.random().toString(36).slice(2, 8);
+    const linearGrad = defs.append('linearGradient')
+      .attr('id', gradId)
+      .attr('x1', '0%').attr('y1', '0%')
+      .attr('x2', '100%').attr('y2', '0%');
+    const nStops = 10;
+    for (let i = 0; i <= nStops; i++) {
+      const t = i / nStops;
+      linearGrad.append('stop')
+        .attr('offset', `${t * 100}%`)
+        .attr('stop-color', gradientScale(gaugeMin + t * range));
+    }
+    const endAngle = -Math.PI / 2 + fraction * Math.PI;
+    const filledArc = d3.arc()
+      .innerRadius(radius - thickness)
+      .outerRadius(radius)
+      .startAngle(-Math.PI / 2)
+      .endAngle(endAngle)
+      .cornerRadius(thickness / 2);
+    g.append('path')
+      .attr('d', filledArc())
+      .attr('transform', `translate(${cx},${cy})`)
+      .attr('fill', `url(#${gradId})`);
+  }
 
   // Needle indicator
-  const needleAngle = -Math.PI / 2 + fraction * Math.PI;
+  // d3 arc: -PI/2 = 9 o'clock, PI/2 = 3 o'clock. Convert to trig: subtract PI/2.
+  const needleAngle = -Math.PI + fraction * Math.PI;
   const needleLen = radius - thickness - 6;
   const nx = cx + Math.cos(needleAngle) * needleLen;
   const ny = cy + Math.sin(needleAngle) * needleLen;
@@ -173,7 +205,7 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
   // Target line
   if (target != null && range > 0) {
     const tFraction = Math.max(0, Math.min(1, (target - gaugeMin) / range));
-    const tAngle = -Math.PI / 2 + tFraction * Math.PI;
+    const tAngle = -Math.PI + tFraction * Math.PI;
     const tInner = radius - thickness - 3;
     const tOuter = radius + 4;
     g.append('line')
@@ -265,73 +297,63 @@ function renderSatellite(svg, value, target, widget, w, h, gradientScale) {
   const fullTurns = Math.floor(absPct / 100);
   const remainder = absPct % 100;
 
-  // Define gradient for arcs
+  // Helper: draw gradient arc segments (fine slices for smooth look)
   const defs = svg.append('defs');
-  const gradId = 'sat-grad-' + Math.random().toString(36).slice(2, 8);
+  const N_SEGS = 180;
+  // tMax: gradient maps 0→tMax (1 for full ring, fraction for partial)
+  function drawGradientSlices(parent, ringRadius, startAngle, endAngle, rounded, tMax) {
+    const totalAngle = endAngle - startAngle;
+    const nSegs = Math.max(12, Math.round(Math.abs(totalAngle / (2 * Math.PI)) * N_SEGS));
+    const step = totalAngle / nSegs;
 
-  // If wrapping, draw completed full rings at decreasing radius
+    let arcG;
+    if (rounded) {
+      const clipId = 'sat-clip-' + Math.random().toString(36).slice(2, 8);
+      const clipArc = d3.arc()
+        .innerRadius(ringRadius - thickness)
+        .outerRadius(ringRadius)
+        .startAngle(startAngle)
+        .endAngle(endAngle)
+        .cornerRadius(thickness / 2);
+      defs.append('clipPath').attr('id', clipId)
+        .append('path').attr('d', clipArc())
+        .attr('transform', `translate(${cx},${cy})`);
+      arcG = parent.append('g').attr('clip-path', `url(#${clipId})`);
+    } else {
+      arcG = parent.append('g');
+    }
+
+    for (let i = 0; i < nSegs; i++) {
+      const a0 = startAngle + i * step;
+      const a1 = startAngle + (i + 1) * step;
+      const t = nSegs > 1 ? (i / (nSegs - 1)) * tMax : 0;
+      const arcSeg = d3.arc()
+        .innerRadius(ringRadius - thickness - (rounded ? 1 : 0))
+        .outerRadius(ringRadius + (rounded ? 1 : 0))
+        .startAngle(a0)
+        .endAngle(a1 + 0.005);
+      arcG.append('path')
+        .attr('d', arcSeg())
+        .attr('transform', `translate(${cx},${cy})`)
+        .attr('fill', gradientScale(t));
+    }
+  }
+
+  // Full rings: full gradient (tMax = 1)
   for (let ring = 0; ring < fullTurns && ring < 3; ring++) {
     const rOffset = ring * (thickness + 3);
     const ringRadius = radius - rOffset;
     if (ringRadius < 12) break;
-
-    const ringGradId = gradId + '-r' + ring;
-    const grad = defs.append('linearGradient')
-      .attr('id', ringGradId)
-      .attr('x1', '0%').attr('y1', '0%')
-      .attr('x2', '100%').attr('y2', '100%');
-    const nStops = 8;
-    for (let i = 0; i <= nStops; i++) {
-      const t = i / nStops;
-      grad.append('stop')
-        .attr('offset', `${t * 100}%`)
-        .attr('stop-color', gradientScale(t));
-    }
-
-    const fullArc = d3.arc()
-      .innerRadius(ringRadius - thickness)
-      .outerRadius(ringRadius)
-      .startAngle(0)
-      .endAngle(sign * 2 * Math.PI)
-      .cornerRadius(thickness / 2);
-
-    g.append('path')
-      .attr('d', fullArc())
-      .attr('transform', `translate(${cx},${cy})`)
-      .attr('fill', `url(#${ringGradId})`)
-      .attr('opacity', 0.5 + 0.5 / (ring + 1));
+    drawGradientSlices(g, ringRadius, 0, sign * 2 * Math.PI, false, 1);
   }
 
-  // Draw the partial arc for the remainder
+  // Partial arc: gradient covers only the filled fraction (tMax = remainder/100)
   if (remainder > 0) {
     const rOffset = Math.min(fullTurns, 3) * (thickness + 3);
     const ringRadius = radius - rOffset;
     if (ringRadius >= 12) {
-      const partialGradId = gradId + '-partial';
-      const pGrad = defs.append('linearGradient')
-        .attr('id', partialGradId)
-        .attr('x1', '0%').attr('y1', '0%')
-        .attr('x2', '100%').attr('y2', '100%');
-      const nStops = 8;
-      for (let i = 0; i <= nStops; i++) {
-        const t = i / nStops;
-        pGrad.append('stop')
-          .attr('offset', `${t * 100}%`)
-          .attr('stop-color', gradientScale(t));
-      }
-
       const partialAngle = sign * (remainder / 100) * 2 * Math.PI;
-      const partialArc = d3.arc()
-        .innerRadius(ringRadius - thickness)
-        .outerRadius(ringRadius)
-        .startAngle(0)
-        .endAngle(partialAngle)
-        .cornerRadius(thickness / 2);
-
-      g.append('path')
-        .attr('d', partialArc())
-        .attr('transform', `translate(${cx},${cy})`)
-        .attr('fill', `url(#${partialGradId})`);
+      drawGradientSlices(g, ringRadius, 0, partialAngle, true, remainder / 100);
     }
   }
 
@@ -393,11 +415,11 @@ export default function KPICard({ widget, data, onCrossFilter }) {
     } else if (style === 'gauge') {
       const gaugeMin = widget.kpiGaugeMin ?? 0;
       const gaugeMax = widget.kpiGaugeMax ?? 100;
-      const gradientScale = getSequentialScale(gradKey, gaugeMin, gaugeMax);
+      const gradientScale = getSequentialScale(gradKey, gaugeMin, gaugeMax, widget.invertGradient);
       renderGauge(svg, value, target, widget, w, h, gradientScale);
     } else if (style === 'satellite') {
       // For satellite, gradient maps 0..1 for arc coloring
-      const gradientScale = getSequentialScale(gradKey, 0, 1);
+      const gradientScale = getSequentialScale(gradKey, 0, 1, widget.invertGradient);
       renderSatellite(svg, value, target, widget, w, h, gradientScale);
     }
   }, [data, widget, dims]);

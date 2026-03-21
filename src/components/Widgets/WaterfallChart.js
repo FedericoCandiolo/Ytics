@@ -119,7 +119,7 @@ function renderWaterfall(svg, data, widget, dims, showTooltip, moveTooltip, hide
     const allChanges = bars.map(b => b.change);
     const ext = [Math.min(...allChanges), Math.max(...allChanges)];
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    gradientScale = getSequentialScale(gradKey, ext[0], ext[1]);
+    gradientScale = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
   }
 
   function barColor(bar) {

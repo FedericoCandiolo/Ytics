@@ -142,7 +142,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
       }
       const ext = [Math.min(...colorVals), Math.max(...colorVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       colors = d => {
         const idx = finalCats.findIndex(c => c.key === d);
         return seq(colorVals[idx] ?? 0);

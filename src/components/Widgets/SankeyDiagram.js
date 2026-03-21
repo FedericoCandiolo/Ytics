@@ -92,7 +92,7 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
       });
       const ext = [Math.min(...nodeVals), Math.max(...nodeVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       const valMap = new Map(graph.nodes.map((n, i) => [n.name, nodeVals[i]]));
       colors = d => seq(valMap.get(d) ?? 0);
     } else {

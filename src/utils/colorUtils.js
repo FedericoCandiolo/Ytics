@@ -29,39 +29,68 @@ const DIVERGING = {
 
 export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING };
 
+// Build a smooth interpolator from an array of color stops
+function interpFromColors(colors) {
+  const scale = d3.scaleLinear()
+    .domain(colors.map((_, i) => i / (colors.length - 1)))
+    .range(colors)
+    .interpolate(d3.interpolateRgb)
+    .clamp(true);
+  return t => scale(t);
+}
+
 // D3 interpolators for sequential / diverging schemes
 const INTERPOLATORS = {
+  // Standard d3 sequential
   blues:      d3.interpolateBlues,
   greens:     d3.interpolateGreens,
   reds:       d3.interpolateReds,
   purples:    d3.interpolatePurples,
   oranges:    d3.interpolateOranges,
+  // Diverging
   warmCool:   d3.interpolateRdYlBu,
   brownGreen: d3.interpolateBrBG,
+  // Perceptual
   viridis:    d3.interpolateViridis,
   plasma:     d3.interpolatePlasma,
   inferno:    d3.interpolateInferno,
   turbo:      d3.interpolateTurbo,
   spectral:   d3.interpolateSpectral,
+  // Palette-derived gradients: ordered low → mid → high (danger → warning → good)
+  // Each uses colors from its own palette in a red → yellow → green semantic order
+  vivid:    interpFromColors([d3.schemeTableau10[2], d3.schemeTableau10[1], d3.schemeTableau10[5], d3.schemeTableau10[4], d3.schemeTableau10[0]]),  // red → orange → yellow → green → blue
+  spectrum: interpFromColors([d3.schemeCategory10[3], d3.schemeCategory10[1], d3.schemeCategory10[8], d3.schemeCategory10[2], d3.schemeCategory10[0]]),  // red → orange → olive → green → blue
+  muted:    interpFromColors([d3.schemeSet2[1], d3.schemeSet2[5], d3.schemeSet2[4], d3.schemeSet2[0]]),                                // coral → yellow → lime → teal
+  soft:     interpFromColors([d3.schemeSet3[3], d3.schemeSet3[5], d3.schemeSet3[1], d3.schemeSet3[6], d3.schemeSet3[0]]),              // salmon → orange → cream → lime → teal
+  pastel:   interpFromColors([d3.schemePastel1[0], d3.schemePastel1[4], d3.schemePastel1[5], d3.schemePastel1[2], d3.schemePastel1[1]]),  // pink → peach → cream → mint → sky
+  contrast: interpFromColors([d3.schemeDark2[1], d3.schemeDark2[5], d3.schemeDark2[4], d3.schemeDark2[0]]),                          // orange → gold → green → teal
+  duo:      interpFromColors([d3.schemePaired[5], d3.schemePaired[7], d3.schemePaired[6], d3.schemePaired[10], d3.schemePaired[3], d3.schemePaired[1]]),  // red → orange → peach → yellow → green → blue
+  bold:     interpFromColors([d3.schemeAccent[6], d3.schemeAccent[2], d3.schemeAccent[3], d3.schemeAccent[0], d3.schemeAccent[4]]),    // brown → peach → yellow → green → blue
 };
 
 // Gradient schemes available in the UI
 export const GRADIENT_SCHEMES = {
+  // Palette-derived (shown first, matching categorical palettes)
+  vivid: 'Vivid', spectrum: 'Spectrum', muted: 'Muted', soft: 'Soft',
+  pastel: 'Pastel', contrast: 'Contrast', duo: 'Duo', bold: 'Bold',
+  // Standard sequential
   blues: 'Blues', greens: 'Greens', reds: 'Reds', purples: 'Purples', oranges: 'Oranges',
+  // Diverging
   warmCool: 'Red → Yellow → Blue', brownGreen: 'Brown → Green',
+  // Perceptual
   viridis: 'Viridis', plasma: 'Plasma', inferno: 'Inferno', turbo: 'Turbo', spectral: 'Spectral',
 };
 
-// Maps each categorical palette to its default gradient
+// Maps each categorical palette to its own gradient (same key)
 const PALETTE_DEFAULT_GRADIENT = {
-  vivid:    'turbo',
-  spectrum: 'spectral',
-  muted:    'viridis',
-  soft:     'plasma',
-  pastel:   'blues',
-  contrast: 'inferno',
-  duo:      'warmCool',
-  bold:     'turbo',
+  vivid:    'vivid',
+  spectrum: 'spectrum',
+  muted:    'muted',
+  soft:     'soft',
+  pastel:   'pastel',
+  contrast: 'contrast',
+  duo:      'duo',
+  bold:     'bold',
   // Sequential palettes map to themselves
   blues: 'blues', greens: 'greens', reds: 'reds', purples: 'purples', oranges: 'oranges',
   // Diverging
@@ -140,9 +169,9 @@ export function getOrdinalWithOverrides(schemeKey, domain, overrides) {
  * Returns a continuous color scale for a numeric [min, max] domain.
  * schemeKey: one of the GRADIENT_SCHEMES keys.
  */
-export function getSequentialScale(schemeKey, min, max) {
+export function getSequentialScale(schemeKey, min, max, invert) {
   const interp = INTERPOLATORS[schemeKey] || d3.interpolateBlues;
-  return d3.scaleSequential(interp).domain([min, max]);
+  return d3.scaleSequential(interp).domain(invert ? [max, min] : [min, max]);
 }
 
 /**

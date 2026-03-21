@@ -783,18 +783,6 @@ function GradientColorSection({ widget, columns, onUpdate }) {
 
       {isGradient && (
         <div>
-          {/* Default gradient from palette */}
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-              Default from palette: <strong>{GRADIENT_SCHEMES[resolveGradient(widget.colorScheme, null)] || 'Blues'}</strong>
-            </div>
-            <div className="color-swatches" style={{ marginBottom: 6 }}>
-              {getGradientSwatches(resolveGradient(widget.colorScheme, null), 8).map((c, i) => (
-                <div key={i} className="color-swatch" style={{ background: c }} />
-              ))}
-            </div>
-          </div>
-
           {/* Override toggle */}
           <label className="checkbox-row" style={{ fontSize: 12, marginBottom: 8 }}>
             <input type="checkbox" checked={hasCustomGradient}
@@ -820,6 +808,12 @@ function GradientColorSection({ widget, columns, onUpdate }) {
               ))}
             </div>
           )}
+
+          <label className="checkbox-row" style={{ fontSize: 12, marginTop: 8 }}>
+            <input type="checkbox" checked={!!widget.invertGradient}
+              onChange={e => onUpdate({ invertGradient: e.target.checked || undefined })} />
+            Invert gradient
+          </label>
 
           {/* Gradient measure field */}
           <div className="form-group" style={{ marginTop: 8 }}>
@@ -983,8 +977,10 @@ function SortOptions({ widget, onUpdate }) {
       {widget.sortBy === 'custom' && (
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label className="form-label">Custom order (comma-separated)</label>
-          <input className="input input-sm" value={(widget.customSortOrder || []).join(', ')}
-            onChange={e => onUpdate({ customSortOrder: e.target.value.split(/\s*,\s*/).filter(Boolean) })}
+          <input className="input input-sm"
+            defaultValue={(widget.customSortOrder || []).join(', ')}
+            onBlur={e => onUpdate({ customSortOrder: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
             placeholder="e.g. Yes, No, Maybe" />
         </div>
       )}
@@ -1422,6 +1418,52 @@ function OptionsTab({ widget, columns, onUpdate }) {
             <label className="form-label">Gauge max — {widget.kpiGaugeMax ?? 100}</label>
             <input type="number" className="input input-sm" value={widget.kpiGaugeMax ?? 100}
               onChange={e => onUpdate({ kpiGaugeMax: parseFloat(e.target.value) || 100 })} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Gauge segments (optional)</label>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Leave empty to use the color palette gradient
+            </div>
+            {(widget.kpiGaugeSegments || []).map((seg, i) => (
+              <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
+                <input type="number" className="input input-sm" style={{ width: 60 }}
+                  placeholder="From" value={seg.from ?? ''}
+                  onChange={e => {
+                    const segs = [...(widget.kpiGaugeSegments || [])];
+                    segs[i] = { ...segs[i], from: e.target.value === '' ? undefined : parseFloat(e.target.value) };
+                    onUpdate({ kpiGaugeSegments: segs });
+                  }} />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>to</span>
+                <input type="number" className="input input-sm" style={{ width: 60 }}
+                  placeholder="To" value={seg.to ?? ''}
+                  onChange={e => {
+                    const segs = [...(widget.kpiGaugeSegments || [])];
+                    segs[i] = { ...segs[i], to: e.target.value === '' ? undefined : parseFloat(e.target.value) };
+                    onUpdate({ kpiGaugeSegments: segs });
+                  }} />
+                <input type="color" style={{ width: 28, height: 24, padding: 0, border: 'none', cursor: 'pointer' }}
+                  value={seg.color || '#94a3b8'}
+                  onChange={e => {
+                    const segs = [...(widget.kpiGaugeSegments || [])];
+                    segs[i] = { ...segs[i], color: e.target.value };
+                    onUpdate({ kpiGaugeSegments: segs });
+                  }} />
+                <button className="btn btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
+                  onClick={() => {
+                    const segs = (widget.kpiGaugeSegments || []).filter((_, j) => j !== i);
+                    onUpdate({ kpiGaugeSegments: segs.length ? segs : undefined });
+                  }}>×</button>
+              </div>
+            ))}
+            <button className="btn btn-sm" style={{ fontSize: 11, marginTop: 2 }}
+              onClick={() => {
+                const segs = [...(widget.kpiGaugeSegments || [])];
+                const lastTo = segs.length ? (segs[segs.length - 1].to ?? widget.kpiGaugeMax ?? 100) : (widget.kpiGaugeMin ?? 0);
+                const max = widget.kpiGaugeMax ?? 100;
+                const step = ((max - lastTo) || 10);
+                segs.push({ from: lastTo, to: lastTo + step, color: '#4f8ef7' });
+                onUpdate({ kpiGaugeSegments: segs });
+              }}>+ Add segment</button>
           </div>
         </>
       )}

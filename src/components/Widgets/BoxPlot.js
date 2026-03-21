@@ -90,7 +90,7 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
       const medians = categories.map(cat => statsMap.get(cat)?.median ?? 0);
       const ext = [Math.min(...medians), Math.max(...medians)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       const medianMap = new Map(categories.map((cat, i) => [cat, medians[i]]));
       colors = d => seq(medianMap.get(d) ?? 0);
     } else {

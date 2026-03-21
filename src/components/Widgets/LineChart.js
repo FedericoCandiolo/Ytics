@@ -148,7 +148,7 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
     const totals = seriesNames.map(name => d3.sum(seriesMap.get(name), d => d.y));
     const ext = [Math.min(...totals), Math.max(...totals)];
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
     const totalMap = new Map(seriesNames.map((n, i) => [n, totals[i]]));
     colors = d => seq(totalMap.get(d) ?? 0);
   } else {
@@ -341,7 +341,7 @@ function renderStacked(svgRef, data, widget, yField, dims, stackMode, showToolti
     const totals = seriesKeys.map(k => d3.sum(pivotData, d => d[k] || 0));
     const ext = [Math.min(...totals), Math.max(...totals)];
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
     const totalMap = new Map(seriesKeys.map((k, i) => [k, totals[i]]));
     colorScale = d => seq(totalMap.get(d) ?? 0);
   } else {

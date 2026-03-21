@@ -86,7 +86,7 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
       const medians = xDomain.map(cat => d3.median(groupMap.get(cat)?.vals ?? []));
       const ext = [Math.min(...medians), Math.max(...medians)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       const medianMap = new Map(xDomain.map((cat, i) => [cat, medians[i]]));
       colors = d => seq(medianMap.get(d) ?? 0);
     } else {

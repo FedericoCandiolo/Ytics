@@ -66,7 +66,7 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
       const totals = seriesData.map(s => d3.sum(s.values));
       const ext = [Math.min(...totals), Math.max(...totals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       const totalMap = new Map(seriesNames.map((n, i) => [n, totals[i]]));
       colors = d => seq(totalMap.get(d) ?? 0);
     } else {

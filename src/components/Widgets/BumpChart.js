@@ -56,7 +56,7 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
       });
       const ext = [Math.min(...totals), Math.max(...totals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       const totalMap = new Map(series.map((s, i) => [s, totals[i]]));
       colors = d => seq(totalMap.get(d) ?? 0);
     } else {

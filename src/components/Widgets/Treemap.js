@@ -65,7 +65,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
       const leafVals = root.leaves().map(d => d.value);
       const ext = [Math.min(...leafVals), Math.max(...leafVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1]);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
       leafColorFn = val => seq(val);
       colors = getColorScaleWithOverrides(widget.colorScheme, topKeys, widget.dimensionColors);
     } else {

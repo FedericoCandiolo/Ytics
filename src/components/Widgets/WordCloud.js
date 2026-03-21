@@ -94,7 +94,7 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
 
     if (widget.colorMode === 'gradient') {
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, minVal, maxVal);
+      const seq = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient);
       colorFn = d => seq(d.value);
     } else {
       const scale = getColorScaleWithOverrides(
@@ -114,11 +114,15 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
     const seedRng = d3.randomLcg(words.length);
     const rng = d3.randomUniform.source(seedRng)(0, 1);
 
-    // 1. Measure every word by rendering it off-screen in the SVG, then getBBox()
+    // 1. Classic word cloud: mostly horizontal, some vertical
+    const rotateMode = widget.wordCloudRotate !== false; // default on
+    const ANGLES = [0, 0, 0, 0, 0, -90, 90]; // ~70% horizontal, ~30% vertical
+
+    // 1b. Measure every word by rendering it off-screen in the SVG, then getBBox()
     const measureG = svg.append('g').attr('opacity', 0);
     const wordData = words.map(d => {
       const fontSize = fontScale(d.value);
-      const rotate = (widget.wordCloudRotate !== false) ? (rng() > 0.7 ? 90 : 0) : 0;
+      const rotate = rotateMode ? ANGLES[Math.floor(rng() * ANGLES.length)] : 0;
       const el = measureG.append('text')
         .attr('x', 0).attr('y', 0)
         .attr('font-size', fontSize).attr('font-weight', 600)
@@ -126,21 +130,23 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
         .text(d.word);
       const bb = el.node().getBBox();
       el.remove();
-      // Unrotated text dimensions (from actual SVG rendering)
       const tw = bb.width;
       const th = bb.height;
-      // Bounding box after rotation
-      const bw = rotate === 90 ? th : tw;
-      const bh = rotate === 90 ? tw : th;
+      // Axis-aligned bounding box after rotation
+      const rad = (rotate * Math.PI) / 180;
+      const cosA = Math.abs(Math.cos(rad));
+      const sinA = Math.abs(Math.sin(rad));
+      const bw = tw * cosA + th * sinA;
+      const bh = tw * sinA + th * cosA;
       return { ...d, fontSize, rotate, bw, bh, tw, th };
     });
     measureG.remove();
 
-    // 2. Grid occupancy map — each cell is ~4px; fast overlap checking
-    const CELL = 4;
+    // 2. Grid occupancy map — each cell is ~3px; tight packing
+    const CELL = 3;
     const gridCols = Math.ceil(w / CELL);
     const gridRows = Math.ceil(h / CELL);
-    const grid = new Uint8Array(gridCols * gridRows); // 0 = free
+    const grid = new Uint8Array(gridCols * gridRows);
 
     function markGrid(x, y, bw, bh) {
       const c0 = Math.max(0, Math.floor(x / CELL));
@@ -157,28 +163,27 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
       const c1 = Math.min(gridCols - 1, Math.floor((x + bw) / CELL));
       const r0 = Math.max(0, Math.floor(y / CELL));
       const r1 = Math.min(gridRows - 1, Math.floor((y + bh) / CELL));
-      if (c0 < 0 || r0 < 0 || c1 >= gridCols || r1 >= gridRows) return true; // out of bounds
+      if (c0 < 0 || r0 < 0 || c1 >= gridCols || r1 >= gridRows) return true;
       for (let r = r0; r <= r1; r++)
         for (let c = c0; c <= c1; c++)
-          if (grid[r * gridCols + c]) return true; // collision
+          if (grid[r * gridCols + c]) return true;
       return false;
     }
 
     const cx = w / 2;
     const cy = h / 2;
-    const PAD = 6; // px padding around each word
+    const PAD = 4; // px padding around each word
 
-    // Archimedean spiral placement against grid
+    // Archimedean spiral — tighter growth for compact packing
     for (const wd of wordData) {
       wd.px = null;
       const pw = wd.bw + PAD * 2;
       const ph = wd.bh + PAD * 2;
-      for (let t = 0; t < 2000; t++) {
-        const angle = t * 0.15;
-        const r = 2 * angle;
+      for (let t = 0; t < 2500; t++) {
+        const angle = t * 0.18;
+        const r = 1.5 * angle;
         const tx = cx + r * Math.cos(angle) - pw / 2;
         const ty = cy + r * Math.sin(angle) - ph / 2;
-        // Bounds check
         if (tx < 0 || ty < 0 || tx + pw > w || ty + ph > h) {
           if (r > Math.hypot(w, h)) break;
           continue;
