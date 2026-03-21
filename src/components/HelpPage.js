@@ -121,6 +121,11 @@ export default function HelpPage({ onClose }) {
               Everything you need to build interactive dashboards, transform your data,
               and create compelling visualizations — all in the browser.
             </p>
+            <p style={{ marginTop: 8, fontSize: 13 }}>
+              Also available as standalone pages:{' '}
+              <a href="/user-guide.html" target="_blank" rel="noopener noreferrer">Full User Guide</a>{' | '}
+              <a href="/measures-guide.html" target="_blank" rel="noopener noreferrer">Measures Guide</a>
+            </p>
           </div>
 
           {/* ── 1. Getting Started ──────────────────────────────────────── */}
@@ -225,7 +230,7 @@ export default function HelpPage({ onClose }) {
           {/* ── 5. Building a Dashboard ─────────────────────────────────── */}
           <Section id="building" title="5. Building a Dashboard">
             <Sub title="Adding Widgets">
-              <p>In the <strong>Dashboard</strong> tab of the sidebar, you'll find the <strong>Chart types</strong> grid with 18 visualization types sorted alphabetically.</p>
+              <p>In the <strong>Dashboard</strong> tab of the sidebar, you'll find the <strong>Chart types</strong> grid with 26 visualization types sorted alphabetically.</p>
               <ul className="help-ul">
                 <li><strong>Click</strong> a chart type button to add it to the canvas.</li>
                 <li><strong>Drag</strong> a chart type onto the canvas to place it precisely.</li>
@@ -267,11 +272,21 @@ export default function HelpPage({ onClose }) {
                 fields="Category (X), Numeric (Y)."
                 options="Grid, legend, opacity."
                 gradient="Median per category" />
+              <ChartCard icon="🫧" name="Bubble Chart"
+                desc="Sized circles on X/Y axes with optional color encoding."
+                fields="X (category or numeric), Y (numeric), Size (numeric). Optional: Color field."
+                options="Min/max dot size, opacity."
+                gradient="Bubble value" />
               <ChartCard icon="🏅" name="Bump Chart"
                 desc="Tracks rank changes across time or ordered categories."
                 fields="X (time), Series (color), Value (numeric)."
-                options="Grid, legend, opacity."
+                options="Top N (fades lines entering/leaving top ranks), grid, legend, opacity."
                 gradient="Series total value" />
+              <ChartCard icon="📊📈" name="Combo Chart"
+                desc="Overlays bars and lines on the same axes for dual-measure comparison."
+                fields="X (category), Y1 (bars), Y2 (line). Optional: Color field."
+                options="Bar mode, line type, dual-axis."
+                gradient="Bar or line value" />
               <ChartCard icon="🎠" name="Carousel"
                 desc="Cycles through multiple chart slides on the same dataset."
                 fields="Configure each slide independently."
@@ -282,6 +297,11 @@ export default function HelpPage({ onClose }) {
                 fields="All columns shown by default."
                 options="Conditional formatting (gradient or rules)."
                 gradient="N/A — uses conditional formatting" />
+              <ChartCard icon="🔽" name="Funnel Chart"
+                desc="Visualizes sequential stages showing drop-off between steps."
+                fields="Label (category), Value (numeric)."
+                options="Sort by, opacity."
+                gradient="Stage value" />
               <ChartCard icon="🌍" name="Geo Map"
                 desc="Choropleth world map colored by a numeric value per country."
                 fields="Geography (country name), Value (numeric)."
@@ -297,11 +317,21 @@ export default function HelpPage({ onClose }) {
                 fields="X (numeric)."
                 options="Number of bins (1–100)."
                 gradient="Bin count" />
+              <ChartCard icon="🎯" name="KPI Card"
+                desc="Key performance indicator with three styles: card, gauge (speedometer), and satellite (circular progress)."
+                fields="Value (numeric). Optional: Target field."
+                options="Style (card/gauge/satellite), format (number/currency/percent), gauge min/max, gauge segments with auto-colors from palette."
+                gradient="Gauge arc or satellite rings" />
               <ChartCard icon="📈" name="Line Chart"
                 desc="Plots trends over a continuous or categorical X-axis."
                 fields="X, Y (numeric). Optional: Color field for multi-series."
                 options="Line type (6 curves), points, area, stack mode."
                 gradient="Series total" />
+              <ChartCard icon="▰▱" name="Mekko Chart"
+                desc="Variable-width stacked bars showing two dimensions of proportion."
+                fields="X (category), Y (numeric), Color (series)."
+                options="Aggregation, legend, opacity."
+                gradient="Segment value" />
               <ChartCard icon="🥧" name="Pie / Donut"
                 desc="Proportional slices of a whole."
                 fields="Label (category), Value (numeric)."
@@ -322,6 +352,11 @@ export default function HelpPage({ onClose }) {
                 fields="Source, Target, Value (numeric)."
                 options="Legend, opacity."
                 gradient="Max flow per node" />
+              <ChartCard icon="📋" name="Straight Table"
+                desc="Simple flat data table with sorting and optional conditional formatting."
+                fields="All columns shown by default."
+                options="Conditional formatting (gradient or rules)."
+                gradient="N/A — uses conditional formatting" />
               <ChartCard icon="⬤" name="Scatter Plot"
                 desc="Individual data points on X/Y coordinates with optional size encoding."
                 fields="X (numeric), Y (numeric). Optional: Color, Size fields."
@@ -347,6 +382,16 @@ export default function HelpPage({ onClose }) {
                 fields="Label (category), Value (numeric)."
                 options="Legend, opacity."
                 gradient="Category value" />
+              <ChartCard icon="💧" name="Waterfall Chart"
+                desc="Shows cumulative effect of sequential positive and negative values."
+                fields="X (category), Y (numeric)."
+                options="Sort, aggregation, opacity."
+                gradient="Bar value" />
+              <ChartCard icon="☁" name="Word Cloud"
+                desc="Displays text sized by frequency or a numeric measure."
+                fields="Label (text), Value (numeric)."
+                options="Aggregation, opacity."
+                gradient="Word value" />
             </div>
           </Section>
 
@@ -387,11 +432,14 @@ export default function HelpPage({ onClose }) {
               <p>Chart-specific settings vary by type. Examples:</p>
               <ul className="help-ul">
                 <li><strong>Bar Chart</strong>: Orientation, bar mode, sort by, sort order.</li>
+                <li><strong>Bump Chart</strong>: Top N (limits visible ranks; lines entering/leaving fade out).</li>
+                <li><strong>Combo Chart</strong>: Bar mode, line type, dual-axis configuration.</li>
+                <li><strong>Geo Map</strong>: Map projection (Natural Earth, Mercator, Equal Earth, Orthographic).</li>
+                <li><strong>Histogram</strong>: Number of bins.</li>
+                <li><strong>KPI Card</strong>: Style (card/gauge/satellite), format, gauge min/max, gauge segments with auto-palette colors, invert gradient.</li>
                 <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode.</li>
                 <li><strong>Pie Chart</strong>: Inner radius (donut hole size).</li>
-                <li><strong>Histogram</strong>: Number of bins.</li>
-                <li><strong>Scatter Plot</strong>: Dot size min/max.</li>
-                <li><strong>Geo Map</strong>: Map projection.</li>
+                <li><strong>Scatter / Bubble</strong>: Dot size min/max.</li>
                 <li><strong>Carousel</strong>: Auto-play toggle, interval.</li>
               </ul>
             </Sub>
@@ -403,6 +451,10 @@ export default function HelpPage({ onClose }) {
               The measure pipeline transforms data <em>before</em> it reaches the chart, without modifying the original dataset.
               Open a widget's editor and go to the <strong>Measures</strong> tab to configure.
             </p>
+            <Tip>
+              For a comprehensive walkthrough with examples, see the{' '}
+              <a href="/measures-guide.html" target="_blank" rel="noopener noreferrer">Measures Guide</a>.
+            </Tip>
             <Sub title="Group & Aggregate">
               <p>Groups rows by one or more columns and applies aggregation functions (sum, count, mean, min, max, median, std, percentiles).</p>
               <Tip>Example: Group by <code>country</code>, aggregate <code>revenue</code> as sum and <code>orders</code> as count.</Tip>
@@ -473,7 +525,7 @@ export default function HelpPage({ onClose }) {
                   ['Bold', 'Turbo'],
                 ]}
               />
-              <p>Sequential and diverging palettes map to their matching gradient. You can override by checking <strong>"Override gradient"</strong> in the Colors tab.</p>
+              <p>Sequential and diverging palettes map to their matching gradient. You can override by checking <strong>"Override gradient"</strong> in the Colors tab. Use <strong>"Invert gradient"</strong> to reverse the color direction.</p>
             </Sub>
             <Sub title="Gradient Schemes (13)">
               <Table

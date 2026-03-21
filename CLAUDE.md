@@ -26,10 +26,11 @@ Claude has full access to read, write, and execute any file or command in this p
 ### Architecture
 
 - `src/context/AppContext.js` — Central state via `useReducer`. Exports `AppProvider`, `useApp`, `defaultTheme`.
-- `src/components/Developer/` — Developer mode: `DeveloperMode.js`, `DashboardBuilder.js` (grid canvas + sidebar), `WidgetEditor.js` (per-widget config), `DataIntegration.js` (dataset management).
+- `src/components/Developer/` — Developer mode: `DeveloperMode.js`, `DashboardBuilder.js` (grid canvas + sidebar), `WidgetEditor.js` (per-widget config), `DataIntegration.js` (dataset management), `MeasurePipeline.js` (measure/calculation pipeline).
 - `src/components/Viewer/` — Viewer mode: `ViewerMode.js`, `FilterPanel.js`.
-- `src/components/Widgets/` — Chart components: `BarChart`, `LineChart`, `ScatterPlot`, `PieChart`, `Histogram`, `DataTable`, `Treemap`, `HeatMap`, `BumpChart`, `StreamGraph`, `ViolinPlot`, `Carousel`, `WidgetContainer` (wrapper).
-- `src/utils/` — `colorUtils.js` (palette registry), `dataUtils.js` (transforms, filters, aggregations), `exportUtils.js` (zip export/import), `columnStore.js` (in-memory columnar store).
+- `src/components/Widgets/` — Chart components: `BarChart`, `BoxPlot`, `BubbleChart`, `BumpChart`, `Carousel`, `ComboChart`, `DataTable`, `FunnelChart`, `GeoMap`, `HeatMap`, `Histogram`, `KPICard`, `LineChart`, `MekkoChart`, `PieChart`, `PivotTable`, `RadarChart`, `SankeyDiagram`, `ScatterPlot`, `StraightTable`, `StreamGraph`, `Treemap`, `ViolinPlot`, `WaffleChart`, `WaterfallChart`, `WidgetContainer` (wrapper), `WordCloud`. Shared helpers: `chartHelpers.js`, `useTooltip.js`.
+- `src/components/` — `Header.js` (top bar), `HelpPage.js` (help/docs view).
+- `src/utils/` — `colorUtils.js` (palette registry, gradient scales, color overrides), `dataUtils.js` (transforms, filters, aggregations), `exportUtils.js` (zip export/import), `columnStore.js` (in-memory columnar store).
 
 ### Key Patterns
 

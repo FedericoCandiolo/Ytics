@@ -171,12 +171,11 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
         .attr('offset', `${t * 100}%`)
         .attr('stop-color', gradientScale(gaugeMin + t * range));
     }
-    const endAngle = -Math.PI / 2 + fraction * Math.PI;
     const filledArc = d3.arc()
       .innerRadius(radius - thickness)
       .outerRadius(radius)
       .startAngle(-Math.PI / 2)
-      .endAngle(endAngle)
+      .endAngle(Math.PI / 2)
       .cornerRadius(thickness / 2);
     g.append('path')
       .attr('d', filledArc())
