@@ -64,31 +64,43 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
     }
     const opacity = widget.opacity ?? 1;
 
-    // Top N filter: only show top N series (those in top N at ANY time step)
+    // Top N filter
     const topN = widget.bumpTopN;
+    const useTopN = topN && topN > 0 && topN < series.length;
+
+    // Rank ALL series at each step (global ranking)
+    const globalRanks = new Map(); // xVal -> Map(series -> { rank, value })
+    xDomain.forEach(xVal => {
+      const stepVals = series.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
+      stepVals.sort((a, b) => b.v - a.v);
+      const stepMap = new Map();
+      stepVals.forEach((sv, i) => stepMap.set(sv.s, { rank: i + 1, value: sv.v }));
+      globalRanks.set(xVal, stepMap);
+    });
+
+    // displaySeries: any series in top N at any step (or all if no topN)
     let displaySeries = series;
-    if (topN && topN > 0 && topN < series.length) {
+    if (useTopN) {
       const inTopN = new Set();
       xDomain.forEach(xVal => {
-        const stepVals = series.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
-        stepVals.sort((a, b) => b.v - a.v);
-        stepVals.slice(0, topN).forEach(sv => inTopN.add(sv.s));
+        const stepMap = globalRanks.get(xVal);
+        stepMap.forEach(({ rank }, s) => { if (rank <= topN) inTopN.add(s); });
       });
       displaySeries = series.filter(s => inTopN.has(s));
     }
 
-    // Build ranked data for visible series
+    // Build ranked data using global ranks
     const rankData = new Map();
     xDomain.forEach(xVal => {
-      const stepVals = displaySeries.map(s => ({ s, v: (nested.get(xVal) || new Map()).get(s) || 0 }));
-      stepVals.sort((a, b) => b.v - a.v);
-      stepVals.forEach((sv, rank) => {
-        if (!rankData.has(sv.s)) rankData.set(sv.s, []);
-        rankData.get(sv.s).push({ x: xVal, rank: rank + 1, value: sv.v });
+      const stepMap = globalRanks.get(xVal);
+      displaySeries.forEach(s => {
+        const info = stepMap.get(s) || { rank: series.length, value: 0 };
+        if (!rankData.has(s)) rankData.set(s, []);
+        rankData.get(s).push({ x: xVal, rank: info.rank, value: info.value, inTop: !useTopN || info.rank <= topN });
       });
     });
 
-    const maxRank = displaySeries.length;
+    const maxRank = useTopN ? topN : displaySeries.length;
     const xScale = d3.scalePoint().domain(xDomain).range([0, W]).padding(0.2);
     const yScale = d3.scaleLinear().domain([1, maxRank]).range([0, H]);
 
@@ -114,26 +126,44 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
         .attr('stroke', 'var(--chart-grid-color)').attr('stroke-width', 1).attr('stroke-dasharray', '3,4');
     }
 
-    // Lines per series
-    const lineGen = d3.line().x(d => xScale(d.x)).y(d => yScale(d.rank)).curve(d3.curveBumpX);
+    // Clamp rank for positioning: ranks beyond topN go to maxRank + 1 (just below visible area)
+    const fadeRank = maxRank + 1;
+    const yPos = (rank) => yScale(useTopN && rank > topN ? fadeRank : rank);
+    const fadeOpacity = 0.12;
+
+    // Lines per series — draw segment by segment for fading
+    const segLineGen = d3.line().x(d => xScale(d.x)).y(d => yPos(d.rank)).curve(d3.curveBumpX);
 
     displaySeries.forEach(s => {
       const pts = rankData.get(s) || [];
       const color = colors(s);
-      const path = g.append('path').datum(pts)
-        .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 3)
-        .attr('opacity', opacity).attr('stroke-linecap', 'round').attr('d', lineGen);
 
-      const len = path.node()?.getTotalLength() || 0;
-      path.attr('stroke-dasharray', `${len} ${len}`).attr('stroke-dashoffset', len)
-        .transition().duration(800).ease(d3.easeCubicInOut).attr('stroke-dashoffset', 0);
+      if (!useTopN) {
+        // No top N — draw one continuous line as before
+        const path = g.append('path').datum(pts)
+          .attr('fill', 'none').attr('stroke', color).attr('stroke-width', 3)
+          .attr('opacity', opacity).attr('stroke-linecap', 'round').attr('d', segLineGen);
+        const len = path.node()?.getTotalLength() || 0;
+        path.attr('stroke-dasharray', `${len} ${len}`).attr('stroke-dashoffset', len)
+          .transition().duration(800).ease(d3.easeCubicInOut).attr('stroke-dashoffset', 0);
+      } else {
+        // Draw segments between consecutive points with fading
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i], b = pts[i + 1];
+          const bothIn = a.inTop && b.inTop;
+          const segOpacity = bothIn ? opacity : fadeOpacity;
+          g.append('path').datum([a, b])
+            .attr('fill', 'none').attr('stroke', color).attr('stroke-width', bothIn ? 3 : 2)
+            .attr('opacity', segOpacity).attr('stroke-linecap', 'round').attr('d', segLineGen);
+        }
+      }
 
       // Dots at each step
       const dots = g.selectAll(`.dot-${s.replace(/\W/g, '_')}`).data(pts).join('circle')
-        .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.rank))
+        .attr('cx', d => xScale(d.x)).attr('cy', d => yPos(d.rank))
         .attr('r', 0).attr('fill', color).attr('stroke', '#fff').attr('stroke-width', 2)
-        .attr('opacity', opacity);
-      dots.transition().delay(750).duration(200).attr('r', 5);
+        .attr('opacity', d => d.inTop ? opacity : fadeOpacity);
+      dots.transition().delay(useTopN ? 0 : 750).duration(200).attr('r', d => d.inTop ? 5 : 3);
 
       dots
         .on('mouseover', (ev, d) => {
@@ -141,8 +171,8 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
           showTooltip(ev, <BumpTip d={d} s={s} widget={widget} color={color} maxRank={maxRank} />);
         })
         .on('mousemove', moveTooltip)
-        .on('mouseleave', (ev) => {
-          d3.select(ev.currentTarget).transition().duration(100).attr('r', 5);
+        .on('mouseleave', (ev, d) => {
+          d3.select(ev.currentTarget).transition().duration(100).attr('r', d.inTop ? 5 : 3);
           hideTooltip();
         })
         .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField, value: s }); } : null)
@@ -153,8 +183,8 @@ export default function BumpChart({ widget, data, onCrossFilter }) {
     const finalRanks = displaySeries.map(s => {
       const pts = rankData.get(s) || [];
       const last = pts[pts.length - 1];
-      return { s, rank: last?.rank, y: yScale(last?.rank || 1) };
-    }).sort((a, b) => a.rank - b.rank);
+      return { s, rank: last?.rank, y: yPos(last?.rank || 1), inTop: last?.inTop !== false };
+    }).filter(f => !useTopN || f.inTop).sort((a, b) => a.rank - b.rank);
 
     finalRanks.forEach(({ s, y }) => {
       g.append('text').attr('x', W + 8).attr('y', y + 4)
