@@ -339,12 +339,14 @@ function renderSatellite(svg, value, target, widget, w, h, gradientScale) {
     }
   }
 
-  // Full rings: full gradient (tMax = 1)
+  // Full rings: leave a small gap so start/end don't collide, with rounded caps
+  const gapAngle = thickness / radius * 0.15;
   for (let ring = 0; ring < fullTurns && ring < 3; ring++) {
     const rOffset = ring * (thickness + 3);
     const ringRadius = radius - rOffset;
     if (ringRadius < 12) break;
-    drawGradientSlices(g, ringRadius, 0, sign * 2 * Math.PI, false, 1);
+    const endAngle = sign * (2 * Math.PI - gapAngle);
+    drawGradientSlices(g, ringRadius, 0, endAngle, true, 1);
   }
 
   // Partial arc: gradient covers only the filled fraction (tMax = remainder/100)
