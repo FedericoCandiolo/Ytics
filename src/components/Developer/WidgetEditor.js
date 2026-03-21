@@ -120,6 +120,8 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'xField',    label: 'Dimension (X axis)',        filter: null },
       { key: 'yField',    label: 'Measure (numeric)',          filter: ['number'] },
       { key: 'colorField',label: 'Sub-group (optional)',       filter: null, optional: true },
+      { key: 'labelField',label: 'Point label (optional)',     filter: null, optional: true },
+      { key: 'jitterField',label: 'Point X-position (optional)', filter: ['number'], optional: true },
     ],
     carousel: [],
     boxplot: [
@@ -127,6 +129,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'yField',    label: 'Measure (numeric)',          filter: ['number'] },
       { key: 'colorField',label: 'Sub-group (optional)',       filter: null, optional: true },
       { key: 'labelField',label: 'Point label (optional)',     filter: null, optional: true },
+      { key: 'jitterField',label: 'Point X-position (optional)', filter: ['number'], optional: true },
     ],
     radar: [
       { key: 'axisField',  label: 'Dimension (axis)',         filter: null },
@@ -1621,11 +1624,14 @@ const SLIDE_FIELD_MAP = {
   violin: [
     { key: 'xField', label: 'Category', filter: null },
     { key: 'yField', label: 'Value (numeric)', filter: ['number'] },
+    { key: 'labelField', label: 'Point label (optional)', filter: null, optional: true },
+    { key: 'jitterField', label: 'Point X-position (optional)', filter: ['number'], optional: true },
   ],
   boxplot: [
     { key: 'xField', label: 'Category', filter: null },
     { key: 'yField', label: 'Value (numeric)', filter: ['number'] },
     { key: 'labelField', label: 'Point label (optional)', filter: null, optional: true },
+    { key: 'jitterField', label: 'Point X-position (optional)', filter: ['number'], optional: true },
   ],
   radar: [
     { key: 'axisField', label: 'Axis', filter: null },

@@ -42,16 +42,25 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
         const sub = String(row[widget.colorField] ?? '(blank)');
         subGroupSet.add(sub);
         const compKey = `${cat}||${sub}`;
-        if (!groupMap.has(compKey)) groupMap.set(compKey, { cat, sub, vals: [] });
-        groupMap.get(compKey).vals.push(val);
+        if (!groupMap.has(compKey)) groupMap.set(compKey, { cat, sub, vals: [], rows: [] });
+        const grp = groupMap.get(compKey);
+        grp.vals.push(val);
+        grp.rows.push(row);
       } else {
-        if (!groupMap.has(cat)) groupMap.set(cat, { cat, sub: null, vals: [] });
-        groupMap.get(cat).vals.push(val);
+        if (!groupMap.has(cat)) groupMap.set(cat, { cat, sub: null, vals: [], rows: [] });
+        const grp = groupMap.get(cat);
+        grp.vals.push(val);
+        grp.rows.push(row);
       }
     }
 
-    // Sort vals
-    for (const grp of groupMap.values()) grp.vals.sort(d3.ascending);
+    // Sort vals (keep rows in sync)
+    for (const grp of groupMap.values()) {
+      const indexed = grp.vals.map((v, i) => ({ v, row: grp.rows[i] }));
+      indexed.sort((a, b) => d3.ascending(a.v, b.v));
+      grp.vals = indexed.map(d => d.v);
+      grp.rows = indexed.map(d => d.row);
+    }
 
     let xDomain = [...new Set([...groupMap.values()].map(g => g.cat))];
     if (widget.sortBy && widget.sortBy !== 'original') {
@@ -109,8 +118,9 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
       .call(styledAxis).selectAll('text').attr('transform', 'rotate(-25)').style('text-anchor', 'end');
     g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(fmtTick)).call(styledAxis);
 
-    // Seeded PRNG for jitter
+    // Seeded PRNG for jitter (used when no jitterField is set)
     const jitterRng = mulberry32(42);
+    const useJitterField = !!widget.jitterField;
 
     for (const [, grp] of groupMap) {
       const vals = grp.vals;
@@ -205,24 +215,57 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
           .attr('stroke', color).attr('stroke-width', 1).attr('opacity', 0.5);
       });
 
-      // Outlier dots (outside whisker bounds)
-      stats.outliers.forEach(v => {
-        g.append('circle')
-          .attr('cx', cx + (jitterRng() - 0.5) * slotW * 0.3)
-          .attr('cy', yScale(v))
-          .attr('r', 2.5).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
-      });
-
-      // Show data points (all values as jittered semi-transparent dots)
-      if (widget.showDataPoints) {
-        vals.forEach(v => {
-          g.append('circle')
-            .attr('cx', cx + (jitterRng() - 0.5) * slotW * 0.5)
+      // Data points & outliers
+      // Per-group jitter scale when jitterField is set (min/max per violin)
+      let grpJitterScale;
+      if (useJitterField) {
+        const jVals = grp.rows.map(r => +r[widget.jitterField]).filter(v => !isNaN(v));
+        const jExt = d3.extent(jVals);
+        grpJitterScale = jExt[0] === jExt[1]
+          ? () => 0
+          : d3.scaleLinear().domain(jExt).range([-0.45, 0.45]);
+      }
+      if (widget.showDataPoints !== false) {
+        // Show all values as jittered semi-transparent dots with tooltips
+        // (outliers are included here, so we skip the separate outlier layer)
+        vals.forEach((v, i) => {
+          const row = grp.rows[i];
+          const isOutlier = v < stats.whiskerLow || v > stats.whiskerHigh;
+          const jx = useJitterField
+            ? grpJitterScale(+row[widget.jitterField] || 0) * slotW
+            : (jitterRng() - 0.5) * slotW * 0.7;
+          const circle = g.append('circle')
+            .attr('cx', cx + jx)
             .attr('cy', yScale(v))
-            .attr('r', 2)
-            .attr('fill', color)
-            .attr('fill-opacity', 0.25)
-            .attr('stroke', 'none');
+            .attr('r', 2.5)
+            .attr('fill', isOutlier ? 'none' : color)
+            .attr('fill-opacity', isOutlier ? 1 : 0.3)
+            .attr('stroke', isOutlier ? color : 'none')
+            .attr('stroke-width', isOutlier ? 1.2 : 0)
+            .attr('opacity', isOutlier ? opacity * 0.7 : 1);
+          circle
+            .on('mouseover', ev => {
+              circle.attr('r', 4.5).attr('fill', color).attr('fill-opacity', 0.8).attr('stroke', color).attr('stroke-width', 1.5).attr('opacity', 1);
+              showTooltip(ev, <PointTip row={row} widget={widget} value={v} color={color} cat={grp.cat} sub={grp.sub} />);
+            })
+            .on('mousemove', moveTooltip)
+            .on('mouseleave', () => {
+              circle.attr('r', 2.5)
+                .attr('fill', isOutlier ? 'none' : color)
+                .attr('fill-opacity', isOutlier ? 1 : 0.3)
+                .attr('stroke', isOutlier ? color : 'none')
+                .attr('stroke-width', isOutlier ? 1.2 : 0)
+                .attr('opacity', isOutlier ? opacity * 0.7 : 1);
+              hideTooltip();
+            });
+        });
+      } else {
+        // Only show outlier dots (no tooltips when data points are off)
+        stats.outliers.forEach(v => {
+          g.append('circle')
+            .attr('cx', cx + (jitterRng() - 0.5) * slotW * 0.7)
+            .attr('cy', yScale(v))
+            .attr('r', 2.5).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
         });
       }
     }
@@ -296,6 +339,22 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function PointTip({ row, widget, value, color, cat, sub }) {
+  const label = widget.labelField ? String(row[widget.labelField] ?? '') : null;
+  return (
+    <>
+      <div className="chart-tooltip-title">
+        <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, marginRight: 6, verticalAlign: 'middle' }} />
+        {label || cat}{sub != null ? ` / ${sub}` : ''}
+      </div>
+      {label && (
+        <div className="chart-tooltip-row"><span className="tt-label">{widget.xField}</span><span className="tt-value">{cat}</span></div>
+      )}
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+    </>
+  );
 }
 
 function ViolinTip({ cat, sub, stats, widget, color, n, iqrMultiplier }) {

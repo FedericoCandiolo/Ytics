@@ -62,8 +62,12 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
     if (othersValue > 0) {
       mainCats.push({ key: 'Others', value: othersValue, pct: othersValue / total });
     }
-    // Re-sort descending after adding Others
-    mainCats.sort((a, b) => b.value - a.value);
+    // Re-sort descending after adding Others, but keep Others last
+    mainCats.sort((a, b) => {
+      if (a.key === 'Others') return 1;
+      if (b.key === 'Others') return -1;
+      return b.value - a.value;
+    });
 
     // Largest remainder method: floor each, then distribute leftover to biggest remainders
     const cellCats = mainCats.map(cat => {
@@ -100,8 +104,12 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
         finalCats.push({ key: 'Others', value: extraOthers, pct: extraOthers / total, cells: 1, remainder: 0 });
       }
     }
-    // Re-sort finalCats descending for fill order
-    finalCats.sort((a, b) => b.value - a.value);
+    // Re-sort finalCats descending for fill order, but keep "Others" last
+    finalCats.sort((a, b) => {
+      if (a.key === 'Others') return 1;
+      if (b.key === 'Others') return -1;
+      return b.value - a.value;
+    });
     // Clean up remainder property
     finalCats.forEach(c => delete c.remainder);
 

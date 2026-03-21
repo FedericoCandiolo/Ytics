@@ -130,6 +130,7 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
 
     // Seeded pseudo-random for consistent jitter
     const jitterRng = mulberry32(42);
+    const useJitterField = !!widget.jitterField;
 
     for (const [, s] of statsMap) {
       const catX = xScale(s.cat);
@@ -182,35 +183,57 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
         .attr('d', `M${cx},${my - 4} L${cx + 4},${my} L${cx},${my + 4} L${cx - 4},${my} Z`)
         .attr('fill', '#fff').attr('stroke', color).attr('stroke-width', 1.5);
 
-      // Outliers (always drawn — points outside whisker bounds)
-      s.outliers.forEach(v => {
-        g.append('circle')
-          .attr('cx', cx + (jitterRng() - 0.5) * boxW * 0.4)
-          .attr('cy', yScale(v))
-          .attr('r', 3).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
-      });
+      // Per-group jitter scale when jitterField is set (min/max per box)
+      let grpJitterScale;
+      if (useJitterField) {
+        const jVals = s.rows.map(r => +r[widget.jitterField]).filter(v => !isNaN(v));
+        const jExt = d3.extent(jVals);
+        grpJitterScale = jExt[0] === jExt[1]
+          ? () => 0
+          : d3.scaleLinear().domain(jExt).range([-0.45, 0.45]);
+      }
 
-      // Show data points (all values as jittered semi-transparent dots, hoverable)
+      // Data points & outliers
       if (widget.showDataPoints !== false) {
+        // Single pass: all values with tooltips; outliers styled distinctly
         s.vals.forEach((v, i) => {
           const row = s.rows[i];
+          const isOutlier = v < s.whiskerLo || v > s.whiskerHi;
+          const jx = useJitterField
+            ? grpJitterScale(+row[widget.jitterField] || 0) * boxW
+            : (jitterRng() - 0.5) * boxW * 0.7;
           const circle = g.append('circle')
-            .attr('cx', cx + (jitterRng() - 0.5) * boxW * 0.6)
+            .attr('cx', cx + jx)
             .attr('cy', yScale(v))
             .attr('r', 2.5)
-            .attr('fill', color)
-            .attr('fill-opacity', 0.3)
-            .attr('stroke', 'none');
+            .attr('fill', isOutlier ? 'none' : color)
+            .attr('fill-opacity', isOutlier ? 1 : 0.3)
+            .attr('stroke', isOutlier ? color : 'none')
+            .attr('stroke-width', isOutlier ? 1.2 : 0)
+            .attr('opacity', isOutlier ? opacity * 0.7 : 1);
           circle
             .on('mouseover', ev => {
-              circle.attr('r', 4.5).attr('fill-opacity', 0.8).attr('stroke', color).attr('stroke-width', 1.5);
+              circle.attr('r', 4.5).attr('fill', color).attr('fill-opacity', 0.8).attr('stroke', color).attr('stroke-width', 1.5).attr('opacity', 1);
               showTooltip(ev, <PointTip row={row} widget={widget} value={v} color={color} cat={s.cat} sub={s.sub} />);
             })
             .on('mousemove', moveTooltip)
             .on('mouseleave', () => {
-              circle.attr('r', 2.5).attr('fill-opacity', 0.3).attr('stroke', 'none');
+              circle.attr('r', 2.5)
+                .attr('fill', isOutlier ? 'none' : color)
+                .attr('fill-opacity', isOutlier ? 1 : 0.3)
+                .attr('stroke', isOutlier ? color : 'none')
+                .attr('stroke-width', isOutlier ? 1.2 : 0)
+                .attr('opacity', isOutlier ? opacity * 0.7 : 1);
               hideTooltip();
             });
+        });
+      } else {
+        // Only show outlier dots (no tooltips when data points are off)
+        s.outliers.forEach(v => {
+          g.append('circle')
+            .attr('cx', cx + (jitterRng() - 0.5) * boxW * 0.7)
+            .attr('cy', yScale(v))
+            .attr('r', 3).attr('fill', 'none').attr('stroke', color).attr('stroke-width', 1.2).attr('opacity', opacity * 0.7);
         });
       }
 
