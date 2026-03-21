@@ -35,6 +35,9 @@ export const CHART_REQUIRED_FIELDS = {
   combo:     ['xField', 'yField', 'y2Field'],
   straighttable: ['valueField'],
   mekko:     ['xField', 'yField', 'colorField'],
+  text:      [],
+  image:     [],
+  embed:     [],
 };
 
 // Check if converting from one type to another is reasonable
@@ -272,6 +275,16 @@ function defaultWidget(overrides = {}) {
     // Straight table
     straightTableMeasures: [],  // additional measure fields
     straightTableShowTotals: false,
+    primaryRepresentation: 'text', // 'text'|'bar'|'pie'|'line' for primary measure display
+    primaryChartDimension: null,  // breakdown dimension when primary measure is mini chart
+    // Text / Image / Embed content widgets
+    staticContent: '',      // text content template
+    contentMode: 'markdown', // 'plain' | 'markdown' | 'html'
+    textAlign: 'left',
+    textFontSize: 14,
+    imageUrl: '',
+    imageFit: 'contain',    // 'contain' | 'cover' | 'fill'
+    embedUrl: '',
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget

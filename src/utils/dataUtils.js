@@ -175,6 +175,7 @@ export function applyFilters(data, filters) {
         return f.values.includes(String(value));
       }
       if (f.filterType === 'range') {
+        if (!f.range) return true;
         const num = Number(value);
         if (isNaN(num)) return true;
         return num >= f.range[0] && num <= f.range[1];

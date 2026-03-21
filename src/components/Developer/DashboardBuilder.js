@@ -34,6 +34,10 @@ const WIDGET_TYPES = [
   { type: 'waffle',       label: 'Waffle Chart',   icon: '🧇' },
   { type: 'waterfall',    label: 'Waterfall',      icon: '📉' },
   { type: 'wordcloud',    label: 'Word Cloud',     icon: '☁' },
+  // ── Content types ──
+  { type: 'embed',        label: 'Embed',          icon: '🔗' },
+  { type: 'image',        label: 'Image',          icon: '🖼' },
+  { type: 'text',         label: 'Text',           icon: '📝' },
 ];
 
 // Custom resize handles with inline styles — bypasses library CSS specificity issues

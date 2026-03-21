@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { aggregate, formatValue } from '../../utils/dataUtils';
-import { getSequentialScale, contrastText } from '../../utils/colorUtils';
+import { getSequentialScale, contrastText, getColorArray } from '../../utils/colorUtils';
+import { useApp } from '../../context/AppContext';
 
 // ── CSV export ───────────────────────────────────────────────────────────────
 
@@ -97,6 +98,94 @@ const HEADER_HEIGHT = 34;
 const FOOTER_HEIGHT = 36;
 const KEY_SEP = '|||';
 
+// ── Inline mini-chart SVG components ─────────────────────────────────────────
+
+function MiniBar({ slices, colors, width, height }) {
+  if (!slices.length) return null;
+  const maxVal = Math.max(...slices.map(s => Math.abs(s.value)), 1);
+  const barW = (width - 2) / slices.length;
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      {slices.map((sl, i) => {
+        const h = (Math.abs(sl.value) / maxVal) * (height - 2);
+        return (
+          <rect
+            key={i}
+            x={1 + i * barW}
+            y={height - 1 - h}
+            width={Math.max(1, barW - 1)}
+            height={h}
+            fill={colors[i % colors.length]}
+            opacity={0.85}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function MiniPie({ slices, colors, width, height }) {
+  if (!slices.length) return null;
+  const total = slices.reduce((s, sl) => s + Math.abs(sl.value), 0);
+  if (total === 0) return null;
+  const r = Math.min(width, height) / 2 - 1;
+  const cx = width / 2, cy = height / 2;
+  let cumAngle = -Math.PI / 2;
+  const paths = slices.map((sl, i) => {
+    const frac = Math.abs(sl.value) / total;
+    const angle = frac * 2 * Math.PI;
+    const a0 = cumAngle;
+    const a1 = cumAngle + angle;
+    cumAngle = a1;
+    const large = angle > Math.PI ? 1 : 0;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    return (
+      <path
+        key={i}
+        d={`M${cx},${cy} L${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} Z`}
+        fill={colors[i % colors.length]}
+        opacity={0.85}
+      />
+    );
+  });
+  return <svg width={width} height={height} style={{ display: 'block' }}>{paths}</svg>;
+}
+
+function MiniLine({ slices, colors, width, height }) {
+  if (slices.length < 2) return null;
+  const maxVal = Math.max(...slices.map(s => Math.abs(s.value)), 1);
+  const pad = 2;
+  const w = width - pad * 2, h = height - pad * 2;
+  const step = w / (slices.length - 1);
+  const points = slices.map((sl, i) => {
+    const x = pad + i * step;
+    const y = pad + h - (Math.abs(sl.value) / maxVal) * h;
+    return `${x},${y}`;
+  });
+  // Area fill
+  const areaPoints = [
+    `${pad},${pad + h}`,
+    ...points,
+    `${pad + (slices.length - 1) * step},${pad + h}`,
+  ].join(' ');
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polygon points={areaPoints} fill={colors[0] || '#3b82f6'} opacity={0.15} />
+      <polyline points={points.join(' ')} fill="none" stroke={colors[0] || '#3b82f6'} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      {slices.map((sl, i) => (
+        <circle key={i} cx={pad + i * step} cy={pad + h - (Math.abs(sl.value) / maxVal) * h} r={1.5} fill={colors[i % colors.length]} />
+      ))}
+    </svg>
+  );
+}
+
+function MiniChart({ type, slices, colors, width, height }) {
+  if (type === 'pie') return <MiniPie slices={slices} colors={colors} width={width} height={height} />;
+  if (type === 'line') return <MiniLine slices={slices} colors={colors} width={width} height={height} />;
+  return <MiniBar slices={slices} colors={colors} width={width} height={height} />;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function StraightTable({ widget, data, onCrossFilter }) {
@@ -143,6 +232,9 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       ms.push({
         field: widget.valueField,
         aggregation: widget.aggregation || 'sum',
+        representation: widget.primaryRepresentation || 'text',
+        dimension: widget.primaryChartDimension || undefined,
+        label: widget.primaryMeasureLabel || undefined,
       });
     }
     // Additional measures
@@ -152,7 +244,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       }
     }
     return ms;
-  }, [widget.valueField, widget.aggregation, widget.straightTableMeasures]);
+  }, [widget.valueField, widget.aggregation, widget.straightTableMeasures, widget.primaryRepresentation, widget.primaryChartDimension, widget.primaryMeasureLabel]);
 
   // ── Build column definitions ───────────────────────────────────────────────
 
@@ -162,17 +254,27 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
     for (const dim of dimensions) {
       cols.push({ key: dim, label: dim, type: 'dimension' });
     }
-    // Measure columns
-    for (const m of measures) {
+    // Measure columns — each may have a representation (text, bar, pie, line)
+    // Use index-based keys to avoid collisions when same field+agg appears multiple times
+    for (let mi = 0; mi < measures.length; mi++) {
+      const m = measures[mi];
       const aggLabel = m.aggregation || 'sum';
-      const label = measures.length === 1 && m.field === widget.valueField
-        ? `${m.field} (${aggLabel})`
-        : `${m.field} (${aggLabel})`;
-      const key = `${m.field}_${aggLabel}`;
-      cols.push({ key, label, type: 'measure', field: m.field, aggregation: aggLabel });
+      const label = m.label || `${m.field} (${aggLabel})`;
+      const key = `__m${mi}_${m.field}_${aggLabel}`;
+      const repr = m.representation || 'text';
+      const isChart = repr !== 'text';
+      cols.push({
+        key,
+        label,
+        type: isChart ? 'minichart' : 'measure',
+        field: m.field,
+        aggregation: aggLabel,
+        chartType: isChart ? repr : null,
+        chartDimension: isChart ? m.dimension : null,
+      });
     }
     return cols;
-  }, [dimensions, measures, widget.valueField]);
+  }, [dimensions, measures]);
 
   // ── Aggregate data ─────────────────────────────────────────────────────────
 
@@ -187,15 +289,17 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
 
       if (!groups.has(key)) {
         groups.set(key, { keyParts, buckets: {} });
-        for (const m of measures) {
-          const mKey = `${m.field}_${m.aggregation || 'sum'}`;
+        for (let mi = 0; mi < measures.length; mi++) {
+          const m = measures[mi];
+          const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
           groups.get(key).buckets[mKey] = [];
         }
       }
 
       const group = groups.get(key);
-      for (const m of measures) {
-        const mKey = `${m.field}_${m.aggregation || 'sum'}`;
+      for (let mi = 0; mi < measures.length; mi++) {
+        const m = measures[mi];
+        const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
         const agg = m.aggregation || 'sum';
         const val = agg === 'count' ? 1 : (+row[m.field] || 0);
         group.buckets[mKey].push(val);
@@ -209,14 +313,70 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         row[d] = keyParts[i];
       });
       // Set aggregated measure values
-      for (const m of measures) {
-        const mKey = `${m.field}_${m.aggregation || 'sum'}`;
+      for (let mi = 0; mi < measures.length; mi++) {
+        const m = measures[mi];
+        const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
         const agg = m.aggregation || 'sum';
         row[mKey] = aggregate(buckets[mKey], agg);
       }
       return row;
     });
   }, [data, dimensions, measures]);
+
+  // ── Mini-chart data per column per row ──────────────────────────────────────
+
+  const { state } = useApp();
+  const chartCols = useMemo(() => columns.filter(c => c.type === 'minichart'), [columns]);
+
+  // Build mini-chart slices for each chart column
+  const mcDataMap = useMemo(() => {
+    if (!chartCols.length || !data?.length) return null;
+    const result = new Map(); // colKey → { slicesMap, dimVals }
+    for (const col of chartCols) {
+      const mcDim = col.chartDimension;
+      const mcField = col.field;
+      const mcAgg = col.aggregation || 'sum';
+      if (!mcDim) continue;
+
+      const rowMap = new Map();
+      for (const row of data) {
+        const keyParts = dimensions.map(d => String(row[d] ?? '(blank)'));
+        const groupKey = keyParts.join(KEY_SEP);
+        if (!rowMap.has(groupKey)) rowMap.set(groupKey, new Map());
+        const dimVal = String(row[mcDim] ?? '(blank)');
+        const subMap = rowMap.get(groupKey);
+        if (!subMap.has(dimVal)) subMap.set(dimVal, []);
+        subMap.get(dimVal).push(mcAgg === 'count' ? 1 : (+row[mcField] || 0));
+      }
+
+      const allDimVals = new Set();
+      rowMap.forEach(sub => sub.forEach((_, k) => allDimVals.add(k)));
+      const dimVals = [...allDimVals].sort();
+
+      const slicesMap = new Map();
+      rowMap.forEach((sub, groupKey) => {
+        const slices = dimVals.map(dv => ({
+          label: dv,
+          value: sub.has(dv) ? aggregate(sub.get(dv), mcAgg) : 0,
+        }));
+        slicesMap.set(groupKey, slices);
+      });
+
+      result.set(col.key, { slicesMap, dimVals });
+    }
+    return result.size > 0 ? result : null;
+  }, [data, dimensions, chartCols]);
+
+  // Color arrays per chart column
+  const mcColorsMap = useMemo(() => {
+    if (!mcDataMap) return null;
+    const scheme = widget.colorScheme ?? state.dashboard.theme?.colorScheme ?? 'vivid';
+    const result = new Map();
+    mcDataMap.forEach((info, colKey) => {
+      result.set(colKey, getColorArray(scheme, info.dimVals.length));
+    });
+    return result;
+  }, [mcDataMap, widget.colorScheme, state.dashboard.theme?.colorScheme]);
 
   // ── Totals row ─────────────────────────────────────────────────────────────
 
@@ -229,8 +389,9 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       row[d] = i === 0 ? 'Total' : '';
     });
     // Aggregate all values for each measure
-    for (const m of measures) {
-      const mKey = `${m.field}_${m.aggregation || 'sum'}`;
+    for (let mi = 0; mi < measures.length; mi++) {
+      const m = measures[mi];
+      const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
       const agg = m.aggregation || 'sum';
       const vals = aggregatedRows.map(r => r[mKey]).filter(v => typeof v === 'number');
       // For totals, re-aggregate: sum of sums, count of counts, etc.
@@ -296,7 +457,8 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
 
   const handleExport = () => {
     const exportRows = totalsRow ? [...rows, totalsRow] : rows;
-    exportTableCSV(exportRows, columns, (widget.title || 'straight-table') + '.csv');
+    const exportCols = columns.filter(c => c.type !== 'minichart');
+    exportTableCSV(exportRows, exportCols, (widget.title || 'straight-table') + '.csv');
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -308,10 +470,14 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
           <thead>
             <tr>
               {columns.map(c => (
-                <th key={c.key} style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(c.key)}>
+                <th
+                  key={c.key}
+                  style={{ cursor: c.type !== 'minichart' ? 'pointer' : 'default', userSelect: 'none' }}
+                  onClick={c.type !== 'minichart' ? () => toggleSort(c.key) : undefined}
+                >
                   {c.label}
                   {sort.field === c.key && <span style={{ marginLeft: 4 }}>{sort.dir === 'asc' ? '\u2191' : '\u2193'}</span>}
-                  <span className="col-type">{c.type === 'dimension' ? 'dim' : 'num'}</span>
+                  {c.type !== 'minichart' && <span className="col-type">{c.type === 'dimension' ? 'dim' : 'num'}</span>}
                 </th>
               ))}
             </tr>
@@ -320,6 +486,18 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
             {pageRows.map((row, i) => (
               <tr key={i}>
                 {columns.map(c => {
+                  // Mini-chart cell
+                  if (c.type === 'minichart' && c.chartDimension && mcDataMap?.get(c.key)) {
+                    const colData = mcDataMap.get(c.key);
+                    const colors = mcColorsMap?.get(c.key) || [];
+                    const groupKey = dimensions.map(d => String(row[d] ?? '(blank)')).join(KEY_SEP);
+                    const slices = colData.slicesMap.get(groupKey) || [];
+                    return (
+                      <td key={c.key} style={{ padding: '2px 4px', textAlign: 'center' }}>
+                        <MiniChart type={c.chartType} slices={slices} colors={colors} width={80} height={22} />
+                      </td>
+                    );
+                  }
                   const cellVal = row[c.key];
                   const fmtStyle = getCellStyle(fmtMap, c.key, cellVal);
                   const isDim = c.type === 'dimension';
@@ -349,6 +527,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
             {totalsRow && safePage === totalPages - 1 && (
               <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                 {columns.map(c => {
+                  if (c.type === 'minichart') return <td key={c.key} />;
                   const cellVal = totalsRow[c.key];
                   const displayVal = typeof cellVal === 'number' ? formatValue(cellVal) : cellVal;
                   return (

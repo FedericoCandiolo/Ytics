@@ -28,6 +28,9 @@ import BubbleChart from './BubbleChart';
 import ComboChart from './ComboChart';
 import StraightTable from './StraightTable';
 import MekkoChart from './MekkoChart';
+import TextContent from './TextContent';
+import ImageWidget from './ImageWidget';
+import EmbedWidget from './EmbedWidget';
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
@@ -39,6 +42,7 @@ const CHART_MAP = {
   waterfall: WaterfallChart, wordcloud: WordCloud, funnel: FunnelChart,
   kpi: KPICard, bubble: BubbleChart, combo: ComboChart,
   straighttable: StraightTable, mekko: MekkoChart,
+  text: TextContent, image: ImageWidget, embed: EmbedWidget,
 };
 
 const TYPE_ICONS = {
@@ -49,6 +53,7 @@ const TYPE_ICONS = {
   pivot: '⊞',
   waterfall: '📉', wordcloud: '☁', funnel: '🔻', kpi: '🎯',
   bubble: '🫧', combo: '📊📈', straighttable: '▦', mekko: '▥',
+  text: '📝', image: '🖼', embed: '🔗',
 };
 
 export { TYPE_ICONS };

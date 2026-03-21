@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
@@ -40,7 +40,7 @@ const AGG_VALUE_KEY = {
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -193,6 +193,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     straighttable: [
       { key: '_straightTableDimensions', label: 'Dimensions', multi: true },
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
+      { key: '_primaryRepr', label: 'Primary measure display' },
       { key: '_straightTableMeasures', label: 'Additional measures', multi: true },
     ],
     mekko: [
@@ -200,6 +201,9 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'yField',      label: 'Measure',                 filter: ['number'] },
       { key: 'colorField',  label: 'Segments (color)',        filter: null },
     ],
+    text: [],
+    image: [],
+    embed: [],
   };
 
   const cols = columns;
@@ -272,50 +276,130 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
             </div>
           );
         }
+        // Special: primary measure representation for Straight Table
+        if (f.key === '_primaryRepr') {
+          const REPR_OPTIONS = [
+            { value: 'text', label: 'Text' },
+            { value: 'bar', label: 'Mini bar chart' },
+            { value: 'pie', label: 'Mini pie chart' },
+            { value: 'line', label: 'Mini line chart' },
+          ];
+          const repr = widget.primaryRepresentation || 'text';
+          const isChart = repr !== 'text';
+          return (
+            <div key={f.key} style={{ marginBottom: 10 }}>
+              <input className="input input-sm" style={{ width: '100%', marginBottom: 4 }}
+                placeholder={`${widget.valueField || 'Measure'} (${widget.aggregation || 'sum'})`}
+                value={widget.primaryMeasureLabel || ''}
+                onChange={e => onUpdate({ primaryMeasureLabel: e.target.value })}
+              />
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <select className="select select-sm" style={{ flex: 1 }} value={repr}
+                  onChange={e => {
+                    const updates = { primaryRepresentation: e.target.value };
+                    if (e.target.value === 'text') updates.primaryChartDimension = undefined;
+                    onUpdate(updates);
+                  }}>
+                  {REPR_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                {isChart && (
+                  <select className="select select-sm" style={{ flex: 1 }} value={widget.primaryChartDimension || ''}
+                    onChange={e => onUpdate({ primaryChartDimension: e.target.value || undefined })}>
+                    <option value="">Breakdown dim…</option>
+                    {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+          );
+        }
         // Special: multi-select for Straight Table additional measures
         if (f.key === '_straightTableMeasures') {
           const current = widget.straightTableMeasures || [];
           const numCols = cols.filter(c => c.type === 'number');
+          const allCols = cols;
+          const REPR_OPTIONS = [
+            { value: 'text', label: 'Text' },
+            { value: 'bar', label: 'Mini bar chart' },
+            { value: 'pie', label: 'Mini pie chart' },
+            { value: 'line', label: 'Mini line chart' },
+          ];
           return (
             <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
               <label className="form-label">{f.label}</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {current.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {/* Row 1: field, aggregation, reorder & delete */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], field: e.target.value };
+                          onUpdate({ straightTableMeasures: next });
+                        }}>
+                        <option value="">— none —</option>
+                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <select className="select select-sm" style={{ width: 80 }} value={m.aggregation || 'sum'}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], aggregation: e.target.value };
+                          onUpdate({ straightTableMeasures: next });
+                        }}>
+                        {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
+                        const next = [...current];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        onUpdate({ straightTableMeasures: next });
+                      }} title="Move up">{'\u2191'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
+                        const next = [...current];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        onUpdate({ straightTableMeasures: next });
+                      }} title="Move down">{'\u2193'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                        onUpdate({ straightTableMeasures: current.filter((_, j) => j !== i) });
+                      }}>{'\u2715'}</button>
+                    </div>
+                    {/* Row 2: custom label */}
+                    <input className="input input-sm" style={{ width: '100%' }}
+                      placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                      value={m.label || ''}
                       onChange={e => {
                         const next = [...current];
-                        next[i] = { ...next[i], field: e.target.value };
+                        next[i] = { ...next[i], label: e.target.value };
                         onUpdate({ straightTableMeasures: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                    <select className="select select-sm" style={{ width: 80 }} value={m.aggregation || 'sum'}
-                      onChange={e => {
-                        const next = [...current];
-                        next[i] = { ...next[i], aggregation: e.target.value };
-                        onUpdate({ straightTableMeasures: next });
-                      }}>
-                      {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                    <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
-                      const next = [...current];
-                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                      onUpdate({ straightTableMeasures: next });
-                    }} title="Move up">{'\u2191'}</button>
-                    <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
-                      const next = [...current];
-                      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-                      onUpdate({ straightTableMeasures: next });
-                    }} title="Move down">{'\u2193'}</button>
-                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
-                      onUpdate({ straightTableMeasures: current.filter((_, j) => j !== i) });
-                    }}>{'\u2715'}</button>
+                      }}
+                    />
+                    {/* Row 3: representation + breakdown dimension */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <select className="select select-sm" style={{ flex: 1 }} value={m.representation || 'text'}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], representation: e.target.value };
+                          if (e.target.value === 'text') next[i] = { ...next[i], dimension: undefined };
+                          onUpdate({ straightTableMeasures: next });
+                        }}>
+                        {REPR_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                      {(m.representation && m.representation !== 'text') && (
+                        <select className="select select-sm" style={{ flex: 1 }} value={m.dimension || ''}
+                          onChange={e => {
+                            const next = [...current];
+                            next[i] = { ...next[i], dimension: e.target.value || undefined };
+                            onUpdate({ straightTableMeasures: next });
+                          }}>
+                          <option value="">Breakdown dim…</option>
+                          {allCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        </select>
+                      )}
+                    </div>
                   </div>
                 ))}
                 <button className="btn btn-ghost btn-sm" onClick={() => {
-                  onUpdate({ straightTableMeasures: [...current, { field: '', aggregation: 'sum' }] });
+                  onUpdate({ straightTableMeasures: [...current, { field: '', aggregation: 'sum', representation: 'text' }] });
                 }}>+ Add measure</button>
               </div>
             </div>
@@ -1057,6 +1141,215 @@ function ReferenceLineOption({ widget, onUpdate }) {
   );
 }
 
+// ── Template editor with field insertion ──────────────────────────────────────
+const TEMPLATE_AGGS = ['sum', 'count', 'mean', 'min', 'max', 'median', 'std', 'p25', 'p75', 'p90', 'p95'];
+
+function TemplateEditor({ value, onChange, columns, multiline, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const [search, setSearch] = useState('');
+  const [selAgg, setSelAgg] = useState('sum');
+  const textRef = useRef(null);
+
+  const handleOpen = () => { setDraft(value || ''); setSearch(''); setOpen(true); };
+  const handleSave = () => { onChange(draft); setOpen(false); };
+  const handleCancel = () => setOpen(false);
+
+  const insertField = (fieldName, agg) => {
+    const ta = textRef.current;
+    const token = agg ? `{{${agg}:${fieldName}}}` : `{{${fieldName}}}`;
+    if (ta) {
+      const start = ta.selectionStart ?? draft.length;
+      const end = ta.selectionEnd ?? draft.length;
+      const next = draft.slice(0, start) + token + draft.slice(end);
+      setDraft(next);
+      // Restore cursor after the inserted token
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = start + token.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    } else {
+      setDraft(d => d + token);
+    }
+  };
+
+  const filteredCols = columns.filter(c =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase())
+  );
+  const numericCols = filteredCols.filter(c => c.type === 'number');
+  const otherCols = filteredCols.filter(c => c.type !== 'number');
+
+  return (
+    <>
+      {/* Inline field with ... button */}
+      <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+        {multiline ? (
+          <textarea
+            className="input"
+            style={{ flex: 1, minHeight: 80, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+            value={value || ''}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+          />
+        ) : (
+          <input
+            className="input"
+            style={{ flex: 1, fontSize: 12 }}
+            value={value || ''}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+          />
+        )}
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ padding: '4px 8px', fontSize: 14, flexShrink: 0, marginTop: 1 }}
+          onClick={handleOpen}
+          title="Open editor with field picker"
+        >...</button>
+      </div>
+
+      {/* Modal overlay */}
+      {open && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={e => { if (e.target === e.currentTarget) handleCancel(); }}>
+          <div style={{
+            background: 'var(--card-bg, #fff)', borderRadius: 10,
+            width: Math.min(720, window.innerWidth - 40),
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '12px 16px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>Template Editor</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-ghost btn-sm" onClick={handleCancel}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave}>Apply</button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 300 }}>
+              {/* Editor area */}
+              <div style={{ flex: 1, padding: 12, display: 'flex', flexDirection: 'column' }}>
+                <textarea
+                  ref={textRef}
+                  className="input"
+                  style={{
+                    flex: 1, width: '100%', fontFamily: 'monospace', fontSize: 13,
+                    resize: 'none', lineHeight: 1.5, minHeight: 200,
+                  }}
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  placeholder={placeholder}
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                  Click a field on the right to insert it at cursor position.
+                </div>
+              </div>
+
+              {/* Field picker sidebar */}
+              <div style={{
+                width: 220, borderLeft: '1px solid var(--border)',
+                display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              }}>
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
+                  <input
+                    className="input"
+                    style={{ width: '100%', fontSize: 12 }}
+                    placeholder="Search fields..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>
+
+                {/* Aggregation selector for numeric fields */}
+                <div style={{
+                  padding: '6px 10px', borderBottom: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
+                }}>
+                  <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Agg:</span>
+                  <select
+                    className="select select-sm"
+                    style={{ flex: 1, fontSize: 11 }}
+                    value={selAgg}
+                    onChange={e => setSelAgg(e.target.value)}
+                  >
+                    {TEMPLATE_AGGS.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+
+                {/* Field list */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
+                  {numericCols.length > 0 && (
+                    <div style={{ padding: '4px 10px 2px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Numeric
+                    </div>
+                  )}
+                  {numericCols.map(c => (
+                    <button
+                      key={c.name}
+                      className="btn btn-ghost"
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '5px 10px',
+                        fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                        borderRadius: 0,
+                      }}
+                      onClick={() => insertField(c.name, selAgg)}
+                      title={`Insert {{${selAgg}:${c.name}}}`}
+                    >
+                      <span style={{
+                        fontSize: 9, padding: '1px 4px', borderRadius: 3,
+                        background: 'var(--accent)', color: '#fff', flexShrink: 0,
+                      }}>#</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    </button>
+                  ))}
+                  {otherCols.length > 0 && (
+                    <div style={{ padding: '8px 10px 2px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Text / Date
+                    </div>
+                  )}
+                  {otherCols.map(c => (
+                    <button
+                      key={c.name}
+                      className="btn btn-ghost"
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '5px 10px',
+                        fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                        borderRadius: 0,
+                      }}
+                      onClick={() => insertField(c.name, null)}
+                      title={`Insert {{${c.name}}}`}
+                    >
+                      <span style={{
+                        fontSize: 9, padding: '1px 4px', borderRadius: 3,
+                        background: c.type === 'date' ? '#8b5cf6' : '#64748b', color: '#fff', flexShrink: 0,
+                      }}>{c.type === 'date' ? 'D' : 'A'}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    </button>
+                  ))}
+                  {filteredCols.length === 0 && (
+                    <div style={{ padding: '12px 10px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+                      {columns.length === 0 ? 'No dataset selected' : 'No matching fields'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Options tab (type-specific) ───────────────────────────────────────────────
 function OptionsTab({ widget, columns, onUpdate }) {
   const { state } = useApp();
@@ -1550,14 +1843,16 @@ function OptionsTab({ widget, columns, onUpdate }) {
     </div>
   );
 
-  if (widget.type === 'straighttable') return (
-    <div>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={!!widget.straightTableShowTotals} onChange={e => onUpdate({ straightTableShowTotals: e.target.checked })} />
-        Show totals row
-      </label>
-    </div>
-  );
+  if (widget.type === 'straighttable') {
+    return (
+      <div>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.straightTableShowTotals} onChange={e => onUpdate({ straightTableShowTotals: e.target.checked })} />
+          Show totals row
+        </label>
+      </div>
+    );
+  }
 
   if (widget.type === 'heatmap') return (
     <div><SortOptions widget={widget} onUpdate={onUpdate} /></div>
@@ -1630,6 +1925,86 @@ function OptionsTab({ widget, columns, onUpdate }) {
       </div>
     );
   }
+
+  // ── Text Content ─────────────────────────────────────────────
+  if (widget.type === 'text') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Content mode</label>
+        <select className="select select-sm" value={widget.contentMode || 'markdown'}
+          onChange={e => onUpdate({ contentMode: e.target.value })}>
+          <option value="plain">Plain text</option>
+          <option value="markdown">Markdown</option>
+          <option value="html">HTML</option>
+        </select>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Content</label>
+        <TemplateEditor
+          value={widget.staticContent || ''}
+          onChange={v => onUpdate({ staticContent: v })}
+          columns={columns}
+          multiline
+          placeholder={'Write your content here...\n\nUse {{fieldName}} for dynamic measures.\nExample: Revenue is {{sum:revenue}}'}
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Text align</label>
+        <select className="select select-sm" value={widget.textAlign || 'left'}
+          onChange={e => onUpdate({ textAlign: e.target.value })}>
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Font size ({widget.textFontSize || 14}px)</label>
+        <input type="range" min={10} max={48} step={1}
+          value={widget.textFontSize || 14}
+          onChange={e => onUpdate({ textFontSize: +e.target.value })}
+          style={{ width: '100%' }} />
+      </div>
+    </div>
+  );
+
+  // ── Image ───────────────────────────────────────────────────
+  if (widget.type === 'image') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Image URL</label>
+        <TemplateEditor
+          value={widget.imageUrl || ''}
+          onChange={v => onUpdate({ imageUrl: v })}
+          columns={columns}
+          placeholder="https://example.com/image.png or {{url_field}}"
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Fit mode</label>
+        <select className="select select-sm" value={widget.imageFit || 'contain'}
+          onChange={e => onUpdate({ imageFit: e.target.value })}>
+          <option value="contain">Contain (fit inside)</option>
+          <option value="cover">Cover (fill, may crop)</option>
+          <option value="fill">Fill (stretch)</option>
+        </select>
+      </div>
+    </div>
+  );
+
+  // ── Embed ───────────────────────────────────────────────────
+  if (widget.type === 'embed') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Embed URL</label>
+        <TemplateEditor
+          value={widget.embedUrl || ''}
+          onChange={v => onUpdate({ embedUrl: v })}
+          columns={columns}
+          placeholder="https://example.com/embed or {{url_field}}"
+        />
+      </div>
+    </div>
+  );
 
   return <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 8 }}>No options for this chart type.</div>;
 }

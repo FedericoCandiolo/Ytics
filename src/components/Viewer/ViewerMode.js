@@ -12,7 +12,12 @@ export default function ViewerMode() {
   const { dashboard } = state;
   const theme = dashboard.theme || {};
   const pages = dashboard.pages || [];
-  const [pageIdx, setPageIdx] = useState(0);
+  const pageIdx = Math.max(0, pages.findIndex(p => p.id === dashboard.currentPageId));
+  const setPageIdx = (valOrFn) => {
+    const next = typeof valOrFn === 'function' ? valOrFn(pageIdx) : valOrFn;
+    const clamped = Math.max(0, Math.min(next, pages.length - 1));
+    if (pages[clamped]) dispatch({ type: 'SET_CURRENT_PAGE', payload: pages[clamped].id });
+  };
 
   // After page change, fire a window resize so WidthProvider + chart ResizeObservers re-measure
   useEffect(() => {
