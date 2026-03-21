@@ -35,11 +35,13 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     if (W <= 0 || H <= 0) return;
 
     const xScale = d3.scaleLinear().domain(d3.extent(vals)).nice().range([0, W]);
-    // Default bin count: Sturges' rule log2(n) + 1
+    // Bin count: Sturges' rule or manual
     const autoBins = Math.max(5, Math.ceil(Math.log2(vals.length) + 1));
-    const nBins = widget.binMode === 'manual' ? Math.max(1, widget.bins ?? autoBins) : autoBins;
+    const nBins = widget.binCount === 'manual' ? Math.max(1, widget.bins ?? autoBins) : autoBins;
+    // Histogram type: equal width (default) or equal height (equal frequency)
+    const isEqualHeight = widget.histType === 'equalHeight';
     let bins;
-    if (widget.binMode === 'equalFrequency') {
+    if (isEqualHeight) {
       // Equal-frequency: each bin has ~same number of values
       const sorted = [...vals].sort((a, b) => a - b);
       const binSize = Math.ceil(sorted.length / nBins);

@@ -279,36 +279,77 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     const overlayType = widget.overlayType; // 'pie' | 'bar' | null
     const overlayFields = widget.overlayFields || [];
     const overlaySizeField = widget.overlaySizeField || widget.valueField;
+    const overlaySource = widget.overlaySource || 'fields';
+    const overlayBreakdownField = widget.overlayBreakdownField;
 
-    if (overlayType && overlayFields.length > 0) {
-      // Aggregate data per region per overlay field
-      const regionOverlayData = new Map();
-      for (const row of data) {
-        const key = String(row[widget.geoField] ?? '').trim();
-        if (!key) continue;
-        const lower = key.toLowerCase();
-        if (!regionOverlayData.has(lower)) regionOverlayData.set(lower, { name: key, fields: {} });
-        const entry = regionOverlayData.get(lower);
-        for (const field of overlayFields) {
-          if (!entry.fields[field]) entry.fields[field] = [];
-          entry.fields[field].push(+row[field] || 0);
-        }
-        if (!entry.fields['__size__']) entry.fields['__size__'] = [];
-        entry.fields['__size__'].push(+row[overlaySizeField] || 0);
-      }
+    const hasOverlay = overlayType && (
+      (overlaySource === 'fields' && overlayFields.length > 0) ||
+      (overlaySource === 'dimension' && overlayBreakdownField)
+    );
 
-      // Compute aggregated values
+    if (hasOverlay) {
+      // Build overlayAgg: Map<regionLower, { name, slices: [{label, value}], size }>
       const overlayAgg = new Map();
-      let maxSize = 0;
-      for (const [lower, entry] of regionOverlayData) {
-        const slices = overlayFields.map(f => ({
-          label: f,
-          value: aggregate(entry.fields[f] || [], widget.aggregation || 'sum'),
-        }));
-        const size = aggregate(entry.fields['__size__'] || [], widget.aggregation || 'sum');
-        overlayAgg.set(lower, { name: entry.name, slices, size });
-        maxSize = Math.max(maxSize, Math.abs(size));
+      let sliceLegendLabels = [];
+
+      if (overlaySource === 'dimension') {
+        // Breakdown mode: slices = distinct values of breakdownField within each region
+        const regionMap = new Map(); // lower -> { name, breakdown: Map<dimVal, [nums]>, sizeVals: [] }
+        for (const row of data) {
+          const key = String(row[widget.geoField] ?? '').trim();
+          if (!key) continue;
+          const lower = key.toLowerCase();
+          if (!regionMap.has(lower)) regionMap.set(lower, { name: key, breakdown: new Map(), sizeVals: [] });
+          const entry = regionMap.get(lower);
+          const dimVal = String(row[overlayBreakdownField] ?? '').trim();
+          if (!dimVal) continue;
+          if (!entry.breakdown.has(dimVal)) entry.breakdown.set(dimVal, []);
+          entry.breakdown.get(dimVal).push(+row[widget.valueField] || 0);
+          entry.sizeVals.push(+row[overlaySizeField] || 0);
+        }
+        // Collect all dimension values for consistent ordering/coloring
+        const allDimVals = new Set();
+        for (const [, entry] of regionMap) {
+          for (const k of entry.breakdown.keys()) allDimVals.add(k);
+        }
+        sliceLegendLabels = [...allDimVals];
+
+        for (const [lower, entry] of regionMap) {
+          const slices = sliceLegendLabels.map(dv => ({
+            label: dv,
+            value: aggregate(entry.breakdown.get(dv) || [], widget.aggregation || 'sum'),
+          }));
+          const size = aggregate(entry.sizeVals, widget.aggregation || 'sum');
+          overlayAgg.set(lower, { name: entry.name, slices, size });
+        }
+      } else {
+        // Fields mode: slices = one per numeric field
+        sliceLegendLabels = overlayFields;
+        const regionOverlayData = new Map();
+        for (const row of data) {
+          const key = String(row[widget.geoField] ?? '').trim();
+          if (!key) continue;
+          const lower = key.toLowerCase();
+          if (!regionOverlayData.has(lower)) regionOverlayData.set(lower, { name: key, fields: {}, sizeVals: [] });
+          const entry = regionOverlayData.get(lower);
+          for (const field of overlayFields) {
+            if (!entry.fields[field]) entry.fields[field] = [];
+            entry.fields[field].push(+row[field] || 0);
+          }
+          entry.sizeVals.push(+row[overlaySizeField] || 0);
+        }
+        for (const [lower, entry] of regionOverlayData) {
+          const slices = overlayFields.map(f => ({
+            label: f,
+            value: aggregate(entry.fields[f] || [], widget.aggregation || 'sum'),
+          }));
+          const size = aggregate(entry.sizeVals, widget.aggregation || 'sum');
+          overlayAgg.set(lower, { name: entry.name, slices, size });
+        }
       }
+
+      let maxSize = 0;
+      for (const [, entry] of overlayAgg) maxSize = Math.max(maxSize, Math.abs(entry.size));
 
       const minR = 6, maxR = Math.min(30, Math.max(12, w / 30));
       const sizeScale = maxSize > 0
@@ -317,10 +358,8 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
 
       const overlayGroup = mapGroup.append('g').attr('class', 'overlay-charts');
 
-      for (const feature of displayFeatures) {
-        const name = feature.properties.name;
+      const matchOverlay = (name) => {
         const lower = (name || '').toLowerCase();
-        // Try matching with aliases too
         let entry = overlayAgg.get(lower);
         if (!entry && ALIASES[lower]) entry = overlayAgg.get(ALIASES[lower].toLowerCase());
         if (!entry) {
@@ -328,6 +367,11 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
             if (lower.includes(k) || k.includes(lower)) { entry = v; break; }
           }
         }
+        return entry;
+      };
+
+      for (const feature of displayFeatures) {
+        const entry = matchOverlay(feature.properties.name);
         if (!entry) continue;
 
         const centroid = pathGen.centroid(feature);
@@ -337,47 +381,14 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
 
         if (overlayType === 'pie') {
           drawMiniPie(overlayGroup, centroid[0], centroid[1], r, entry.slices, paletteColors);
-        } else if (overlayType === 'bar') {
+        } else {
           drawMiniBar(overlayGroup, centroid[0], centroid[1], r, entry.slices, paletteColors, true);
         }
-      }
 
-      // Tooltip for overlay charts
-      overlayGroup.selectAll('path, rect')
-        .style('cursor', 'pointer')
-        .on('mouseover', function (ev) {
-          // Find the parent transform to get which region
-          const parentG = this.parentNode;
-          const transform = parentG.getAttribute('transform') || '';
-          // Walk up to find the nearest g with a data-region attribute
-          // Alternative: use the centroid position to find the closest feature
-          showTooltip(ev, null);
-        })
-        .on('mousemove', moveTooltip)
-        .on('mouseleave', hideTooltip);
-
-      // Add invisible hit areas for overlay tooltips
-      for (const feature of displayFeatures) {
-        const name = feature.properties.name;
-        const lower = (name || '').toLowerCase();
-        let entry = overlayAgg.get(lower);
-        if (!entry && ALIASES[lower]) entry = overlayAgg.get(ALIASES[lower].toLowerCase());
-        if (!entry) {
-          for (const [k, v] of overlayAgg) {
-            if (lower.includes(k) || k.includes(lower)) { entry = v; break; }
-          }
-        }
-        if (!entry) continue;
-
-        const centroid = pathGen.centroid(feature);
-        if (!centroid || isNaN(centroid[0])) continue;
-        const r = sizeScale(Math.abs(entry.size));
-
+        // Hit area for tooltip
         overlayGroup.append('circle')
-          .attr('cx', centroid[0])
-          .attr('cy', centroid[1])
-          .attr('r', r + 2)
-          .attr('fill', 'transparent')
+          .attr('cx', centroid[0]).attr('cy', centroid[1])
+          .attr('r', r + 2).attr('fill', 'transparent')
           .style('cursor', 'pointer')
           .on('mouseover', (ev) => {
             showTooltip(ev, <OverlayTip name={entry.name} slices={entry.slices} size={entry.size} sizeField={overlaySizeField} />);
@@ -387,6 +398,18 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
           .on('click', () => {
             if (onCrossFilter) onCrossFilter({ field: widget.geoField, value: entry.name });
           });
+      }
+
+      // Slice legend
+      if (sliceLegendLabels.length > 1) {
+        const lg = svg.append('g').attr('class', 'overlay-legend')
+          .attr('transform', `translate(10, ${h - 14 * Math.min(sliceLegendLabels.length, 12) - 10})`);
+        sliceLegendLabels.slice(0, 12).forEach((f, i) => {
+          lg.append('rect').attr('x', 0).attr('y', i * 14).attr('width', 10).attr('height', 10)
+            .attr('fill', paletteColors[i % paletteColors.length]).attr('rx', 2);
+          lg.append('text').attr('x', 14).attr('y', i * 14 + 9).attr('font-size', 9).attr('fill', 'var(--text-muted)')
+            .text(f.length > 20 ? f.slice(0, 20) + '…' : f);
+        });
       }
     }
 
@@ -515,20 +538,6 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
 
     // ── Legend ──
     renderLegend(svg, colorScale, minVal, maxVal, w, h);
-
-    // ── Overlay legend (field names + colors) ──
-    if ((widget.overlayType && widget.overlayFields?.length > 0) || (widget.pointLayerEnabled && (widget.pointOverlayFields?.length > 0))) {
-      const legendFields = widget.overlayFields?.length > 0 ? widget.overlayFields : (widget.pointOverlayFields || []);
-      if (legendFields.length > 1) {
-        const lg = svg.append('g').attr('class', 'overlay-legend').attr('transform', `translate(10, ${h - 14 * legendFields.length - 10})`);
-        legendFields.forEach((f, i) => {
-          lg.append('rect').attr('x', 0).attr('y', i * 14).attr('width', 10).attr('height', 10)
-            .attr('fill', paletteColors[i % paletteColors.length]).attr('rx', 2);
-          lg.append('text').attr('x', 14).attr('y', i * 14 + 9).attr('font-size', 9).attr('fill', 'var(--text-muted)')
-            .text(f);
-        });
-      }
-    }
 
     // ── Zoom ──
     const zoom = d3.zoom()

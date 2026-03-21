@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { formatValue, linearRegression } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
+import { formatValue, linearRegression, aggregate } from '../../utils/dataUtils';
+import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient, getColorArray } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -139,7 +139,15 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       return;
     }
 
-    const m = { top: 16, right: widget.showLegend && widget.colorField ? 110 : 20, bottom: 52, left: 62 };
+    const _overlayFields = (widget.scatterOverlayFields || []).filter(Boolean);
+    const _ptType = widget.scatterPointType || 'circle';
+    const _oSrc = widget.scatterOverlaySource || 'fields';
+    const _useMini = (_ptType === 'pie' || _ptType === 'bar') && (
+      (_oSrc === 'fields' && _overlayFields.length > 1) ||
+      (_oSrc === 'dimension' && widget.colorField)
+    );
+    const needsLegend = _useMini || (widget.showLegend && widget.colorField);
+    const m = { top: 16, right: needsLegend ? 110 : 20, bottom: 52, left: 62 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0) return;
@@ -177,18 +185,70 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     const sizeExt = widget.sizeField ? d3.extent(pts, d => d.size) : [1, 1];
     const sizeScale = d3.scaleSqrt().domain(sizeExt).range([sMin, sMax]).clamp(true);
 
-    const xScale = d3.scaleLinear().domain(d3.extent(pts, d => d.x)).range([0, W]).nice();
-    const yScale = d3.scaleLinear().domain(d3.extent(pts, d => d.y)).range([H, 0]).nice();
+    // ── Pre-compute mini chart grouping (needed before scales) ──
+    const overlayFields = (widget.scatterOverlayFields || []).filter(Boolean);
+    const pointType = widget.scatterPointType || 'circle';
+    const overlaySource = widget.scatterOverlaySource || 'fields';
+    const useMiniFields = (pointType === 'pie' || pointType === 'bar') && overlaySource === 'fields' && overlayFields.length > 0;
+    const useMiniDim = (pointType === 'pie' || pointType === 'bar') && overlaySource === 'dimension' && widget.colorField;
+    const useMiniCharts = useMiniFields || useMiniDim;
+    const paletteColors = getColorArray(widget.colorScheme);
+    let sliceLegendLabels;
+    let ptsWithSlices;
+
+    if (useMiniCharts) {
+      if (useMiniDim) {
+        const groupField = widget.labelField || widget.xField;
+        const groups = new Map();
+        for (const d of pts) {
+          const key = String(d.raw[groupField] ?? '');
+          if (!groups.has(key)) groups.set(key, { pts: [], breakdown: new Map() });
+          const grp = groups.get(key);
+          grp.pts.push(d);
+          const dimVal = d.color || '';
+          if (!grp.breakdown.has(dimVal)) grp.breakdown.set(dimVal, []);
+          grp.breakdown.get(dimVal).push(d.y);
+        }
+        const allDimVals = new Set();
+        for (const [, grp] of groups) for (const k of grp.breakdown.keys()) allDimVals.add(k);
+        sliceLegendLabels = [...allDimVals];
+
+        ptsWithSlices = [];
+        for (const [key, grp] of groups) {
+          const avgX = d3.mean(grp.pts, p => p.x);
+          const avgY = d3.mean(grp.pts, p => p.y);
+          const avgSize = widget.sizeField ? d3.mean(grp.pts, p => p.size) : null;
+          const slices = sliceLegendLabels.map(dv => ({
+            label: dv,
+            value: aggregate(grp.breakdown.get(dv) || [], widget.aggregation || 'sum'),
+          }));
+          ptsWithSlices.push({
+            x: avgX, y: avgY, size: avgSize,
+            label: key, slices, raw: grp.pts[0].raw,
+          });
+        }
+      } else {
+        sliceLegendLabels = overlayFields;
+        ptsWithSlices = pts.map(d => ({
+          ...d,
+          slices: overlayFields.map(f => ({ label: f, value: +d.raw[f] || 0 })),
+        }));
+      }
+    }
+
+    // ── Scales: use grouped points when in dimension mode ──
+    const scalePts = (useMiniDim && ptsWithSlices) ? ptsWithSlices : pts;
+    const xScale = d3.scaleLinear().domain(d3.extent(scalePts, d => d.x)).range([0, W]).nice();
+    const yScale = d3.scaleLinear().domain(d3.extent(scalePts, d => d.y)).range([H, 0]).nice();
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     svg.attr('width', w).attr('height', h);
     const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
-    // Clip path so regression lines don't overflow the chart area
     svg.append('defs').append('clipPath').attr('id', 'scatter-clip')
       .append('rect').attr('width', W).attr('height', H);
-    g.attr('clip-path', null); // don't clip the whole group — only regression lines
+    g.attr('clip-path', null);
 
     if (widget.showGrid) {
       g.append('g').call(d3.axisLeft(yScale).tickSize(-W).tickFormat(''))
@@ -201,11 +261,10 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(6).tickFormat(fmtTick)).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtTick)).call(styledAxis);
 
-    // ── Regression lines ─────────────────────────────────────────────────
+    // ── Regression lines ──
     const regressionType = widget.regressionType || 'linear';
     if (widget.showRegression) {
       if (widget.colorField && categories.length > 0) {
-        // Draw a separate regression line per color group
         for (const cat of categories) {
           const groupPts = pts.filter(d => d.color === cat);
           if (groupPts.length >= 2) {
@@ -214,37 +273,86 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           }
         }
       } else {
-        // Single regression for all points
         const color = gradientFn ? '#888' : 'var(--chart-axis-color)';
         drawRegression(g, pts, xScale, yScale, W, H, regressionType, color, true);
       }
     }
 
-    const dots = g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
-      .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
-      .attr('r', 0)
-      .attr('fill', d => gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor)
-      .attr('opacity', opacity).attr('stroke', 'rgba(255,255,255,.6)').attr('stroke-width', 1);
+    // ── Draw points ──
+    if (useMiniCharts) {
+      const pie = d3.pie().value(d => Math.abs(d.value)).sort(null);
 
-    dots.transition().duration(400).delay((_, i) => i * 0.5).ease(d3.easeCubicOut)
-      .attr('r', d => widget.sizeField ? sizeScale(d.size) : sMin + 2);
+      ptsWithSlices.forEach((d) => {
+        const cx = xScale(d.x), cy = yScale(d.y);
+        const r = widget.sizeField ? sizeScale(d.size) : sMin + 4;
+        const total = d.slices.reduce((s, sl) => s + Math.abs(sl.value), 0);
+        if (total === 0) return;
 
-    dots
-      .on('mouseover', (ev, d) => {
-        d3.select(ev.currentTarget).raise().transition().duration(80)
-          .attr('r', (widget.sizeField ? sizeScale(d.size) : sMin + 2) * 1.5)
-          .attr('opacity', 1).attr('stroke-width', 2.5);
-        showTooltip(ev, <ScatterTip d={d} widget={widget} color={gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor} />);
-      })
-      .on('mousemove', moveTooltip)
-      .on('mouseleave', (ev, d) => {
-        d3.select(ev.currentTarget).transition().duration(120)
-          .attr('r', widget.sizeField ? sizeScale(d.size) : sMin + 2)
-          .attr('opacity', opacity).attr('stroke-width', 1);
-        hideTooltip();
-      })
-      .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d[widget.colorField || widget.xField] }); } : null)
-      .style('cursor', onCrossFilter ? 'pointer' : null);
+        const pg = g.append('g').attr('transform', `translate(${cx},${cy})`);
+
+        if (pointType === 'pie') {
+          const arc = d3.arc().innerRadius(0).outerRadius(r);
+          pg.selectAll('path').data(pie(d.slices)).join('path')
+            .attr('d', arc)
+            .attr('fill', (_, j) => paletteColors[j % paletteColors.length])
+            .attr('stroke', '#fff').attr('stroke-width', 0.5)
+            .attr('opacity', opacity);
+        } else {
+          const maxSlice = Math.max(...d.slices.map(s => Math.abs(s.value)));
+          const barScale = maxSlice > 0 ? r / maxSlice : 1;
+          const segW = (r * 1.6) / d.slices.length;
+          const startX = -(r * 0.8);
+          d.slices.forEach((sl, j) => {
+            const barH = Math.abs(sl.value) * barScale;
+            pg.append('rect')
+              .attr('x', startX + j * segW)
+              .attr('y', -barH)
+              .attr('width', Math.max(1, segW - 1))
+              .attr('height', barH)
+              .attr('fill', paletteColors[j % paletteColors.length])
+              .attr('stroke', '#fff').attr('stroke-width', 0.3)
+              .attr('opacity', opacity);
+          });
+        }
+
+        pg.append('circle').attr('r', r + 2).attr('fill', 'transparent')
+          .style('cursor', onCrossFilter ? 'pointer' : 'default')
+          .on('mouseover', (ev) => {
+            pg.raise();
+            showTooltip(ev, <MiniChartTip d={d} widget={widget} slices={d.slices} />);
+          })
+          .on('mousemove', moveTooltip)
+          .on('mouseleave', hideTooltip)
+          .on('click', onCrossFilter ? (ev) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d.color || d.raw[widget.xField] }); } : null);
+      });
+    } else {
+      // Standard circles
+      const dots = g.selectAll('.dot').data(pts).join('circle').attr('class', 'dot')
+        .attr('cx', d => xScale(d.x)).attr('cy', d => yScale(d.y))
+        .attr('r', 0)
+        .attr('fill', d => gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor)
+        .attr('opacity', opacity).attr('stroke', 'rgba(255,255,255,.6)').attr('stroke-width', 1);
+
+      dots.transition().duration(400).delay((_, i) => i * 0.5).ease(d3.easeCubicOut)
+        .attr('r', d => widget.sizeField ? sizeScale(d.size) : sMin + 2);
+
+      dots
+        .on('mouseover', (ev, d) => {
+          d3.select(ev.currentTarget).raise().transition().duration(80)
+            .attr('r', (widget.sizeField ? sizeScale(d.size) : sMin + 2) * 1.5)
+            .attr('opacity', 1).attr('stroke-width', 2.5);
+          showTooltip(ev, <ScatterTip d={d} widget={widget} color={gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor} />);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseleave', (ev, d) => {
+          d3.select(ev.currentTarget).transition().duration(120)
+            .attr('r', widget.sizeField ? sizeScale(d.size) : sMin + 2)
+            .attr('opacity', opacity).attr('stroke-width', 1);
+          hideTooltip();
+        })
+        .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d[widget.colorField || widget.xField] }); } : null)
+        .style('cursor', onCrossFilter ? 'pointer' : null);
+    }
 
     // Axis labels
     g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)
@@ -253,7 +361,16 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       .attr('text-anchor', 'middle').attr('transform', `translate(-46,${H / 2}) rotate(-90)`).text(widget.yField);
 
     // Legend
-    if (widget.showLegend && widget.colorField && categories.length > 1) {
+    if (useMiniCharts && sliceLegendLabels && sliceLegendLabels.length > 1) {
+      const leg = g.append('g').attr('transform', `translate(${W + 8}, 0)`);
+      sliceLegendLabels.slice(0, 12).forEach((f, i) => {
+        const row = leg.append('g').attr('transform', `translate(0,${i * 18})`);
+        row.append('rect').attr('x', 0).attr('y', 0).attr('width', 12).attr('height', 12).attr('rx', 2)
+          .attr('fill', paletteColors[i % paletteColors.length]);
+        row.append('text').attr('x', 16).attr('y', 10).attr('font-size', 10.5).attr('font-family', 'var(--font)')
+          .attr('fill', 'var(--text-muted)').text(f.length > 13 ? f.slice(0, 13) + '…' : f);
+      });
+    } else if (widget.showLegend && widget.colorField && categories.length > 1) {
       const leg = g.append('g').attr('transform', `translate(${W + 8}, 0)`);
       categories.slice(0, 10).forEach((cat, i) => {
         const row = leg.append('g').attr('transform', `translate(0,${i * 18})`);
@@ -306,6 +423,29 @@ function ScatterTip({ d, widget, color }) {
           <span className="tt-value">{formatValue(d.size)}</span>
         </div>
       )}
+    </>
+  );
+}
+
+function MiniChartTip({ d, widget, slices }) {
+  const title = d.label || d.color || 'Data point';
+  return (
+    <>
+      <div className="chart-tooltip-title">{title}</div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">{widget.xField}</span>
+        <span className="tt-value">{formatValue(d.x)}</span>
+      </div>
+      <div className="chart-tooltip-row">
+        <span className="tt-label">{widget.yField}</span>
+        <span className="tt-value">{formatValue(d.y)}</span>
+      </div>
+      {slices.map((s, i) => (
+        <div key={i} className="chart-tooltip-row">
+          <span className="tt-label">{s.label}</span>
+          <span className="tt-value">{formatValue(s.value)}</span>
+        </div>
+      ))}
     </>
   );
 }

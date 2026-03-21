@@ -85,6 +85,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       { key: 'colorField',label: 'Color / Series (optional)', filter: null, optional: true },
       { key: 'sizeField', label: 'Size (numeric, optional)',  filter: ['number'], optional: true },
       { key: 'labelField',label: 'Point label (optional)',    filter: null, optional: true },
+      { key: '_scatterOverlayFields', label: 'Mini chart fields', multi: true },
     ],
     pie: [
       { key: 'labelField',label: 'Dimension (label)',         filter: null },
@@ -145,6 +146,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     geo: [
       { key: 'geoField',    label: 'Geography dimension',     filter: null },
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
+      { key: 'overlayBreakdownField', label: 'Overlay breakdown dim.', filter: null, optional: true },
       { key: '_geoOverlayFields', label: 'Overlay chart fields', multi: true },
       { key: 'overlaySizeField', label: 'Overlay size field (opt.)', filter: ['number'], optional: true },
       { key: 'pointLatField', label: 'Point latitude',        filter: ['number'], optional: true },
@@ -312,6 +314,37 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => {
                   onUpdate({ straightTableMeasures: [...current, { field: '', aggregation: 'sum' }] });
                 }}>+ Add measure</button>
+              </div>
+            </div>
+          );
+        }
+        // Special: multi-select for Scatter mini chart fields
+        if (f.key === '_scatterOverlayFields') {
+          const current = widget.scatterOverlayFields || [];
+          const numCols = cols.filter(c => c.type === 'number');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {current.map((fld, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
+                      onChange={e => {
+                        const next = [...current];
+                        next[i] = e.target.value;
+                        onUpdate({ scatterOverlayFields: next });
+                      }}>
+                      <option value="">— none —</option>
+                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                      onUpdate({ scatterOverlayFields: current.filter((_, j) => j !== i) });
+                    }}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ scatterOverlayFields: [...current, ''] });
+                }}>+ Add field</button>
               </div>
             </div>
           );
@@ -1100,6 +1133,28 @@ function OptionsTab({ widget, columns, onUpdate }) {
   if (widget.type === 'scatter') return (
     <div>
       <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Point type</label>
+        <select className="select select-sm" value={widget.scatterPointType || 'circle'} onChange={e => onUpdate({ scatterPointType: e.target.value })}>
+          <option value="circle">Circles</option>
+          <option value="pie">Mini pie charts</option>
+          <option value="bar">Mini bar charts</option>
+        </select>
+        {(widget.scatterPointType === 'pie' || widget.scatterPointType === 'bar') && (
+          <div style={{ marginTop: 6 }}>
+            <label className="form-label">Chart source</label>
+            <select className="select select-sm" value={widget.scatterOverlaySource || 'fields'} onChange={e => onUpdate({ scatterOverlaySource: e.target.value })}>
+              <option value="fields">Multiple measure fields</option>
+              <option value="dimension">Breakdown by dimension</option>
+            </select>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              {widget.scatterOverlaySource === 'dimension'
+                ? 'Set breakdown dimension in the Fields tab (uses Color/Series field)'
+                : 'Add mini chart fields in the Fields tab'}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
         <label className="form-label">Min dot size — {widget.dotSizeMin ?? 4}px</label>
         <input type="range" min={2} max={20} value={widget.dotSizeMin ?? 4}
           onChange={e => onUpdate({ dotSizeMin: parseInt(e.target.value) })} />
@@ -1154,14 +1209,20 @@ function OptionsTab({ widget, columns, onUpdate }) {
   if (widget.type === 'histogram') return (
     <div>
       <div className="form-group" style={{ marginBottom: 10 }}>
-        <label className="form-label">Bin mode</label>
-        <select className="select select-sm" value={widget.binMode || 'auto'} onChange={e => onUpdate({ binMode: e.target.value })}>
-          <option value="auto">Auto (Sturges' rule)</option>
-          <option value="manual">Manual</option>
-          <option value="equalFrequency">Equal frequency</option>
+        <label className="form-label">Histogram type</label>
+        <select className="select select-sm" value={widget.histType || 'equalWidth'} onChange={e => onUpdate({ histType: e.target.value })}>
+          <option value="equalWidth">Equal width</option>
+          <option value="equalHeight">Equal height (equal frequency)</option>
         </select>
       </div>
-      {(widget.binMode === 'manual' || widget.binMode === 'equalFrequency') && (
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Bin count</label>
+        <select className="select select-sm" value={widget.binCount || 'sturges'} onChange={e => onUpdate({ binCount: e.target.value })}>
+          <option value="sturges">Auto (Sturges' rule)</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+      {widget.binCount === 'manual' && (
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label className="form-label">Number of bins — {widget.bins ?? 20}</label>
           <input type="range" min={3} max={100} value={widget.bins ?? 20}
@@ -1265,9 +1326,20 @@ function OptionsTab({ widget, columns, onUpdate }) {
           <option value="pie">Mini pie charts</option>
           <option value="bar">Mini bar charts</option>
         </select>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-          Set overlay fields in the Fields tab
-        </div>
+        {widget.overlayType && (
+          <div style={{ marginTop: 6 }}>
+            <label className="form-label">Overlay source</label>
+            <select className="select select-sm" value={widget.overlaySource || 'fields'} onChange={e => onUpdate({ overlaySource: e.target.value })}>
+              <option value="fields">Multiple measure fields</option>
+              <option value="dimension">Breakdown by dimension</option>
+            </select>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+              {widget.overlaySource === 'dimension'
+                ? 'Set breakdown dimension in the Fields tab'
+                : 'Set overlay fields in the Fields tab'}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="form-group" style={{ marginTop: 12 }}>
