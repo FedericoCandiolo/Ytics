@@ -105,79 +105,96 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
       colorFn = d => scale(d.word);
     }
 
-    // ── Spiral placement (no d3-cloud) ──────────────────────────────────
-    // Measure text widths using a temporary canvas
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    // ── Placement using SVG getBBox for pixel-perfect measurement ───────
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
+    svg.attr('width', w).attr('height', h);
 
     // Seed pseudo-random from word list length for deterministic rotation
     const seedRng = d3.randomLcg(words.length);
     const rng = d3.randomUniform.source(seedRng)(0, 1);
 
-    const placed = []; // { x, y, w, h } bounding boxes
-
+    // 1. Measure every word by rendering it off-screen in the SVG, then getBBox()
+    const measureG = svg.append('g').attr('opacity', 0);
     const wordData = words.map(d => {
       const fontSize = fontScale(d.value);
       const rotate = (widget.wordCloudRotate !== false) ? (rng() > 0.7 ? 90 : 0) : 0;
-      ctx.font = `600 ${fontSize}px var(--font, sans-serif)`;
-      const measured = ctx.measureText(d.word);
-      const tw = measured.width + 4;
-      const th = fontSize * 1.2;
-      // For rotated words, swap width/height
+      const el = measureG.append('text')
+        .attr('x', 0).attr('y', 0)
+        .attr('font-size', fontSize).attr('font-weight', 600)
+        .attr('font-family', 'var(--font, sans-serif)')
+        .text(d.word);
+      const bb = el.node().getBBox();
+      el.remove();
+      // Unrotated text dimensions (from actual SVG rendering)
+      const tw = bb.width;
+      const th = bb.height;
+      // Bounding box after rotation
       const bw = rotate === 90 ? th : tw;
       const bh = rotate === 90 ? tw : th;
-      return { ...d, fontSize, rotate, bw, bh, tw };
+      return { ...d, fontSize, rotate, bw, bh, tw, th };
     });
+    measureG.remove();
+
+    // 2. Grid occupancy map — each cell is ~4px; fast overlap checking
+    const CELL = 4;
+    const gridCols = Math.ceil(w / CELL);
+    const gridRows = Math.ceil(h / CELL);
+    const grid = new Uint8Array(gridCols * gridRows); // 0 = free
+
+    function markGrid(x, y, bw, bh) {
+      const c0 = Math.max(0, Math.floor(x / CELL));
+      const c1 = Math.min(gridCols - 1, Math.floor((x + bw) / CELL));
+      const r0 = Math.max(0, Math.floor(y / CELL));
+      const r1 = Math.min(gridRows - 1, Math.floor((y + bh) / CELL));
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++)
+          grid[r * gridCols + c] = 1;
+    }
+
+    function testGrid(x, y, bw, bh) {
+      const c0 = Math.max(0, Math.floor(x / CELL));
+      const c1 = Math.min(gridCols - 1, Math.floor((x + bw) / CELL));
+      const r0 = Math.max(0, Math.floor(y / CELL));
+      const r1 = Math.min(gridRows - 1, Math.floor((y + bh) / CELL));
+      if (c0 < 0 || r0 < 0 || c1 >= gridCols || r1 >= gridRows) return true; // out of bounds
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++)
+          if (grid[r * gridCols + c]) return true; // collision
+      return false;
+    }
 
     const cx = w / 2;
     const cy = h / 2;
+    const PAD = 6; // px padding around each word
 
-    function intersects(r1, r2, pad = 0) {
-      return !(r1.x + r1.w + pad < r2.x - pad || r2.x + r2.w + pad < r1.x - pad ||
-               r1.y + r1.h + pad < r2.y - pad || r2.y + r2.h + pad < r1.y - pad);
-    }
-
-    function inBounds(rect) {
-      return rect.x >= 0 && rect.y >= 0 &&
-             rect.x + rect.w <= w && rect.y + rect.h <= h;
-    }
-
-    // Archimedean spiral placement
+    // Archimedean spiral placement against grid
     for (const wd of wordData) {
-      let foundSpot = false;
-      const pad = Math.max(4, wd.fontSize * 0.15);
-      // Try spiral positions
-      for (let t = 0; t < 800; t++) {
-        const angle = t * 0.1;
-        const spiralR = 1.5 * t * 0.1;
-        const tx = cx + spiralR * Math.cos(angle) - wd.bw / 2;
-        const ty = cy + spiralR * Math.sin(angle) - wd.bh / 2;
-        const candidate = { x: tx, y: ty, w: wd.bw, h: wd.bh };
-
-        if (!inBounds(candidate)) {
-          if (spiralR > Math.max(w, h)) break; // too far out
+      wd.px = null;
+      const pw = wd.bw + PAD * 2;
+      const ph = wd.bh + PAD * 2;
+      for (let t = 0; t < 2000; t++) {
+        const angle = t * 0.15;
+        const r = 2 * angle;
+        const tx = cx + r * Math.cos(angle) - pw / 2;
+        const ty = cy + r * Math.sin(angle) - ph / 2;
+        // Bounds check
+        if (tx < 0 || ty < 0 || tx + pw > w || ty + ph > h) {
+          if (r > Math.hypot(w, h)) break;
           continue;
         }
-        if (placed.every(p => !intersects(p, candidate, pad))) {
-          wd.px = tx + wd.bw / 2;
-          wd.py = ty + wd.bh / 2;
-          placed.push(candidate);
-          foundSpot = true;
+        if (!testGrid(tx, ty, pw, ph)) {
+          markGrid(tx, ty, pw, ph);
+          wd.px = tx + pw / 2;
+          wd.py = ty + ph / 2;
           break;
         }
-      }
-      if (!foundSpot) {
-        wd.px = null; // skip this word
       }
     }
 
     const visible = wordData.filter(d => d.px !== null);
 
     // ── Render SVG ──────────────────────────────────────────────────────
-    const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
-    svg.attr('width', w).attr('height', h);
-
     const g = svg.append('g');
 
     const texts = g.selectAll('text')
@@ -205,15 +222,13 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
     texts
       .on('mouseover', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(80)
-          .attr('opacity', 1)
-          .attr('font-size', d.fontSize * 1.1);
+          .attr('opacity', 1);
         showTooltip(ev, <WordTip d={d} widget={widget} color={colorFn(d)} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(100)
-          .attr('opacity', opacity)
-          .attr('font-size', d.fontSize);
+          .attr('opacity', opacity);
         hideTooltip();
       })
       .on('click', onCrossFilter ? (ev, d) => {
