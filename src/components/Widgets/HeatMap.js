@@ -8,27 +8,7 @@ import * as d3 from 'd3';
 import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
-import { resolveGradient } from '../../utils/colorUtils';
-
-// Sequential interpolators mapped to scheme keys
-const SEQ_INTERPOLATORS = {
-  blues:     d3.interpolateBlues,
-  greens:    d3.interpolateGreens,
-  reds:      d3.interpolateReds,
-  purples:   d3.interpolatePurples,
-  oranges:   d3.interpolateOranges,
-  warmCool:  d3.interpolateRdYlBu,
-  brownGreen:d3.interpolateBrBG,
-  // Fallback for categorical schemes
-  vivid:     d3.interpolateBlues,
-  spectrum:  d3.interpolatePlasma,
-  muted:     d3.interpolateViridis,
-  soft:      d3.interpolateCool,
-  pastel:    d3.interpolateRdPu,
-  contrast:  d3.interpolateMagma,
-  duo:       d3.interpolateYlOrRd,
-  bold:      d3.interpolateInferno,
-};
+import { resolveGradient, getSequentialScale } from '../../utils/colorUtils';
 
 export default function HeatMap({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -77,8 +57,7 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
 
     const [vMin, vMax] = d3.extent(flat, d => d.value);
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const interp = SEQ_INTERPOLATORS[gradKey] || SEQ_INTERPOLATORS[widget.colorScheme] || d3.interpolateBlues;
-    const colorScale = d3.scaleSequential(interp).domain([vMin, vMax]);
+    const colorScale = getSequentialScale(gradKey, vMin, vMax, widget.invertGradient);
     const opacity = widget.opacity ?? 1;
 
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.05);
@@ -129,7 +108,7 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
     const gradId = 'hm-grad';
     const grad = defs.append('linearGradient').attr('id', gradId);
     for (let i = 0; i <= 10; i++) {
-      grad.append('stop').attr('offset', `${i * 10}%`).attr('stop-color', interp(i / 10));
+      grad.append('stop').attr('offset', `${i * 10}%`).attr('stop-color', colorScale(vMin + (i / 10) * (vMax - vMin)));
     }
     legG.append('rect').attr('width', legW).attr('height', legH).attr('rx', 3).attr('fill', `url(#${gradId})`);
     legG.append('text').attr('x', 0).attr('y', 20).attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin));

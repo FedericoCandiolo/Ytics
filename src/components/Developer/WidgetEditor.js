@@ -1059,6 +1059,7 @@ function ReferenceLineOption({ widget, onUpdate }) {
 
 // ── Options tab (type-specific) ───────────────────────────────────────────────
 function OptionsTab({ widget, columns, onUpdate }) {
+  const { state } = useApp();
   if (widget.type === 'bar') return (
     <div>
       <div className="form-group" style={{ marginBottom: 10 }}>
@@ -1424,12 +1425,22 @@ function OptionsTab({ widget, columns, onUpdate }) {
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
               Leave empty to use the color palette gradient
             </div>
-            {(widget.kpiGaugeSegments || []).map((seg, i) => (
+            {(() => {
+              // Auto-assign gradient colors to segments without customColor
+              const autoColor = (segs) => {
+                if (!segs.length) return segs;
+                const effectiveScheme = widget.colorScheme ?? state.dashboard.theme?.colorScheme ?? 'vivid';
+                const gk = resolveGradient(effectiveScheme, widget.colorGradient);
+                const sw = getGradientSwatches(gk, segs.length);
+                return segs.map((s, k) => s.customColor ? s : { ...s, color: sw[k] });
+              };
+              const segments = autoColor(widget.kpiGaugeSegments || []);
+              return segments.map((seg, i) => (
               <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
                 <input type="number" className="input input-sm" style={{ width: 60 }}
                   placeholder="From" value={seg.from ?? ''}
                   onChange={e => {
-                    const segs = [...(widget.kpiGaugeSegments || [])];
+                    const segs = [...segments];
                     segs[i] = { ...segs[i], from: e.target.value === '' ? undefined : parseFloat(e.target.value) };
                     onUpdate({ kpiGaugeSegments: segs });
                   }} />
@@ -1437,32 +1448,37 @@ function OptionsTab({ widget, columns, onUpdate }) {
                 <input type="number" className="input input-sm" style={{ width: 60 }}
                   placeholder="To" value={seg.to ?? ''}
                   onChange={e => {
-                    const segs = [...(widget.kpiGaugeSegments || [])];
+                    const segs = [...segments];
                     segs[i] = { ...segs[i], to: e.target.value === '' ? undefined : parseFloat(e.target.value) };
                     onUpdate({ kpiGaugeSegments: segs });
                   }} />
                 <input type="color" style={{ width: 28, height: 24, padding: 0, border: 'none', cursor: 'pointer' }}
                   value={seg.color || '#94a3b8'}
                   onChange={e => {
-                    const segs = [...(widget.kpiGaugeSegments || [])];
-                    segs[i] = { ...segs[i], color: e.target.value };
+                    const segs = [...segments];
+                    segs[i] = { ...segs[i], color: e.target.value, customColor: true };
                     onUpdate({ kpiGaugeSegments: segs });
                   }} />
                 <button className="btn btn-sm" style={{ padding: '2px 6px', fontSize: 11 }}
                   onClick={() => {
-                    const segs = (widget.kpiGaugeSegments || []).filter((_, j) => j !== i);
-                    onUpdate({ kpiGaugeSegments: segs.length ? segs : undefined });
+                    const segs = segments.filter((_, j) => j !== i);
+                    onUpdate({ kpiGaugeSegments: segs.length ? autoColor(segs) : undefined });
                   }}>×</button>
               </div>
-            ))}
+              ));
+            })()}
             <button className="btn btn-sm" style={{ fontSize: 11, marginTop: 2 }}
               onClick={() => {
                 const segs = [...(widget.kpiGaugeSegments || [])];
                 const lastTo = segs.length ? (segs[segs.length - 1].to ?? widget.kpiGaugeMax ?? 100) : (widget.kpiGaugeMin ?? 0);
                 const max = widget.kpiGaugeMax ?? 100;
                 const step = ((max - lastTo) || 10);
-                segs.push({ from: lastTo, to: lastTo + step, color: '#4f8ef7' });
-                onUpdate({ kpiGaugeSegments: segs });
+                segs.push({ from: lastTo, to: lastTo + step });
+                const effectiveScheme = widget.colorScheme ?? state.dashboard.theme?.colorScheme ?? 'vivid';
+                const gk = resolveGradient(effectiveScheme, widget.colorGradient);
+                const sw = getGradientSwatches(gk, segs.length);
+                const updated = segs.map((s, k) => s.customColor ? s : { ...s, color: sw[k] });
+                onUpdate({ kpiGaugeSegments: updated });
               }}>+ Add segment</button>
           </div>
         </>

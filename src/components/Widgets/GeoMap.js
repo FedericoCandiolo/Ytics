@@ -4,7 +4,7 @@ import * as topojson from 'topojson-client';
 import { aggregate, formatValue } from '../../utils/dataUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
-import { resolveGradient, getColorArray } from '../../utils/colorUtils';
+import { resolveGradient, getColorArray, getSequentialScale } from '../../utils/colorUtils';
 
 const WORLD_TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -219,16 +219,8 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     const [minVal, maxVal] = [d3.min(values) || 0, d3.max(values) || 1];
 
     // ── Color scale for choropleth ──
-    const INTERP_MAP = {
-      blues: d3.interpolateBlues, greens: d3.interpolateGreens, reds: d3.interpolateReds,
-      purples: d3.interpolatePurples, oranges: d3.interpolateOranges,
-      warmCool: d3.interpolateRdYlBu, brownGreen: d3.interpolateBrBG,
-      viridis: d3.interpolateViridis, plasma: d3.interpolatePlasma,
-      inferno: d3.interpolateInferno, turbo: d3.interpolateTurbo, spectral: d3.interpolateSpectral,
-    };
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const colorInterp = INTERP_MAP[gradKey] || d3.interpolateBlues;
-    const colorScale = d3.scaleSequential(colorInterp).domain([minVal, maxVal]);
+    const colorScale = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient);
 
     // ── Projection ──
     const ProjFn = PROJECTIONS[widget.mapProjection] || PROJECTIONS.naturalEarth;
