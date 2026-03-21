@@ -148,7 +148,7 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
 
       const text = g.append('text')
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--chart-axis-color)')
+        .attr('fill', '#fff')
         .attr('font-family', 'var(--font)')
         .attr('opacity', 0);
 
@@ -157,7 +157,7 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
           .attr('x', 0)
           .attr('y', startY + j * lineHeight)
           .attr('font-size', fontSize)
-          .attr('font-weight', 500)
+          .attr('font-weight', 700)
           .text(line.length > maxChars + 2 ? line.slice(0, maxChars) + '…' : line);
       });
 
@@ -166,7 +166,8 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
           .attr('x', 0)
           .attr('y', startY + lines.length * lineHeight)
           .attr('font-size', valueFontSize)
-          .attr('fill', 'var(--text-muted)')
+          .attr('fill', 'rgba(255,255,255,0.8)')
+          .attr('font-weight', 600)
           .text(formatValue(d.data.value));
       }
 
