@@ -160,7 +160,7 @@ function StreamTip({ s, widget, color, total }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">Total ({widget.aggregation})</span>
-        <span className="tt-value">{formatValue(total)}</span>
+        <span className="tt-value">{formatValue(total, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-stat">Hover other bands to compare</div>
     </>

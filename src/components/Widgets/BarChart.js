@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
+import { aggregate, buildGroups, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
@@ -107,15 +107,10 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
   const H = h - m.top - m.bottom;
   if (W <= 0 || H <= 0) return;
 
-  const groups = new Map();
-  for (const row of data) {
-    const key = String(row[widget.xField] ?? '(blank)');
-    const val = +row[widget.yField] || 0;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(val);
-  }
+  const aggOpts = { distinct: widget.distinct };
+  const groups = buildGroups(data, widget.xField, widget.yField, { total: widget.total });
   let pts = Array.from(groups, ([key, vals]) => ({
-    key, value: aggregate(vals, widget.aggregation || 'sum'), count: vals.length,
+    key, value: aggregate(vals, widget.aggregation || 'sum', undefined, aggOpts), count: vals.length,
   }));
 
   // Sort using sortAggregated
@@ -163,7 +158,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       }
       colorVals = pts.map(d => {
         const vals = gMap.get(d.key) || [0];
-        return aggregate(vals, widget.aggregation || 'sum');
+        return aggregate(vals, widget.aggregation || 'sum', undefined, aggOpts);
       });
     } else {
       colorVals = pts.map(d => d.value);
@@ -191,7 +186,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
     const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
     if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
-    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
     g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
@@ -213,7 +208,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
-    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
 
     g.selectAll('.bar').data(pts).join('rect').attr('class', 'bar')
       .attr('x', d => xScale(d.key)).attr('y', H).attr('width', xScale.bandwidth()).attr('height', 0)
@@ -242,8 +237,10 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
   if (W <= 0 || H <= 0) return;
 
   // Pivot: aggregate by (xField, groupField)
+  const aggOpts = { distinct: widget.distinct };
   const pivotMap = new Map();
   const groupSet = new Set();
+  const allVals = widget.total ? data.map(r => +r[widget.yField] || 0) : null;
   for (const row of data) {
     const xKey = String(row[widget.xField] ?? '(blank)');
     const gKey = String(row[widget.groupField] ?? '(blank)');
@@ -261,7 +258,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
     const row = { __x: xKey };
     for (const gKey of groupKeys) {
       const entry = pivotMap.get(`${xKey}|||${gKey}`);
-      row[gKey] = entry ? aggregate(entry.vals, widget.aggregation || 'sum') : 0;
+      row[gKey] = entry ? aggregate(allVals || entry.vals, widget.aggregation || 'sum', undefined, aggOpts) : 0;
     }
     return row;
   });
@@ -358,7 +355,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
     const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
     if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
-    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
     stacked.forEach(layer => {
@@ -386,7 +383,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
-    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
 
     stacked.forEach(layer => {
       g.selectAll(`.bar-${layer.key}`).data(layer).join('rect')
@@ -420,7 +417,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
     const xScale = makeValueScale(widget, [widget.useLogScale ? 1 : 0, maxVal], [0, W]);
     if (!widget.useLogScale) xScale.nice();
     if (widget.showGrid) drawGrid(g, d3.axisBottom(xScale).tickSize(-H).tickFormat(''), 'x', H);
-    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
     pivotData.forEach(row => {
@@ -450,7 +447,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
     if (widget.showGrid) drawGrid(g, d3.axisLeft(yScale).tickSize(-W).tickFormat(''), 'y', 0);
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).tickFormat(d => truncate(d, 10))).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
-    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
 
     pivotData.forEach(row => {
       groupKeys.forEach(gk => {
@@ -486,7 +483,7 @@ function BarTip({ d, widget, color, total }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {d.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(d.value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share</span><span className="tt-value">{pct}%</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Records</span><span className="tt-value">{d.count.toLocaleString()}</span></div>
     </>
@@ -501,9 +498,9 @@ function StackedTip({ x, group, value, color, total, widget }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {x} — {group}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share of {x}</span><span className="tt-value">{pct}%</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Total</span><span className="tt-value">{formatValue(total)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Total</span><span className="tt-value">{formatValue(total, widget.numberFormat)}</span></div>
     </>
   );
 }

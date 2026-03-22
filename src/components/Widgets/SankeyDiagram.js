@@ -165,7 +165,7 @@ function LinkTip({ d, widget }) {
   return (
     <>
       <div className="chart-tooltip-title">{d.source.name} → {d.target.name}</div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(d.value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span></div>
     </>
   );
 }
@@ -176,8 +176,8 @@ function NodeTip({ d, widget }) {
   return (
     <>
       <div className="chart-tooltip-title">{d.name}</div>
-      {inflow > 0 && <div className="chart-tooltip-row"><span className="tt-label">Inflow</span><span className="tt-value">{formatValue(inflow)}</span></div>}
-      {outflow > 0 && <div className="chart-tooltip-row"><span className="tt-label">Outflow</span><span className="tt-value">{formatValue(outflow)}</span></div>}
+      {inflow > 0 && <div className="chart-tooltip-row"><span className="tt-label">Inflow</span><span className="tt-value">{formatValue(inflow, widget.numberFormat)}</span></div>}
+      {outflow > 0 && <div className="chart-tooltip-row"><span className="tt-label">Outflow</span><span className="tt-value">{formatValue(outflow, widget.numberFormat)}</span></div>}
     </>
   );
 }

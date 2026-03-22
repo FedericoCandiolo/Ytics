@@ -49,7 +49,7 @@ export default function MekkoChart({ widget, data, onCrossFilter }) {
       let catTotal = 0;
       for (const cKey of subCategories) {
         const entry = pivotMap.get(`${xKey}|||${cKey}`);
-        const val = entry ? aggregate(entry.vals, widget.aggregation || 'sum') : 0;
+        const val = entry ? aggregate(entry.vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct }) : 0;
         segments.push({ subCat: cKey, value: val });
         catTotal += val;
       }
@@ -161,9 +161,9 @@ export default function MekkoChart({ widget, data, onCrossFilter }) {
         if (segH > 14 && col.w > 30) {
           let labelText;
           if (valueMode === 'absolute') {
-            labelText = formatValue(seg.value);
+            labelText = formatValue(seg.value, widget.numberFormat);
           } else if (valueMode === 'both') {
-            labelText = `${formatValue(seg.value)} (${pctOfCat}%)`;
+            labelText = `${formatValue(seg.value, widget.numberFormat)} (${pctOfCat}%)`;
           } else {
             labelText = `${pctOfCat}%`;
           }
@@ -204,7 +204,7 @@ export default function MekkoChart({ widget, data, onCrossFilter }) {
           .attr('font-size', Math.min(10, col.w * 0.7))
           .attr('font-family', 'var(--font)')
           .attr('fill', 'var(--text-muted)')
-          .text(formatValue(col.total));
+          .text(formatValue(col.total, widget.numberFormat));
       }
     });
 
@@ -253,10 +253,10 @@ function MekkoTip({ category, subCategory, value, pctOfCat, pctOfGrand, catTotal
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {category} — {subCategory}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share of {category}</span><span className="tt-value">{pctOfCat}%</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share of total</span><span className="tt-value">{pctOfGrand}%</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Category total</span><span className="tt-value">{formatValue(catTotal)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Category total</span><span className="tt-value">{formatValue(catTotal, widget.numberFormat)}</span></div>
     </>
   );
 }

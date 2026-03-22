@@ -95,7 +95,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
       .on('mouseover', (ev, d) => {
         d3.select(ev.currentTarget).transition().duration(80).attr('opacity', 1);
         const pct = ((d.length / vals.length) * 100).toFixed(1);
-        showTooltip(ev, <HistTip d={d} color={useGradient ? binColorFn(d.length) : fillColor} pct={pct} total={vals.length} />);
+        showTooltip(ev, <HistTip d={d} color={useGradient ? binColorFn(d.length) : fillColor} pct={pct} total={vals.length} widget={widget} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev) => {
@@ -149,12 +149,12 @@ export default function Histogram({ widget, data, onCrossFilter }) {
   );
 }
 
-function HistTip({ d, color, pct, total }) {
+function HistTip({ d, color, pct, total, widget }) {
   return (
     <>
       <div className="chart-tooltip-title">
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
-        {formatValue(d.x0)} – {formatValue(d.x1)}
+        {formatValue(d.x0, widget.numberFormat)} – {formatValue(d.x1, widget.numberFormat)}
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">Count</span>

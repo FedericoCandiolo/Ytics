@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
-import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
+import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, NUMBER_FORMATS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
 import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray, resolveGradient } from '../../utils/colorUtils';
 import { TYPE_ICONS } from '../Widgets/WidgetContainer';
 import MeasurePipeline from './MeasurePipeline';
@@ -51,6 +51,130 @@ function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) 
   );
 }
 
+// ── Aggregation selector (basic / advanced / parameterized) ───────────────────
+function ModifierTags({ distinct, total, onDistinctChange, onTotalChange }) {
+  const [open, setOpen] = useState(false);
+  const hasModifiers = distinct || total;
+  const tagStyle = {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    fontSize: 10, padding: '1px 6px', borderRadius: 10,
+    background: 'var(--accent, #3b82f6)', color: '#fff',
+    cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: '18px',
+  };
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+      {distinct && (
+        <span style={tagStyle} onClick={() => onDistinctChange(false)} title="Remove Distinct modifier">
+          Distinct <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u2715'}</span>
+        </span>
+      )}
+      {total && (
+        <span style={tagStyle} onClick={() => onTotalChange(false)} title="Remove Total modifier">
+          Total <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u2715'}</span>
+        </span>
+      )}
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ fontSize: 10, padding: '0 4px', lineHeight: '18px', color: 'var(--text-muted)' }}
+        onClick={() => setOpen(o => !o)}
+        title="Add modifier"
+      >
+        {hasModifiers ? '+' : '+ Modifier'}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 2,
+          background: 'var(--bg-elevated, #fff)', border: '1px solid var(--border)', borderRadius: 'var(--radius, 6)',
+          boxShadow: '0 4px 12px rgba(0,0,0,.12)', padding: '6px 0', minWidth: 150,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+            <input type="checkbox" checked={!!distinct} onChange={e => { onDistinctChange(e.target.checked); }} style={{ margin: 0 }} />
+            <div>
+              <div style={{ fontWeight: 500 }}>Distinct</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Aggregate only unique values</div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+            <input type="checkbox" checked={!!total} onChange={e => { onTotalChange(e.target.checked); }} style={{ margin: 0 }} />
+            <div>
+              <div style={{ fontWeight: 500 }}>Total</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Ignore grouping, aggregate all data</div>
+            </div>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AggregationSelect({ value, onChange, advancedStats, className, style, numericOnly }) {
+  // Parse current value: could be "sum", "fractile:0.33", "concat:,"
+  const isParam = value && value.includes(':');
+  const baseVal = isParam ? value.split(':')[0] : (value || 'sum');
+  const paramVal = isParam ? value.split(':').slice(1).join(':') : '';
+  const paramDef = AGGREGATIONS_PARAM[baseVal];
+
+  // Non-numeric fields only get count
+  if (numericOnly === false) {
+    return (
+      <select className={className || 'select select-sm'} style={style} value="count" disabled>
+        <option value="count">Count</option>
+      </select>
+    );
+  }
+
+  const handleBase = (newBase) => {
+    const pd = AGGREGATIONS_PARAM[newBase];
+    if (pd) {
+      onChange(`${newBase}:${pd.default}`);
+    } else {
+      onChange(newBase);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <select className={className || 'select select-sm'} style={{ flex: 1, ...(style || {}) }}
+        value={baseVal} onChange={e => handleBase(e.target.value)}>
+        <optgroup label="Basic">
+          {Object.entries(AGGREGATIONS_BASIC).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </optgroup>
+        {advancedStats && (
+          <optgroup label="Advanced">
+            {Object.entries(AGGREGATIONS_ADVANCED)
+              .filter(([v]) => v !== 'concat') // concat shown as parameterized
+              .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </optgroup>
+        )}
+        {advancedStats && (
+          <optgroup label="Parameterized">
+            {Object.entries(AGGREGATIONS_PARAM).map(([v, def]) => (
+              <option key={v} value={v}>{def.label}</option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      {advancedStats && paramDef && (
+        paramDef.paramType === 'number' ? (
+          <input type="number" className="input input-sm" style={{ width: 56 }}
+            min={paramDef.min} max={paramDef.max} step={paramDef.step}
+            value={paramVal || paramDef.default}
+            onChange={e => onChange(`${baseVal}:${e.target.value}`)}
+            title={paramDef.paramLabel}
+          />
+        ) : (
+          <input type="text" className="input input-sm" style={{ width: 40 }}
+            value={paramVal ?? paramDef.default}
+            onChange={e => onChange(`${baseVal}:${e.target.value}`)}
+            title={paramDef.paramLabel}
+            placeholder={paramDef.paramLabel}
+          />
+        )
+      )}
+    </div>
+  );
+}
+
 // Which field key holds the "value to aggregate" for each chart type
 const AGG_VALUE_KEY = {
   bar: 'yField', line: 'yField', histogram: 'xField',
@@ -91,6 +215,7 @@ const COLOR_DIMENSION_FIELD = {
 
 // ── Fields tab content ────────────────────────────────────────────────────────
 function FieldsTab({ widget, dataset, columns, onUpdate }) {
+  const { state } = useApp();
   const fieldMap = {
     bar: [
       { key: 'xField',    label: 'Dimension (X axis)',       filter: null },
@@ -236,9 +361,6 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
   const valueFieldName = valueFieldKey ? widget[valueFieldKey] : null;
   const valueCol = valueFieldName ? cols.find(c => c.name === valueFieldName) : null;
   const isNumericValue = !valueFieldName || !valueCol || valueCol.type === 'number';
-  const availableAggs = isNumericValue
-    ? Object.entries(AGGREGATIONS)
-    : [['count', AGGREGATIONS.count]];
 
   const handleFieldChange = (fieldKey, value) => {
     const updates = { [fieldKey]: value };
@@ -364,14 +486,16 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                         <option value="">— none —</option>
                         {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                       </select>
-                      <select className="select select-sm" style={{ width: 80 }} value={m.aggregation || 'sum'}
-                        onChange={e => {
+                      <AggregationSelect
+                        value={m.aggregation || 'sum'}
+                        onChange={v => {
                           const next = [...current];
-                          next[i] = { ...next[i], aggregation: e.target.value };
+                          next[i] = { ...next[i], aggregation: v };
                           onUpdate({ straightTableMeasures: next });
-                        }}>
-                        {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
+                        }}
+                        advancedStats={state.dashboard.advancedStats}
+                        style={{ width: 80 }}
+                      />
                       <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
                         const next = [...current];
                         [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -386,7 +510,35 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                         onUpdate({ straightTableMeasures: current.filter((_, j) => j !== i) });
                       }}>{'\u2715'}</button>
                     </div>
-                    {/* Row 2: custom label */}
+                    {/* Row 2: modifiers + number format */}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <ModifierTags
+                        distinct={m.distinct} total={m.total}
+                        onDistinctChange={v => {
+                          const next = [...current];
+                          next[i] = { ...next[i], distinct: v };
+                          onUpdate({ straightTableMeasures: next });
+                        }}
+                        onTotalChange={v => {
+                          const next = [...current];
+                          next[i] = { ...next[i], total: v };
+                          onUpdate({ straightTableMeasures: next });
+                        }}
+                      />
+                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto', marginLeft: 'auto' }}
+                        value={m.numberFormat || 'auto'}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], numberFormat: e.target.value };
+                          onUpdate({ straightTableMeasures: next });
+                        }}
+                        title="Number format for this measure">
+                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                          <option key={k} value={k}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {/* Row 3: custom label */}
                     <input className="input input-sm" style={{ width: '100%' }}
                       placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
                       value={m.label || ''}
@@ -396,7 +548,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                         onUpdate({ straightTableMeasures: next });
                       }}
                     />
-                    {/* Row 3: representation + breakdown dimension */}
+                    {/* Row 4: representation + breakdown dimension */}
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                       <select className="select select-sm" style={{ flex: 1 }} value={m.representation || 'text'}
                         onChange={e => {
@@ -615,15 +767,29 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
               </span>
             )}
           </label>
-          <select
-            className="select select-sm"
+          <AggregationSelect
             value={widget.aggregation || 'sum'}
-            onChange={e => onUpdate({ aggregation: e.target.value })}
-          >
-            {availableAggs.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
+            onChange={v => onUpdate({ aggregation: v })}
+            advancedStats={state.dashboard.advancedStats}
+            numericOnly={isNumericValue}
+          />
+          <ModifierTags
+            distinct={widget.distinct} total={widget.total}
+            onDistinctChange={v => onUpdate({ distinct: v })}
+            onTotalChange={v => onUpdate({ total: v })}
+          />
         </div>
       )}
+
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Number format</label>
+        <select className="select select-sm" value={widget.numberFormat || 'auto'}
+          onChange={e => onUpdate({ numberFormat: e.target.value })}>
+          {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+            <option key={k} value={k}>{label}</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -1841,9 +2007,11 @@ function OptionsTab({ widget, columns, onUpdate }) {
       </div>
       <div className="form-group" style={{ marginBottom: 10 }}>
         <label className="form-label">Secondary aggregation</label>
-        <select className="select select-sm" value={widget.y2Aggregation || 'sum'} onChange={e => onUpdate({ y2Aggregation: e.target.value })}>
-          {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        <AggregationSelect
+          value={widget.y2Aggregation || 'sum'}
+          onChange={v => onUpdate({ y2Aggregation: v })}
+          advancedStats={state.dashboard.advancedStats}
+        />
       </div>
       <label className="checkbox-row">
         <input type="checkbox" checked={widget.dualAxis !== false} onChange={e => onUpdate({ dualAxis: e.target.checked })} />
@@ -2101,6 +2269,7 @@ const SLIDE_FIELD_MAP = {
 };
 
 function CarouselTab({ widget, dataset, onUpdate }) {
+  const { state } = useApp();
   const [selIdx, setSelIdx] = useState(0);
   const cols = dataset ? getColumnInfo(dataset.data) : [];
   const slides = widget.slides || [];
@@ -2187,10 +2356,11 @@ function CarouselTab({ widget, dataset, onUpdate }) {
           ))}
           <div className="form-group" style={{ marginBottom: 8 }}>
             <label className="form-label">Aggregation</label>
-            <select className="select select-sm" value={slide.aggregation || 'sum'}
-              onChange={e => updateSlide(selIdx, { aggregation: e.target.value })}>
-              {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            <AggregationSelect
+              value={slide.aggregation || 'sum'}
+              onChange={v => updateSlide(selIdx, { aggregation: v })}
+              advancedStats={state.dashboard.advancedStats}
+            />
           </div>
         </div>
       )}

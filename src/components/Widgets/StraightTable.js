@@ -271,6 +271,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         aggregation: aggLabel,
         chartType: isChart ? repr : null,
         chartDimension: isChart ? m.dimension : null,
+        numberFormat: m.numberFormat || null,
       });
     }
     return cols;
@@ -317,7 +318,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         const m = measures[mi];
         const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
         const agg = m.aggregation || 'sum';
-        row[mKey] = aggregate(buckets[mKey], agg);
+        row[mKey] = aggregate(buckets[mKey], agg, undefined, { distinct: m.distinct });
       }
       return row;
     });
@@ -357,7 +358,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       rowMap.forEach((sub, groupKey) => {
         const slices = dimVals.map(dv => ({
           label: dv,
-          value: sub.has(dv) ? aggregate(sub.get(dv), mcAgg) : 0,
+          value: sub.has(dv) ? aggregate(sub.get(dv), mcAgg, undefined, { distinct: widget.distinct }) : 0,
         }));
         slicesMap.set(groupKey, slices);
       });
@@ -365,7 +366,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       result.set(col.key, { slicesMap, dimVals });
     }
     return result.size > 0 ? result : null;
-  }, [data, dimensions, chartCols]);
+  }, [data, dimensions, chartCols, widget.distinct]);
 
   // Color arrays per chart column
   const mcColorsMap = useMemo(() => {
@@ -396,7 +397,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       const vals = aggregatedRows.map(r => r[mKey]).filter(v => typeof v === 'number');
       // For totals, re-aggregate: sum of sums, count of counts, etc.
       // For mean/median/std we re-aggregate over the already-aggregated values
-      row[mKey] = aggregate(vals, agg === 'count' ? 'sum' : agg);
+      row[mKey] = aggregate(vals, agg === 'count' ? 'sum' : agg, undefined, { distinct: m.distinct });
     }
     return row;
   }, [widget.straightTableShowTotals, aggregatedRows, dimensions, measures]);
@@ -502,7 +503,8 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
                   const fmtStyle = getCellStyle(fmtMap, c.key, cellVal);
                   const isDim = c.type === 'dimension';
                   const clickable = onCrossFilter && isDim;
-                  const displayVal = typeof cellVal === 'number' ? formatValue(cellVal) : cellVal;
+                  const fmt = c.numberFormat || widget.numberFormat;
+                  const displayVal = typeof cellVal === 'number' ? formatValue(cellVal, fmt) : cellVal;
                   return (
                     <td
                       key={c.key}
@@ -529,7 +531,8 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
                 {columns.map(c => {
                   if (c.type === 'minichart') return <td key={c.key} />;
                   const cellVal = totalsRow[c.key];
-                  const displayVal = typeof cellVal === 'number' ? formatValue(cellVal) : cellVal;
+                  const totFmt = c.numberFormat || widget.numberFormat;
+                  const displayVal = typeof cellVal === 'number' ? formatValue(cellVal, totFmt) : cellVal;
                   return (
                     <td
                       key={c.key}

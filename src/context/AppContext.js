@@ -148,6 +148,7 @@ const initialState = {
     currentPageId: _firstPage.id,
     theme: { ...defaultTheme },
     dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
+    advancedStats: false,  // enable advanced aggregation functions + formula editor
     // Shared dimension definitions + state
     hierarchicDimensions: [], // [{ id, name, levels: [field,...], currentLevel: 0, filters: [] }]
     cyclicDimensions: [],     // [{ id, name, fields: [field,...], activeIndex: 0 }]
@@ -191,6 +192,9 @@ function defaultWidget(overrides = {}) {
     labelField: null,
     valueField: null,
     aggregation: 'sum',
+    distinct: false,
+    total: false,
+    numberFormat: 'auto',
     // Sort
     sortBy: 'original',        // 'value' | 'label' | 'custom' | 'original'
     sortOrder: 'desc',
@@ -320,14 +324,15 @@ function reducer(state, action) {
     case 'SET_DEVELOPER_TAB':
       return { ...state, developerTab: action.payload };
 
-    case 'SET_THEME':
+    case 'SET_THEME': {
+      const { __advancedStats, ...themeUpdates } = action.payload;
+      const dashUpdates = { theme: { ...state.dashboard.theme, ...themeUpdates } };
+      if (__advancedStats !== undefined) dashUpdates.advancedStats = __advancedStats;
       return {
         ...state,
-        dashboard: {
-          ...state.dashboard,
-          theme: { ...state.dashboard.theme, ...action.payload },
-        },
+        dashboard: { ...state.dashboard, ...dashUpdates },
       };
+    }
 
     // ── Datasets ──────────────────────────────────────────────
     case 'LOAD_DATASET': {
@@ -684,6 +689,19 @@ function reducer(state, action) {
       };
     }
 
+    case 'NEW_DASHBOARD': {
+      const page = makePage({ name: 'Page 1' });
+      return {
+        ...initialState,
+        dashboard: {
+          ...initialState.dashboard,
+          title: 'My Dashboard',
+          pages: [page],
+          currentPageId: page.id,
+        },
+      };
+    }
+
     case 'RESTORE_STATE':
       return action.payload;
 
@@ -708,8 +726,57 @@ const UNDOABLE_ACTIONS = new Set([
 
 const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);
 
+const STORAGE_KEY = 'ytics_dashboard';
+
+export function saveDashboard(state) {
+  try {
+    const payload = {
+      datasets: state.datasets.map(d => ({
+        id: d.id, name: d.name, data: d.originalData, transforms: d.transforms,
+      })),
+      dashboard: state.dashboard,
+    };
+    const json = JSON.stringify(payload);
+    localStorage.setItem(STORAGE_KEY, json);
+    return true;
+  } catch (err) {
+    console.error('Save failed:', err);
+    return err.message || 'unknown error';
+  }
+}
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
 export function AppProvider({ children }) {
-  const [state, rawDispatch] = useReducer(reducer, initialState);
+  const [state, rawDispatch] = useReducer(reducer, initialState, () => {
+    const saved = loadSaved();
+    if (!saved) return initialState;
+    try {
+      const { datasets, dashboard } = saved;
+      const dicts = {};
+      const tables = {};
+      const processed = datasets.map(d => {
+        const updated = recompute({ ...d, transforms: d.transforms ?? [] }, dicts);
+        tables[d.id] = updated.table;
+        return updated;
+      });
+      const pages = dashboard.pages || [makePage({ name: 'Page 1' })];
+      const currentPageId = dashboard.currentPageId || pages[0]?.id;
+      return {
+        ...initialState,
+        datasets: processed,
+        activeDatasetId: processed[0]?.id ?? null,
+        dashboard: { ...initialState.dashboard, ...dashboard, pages, currentPageId },
+        colStore: { dicts, tables },
+      };
+    } catch { return initialState; }
+  });
   const stateRef = React.useRef(state);
   stateRef.current = state;
   const undoStackRef = React.useRef([]);

@@ -6,7 +6,7 @@ import { useChartDims, Placeholder } from './chartHelpers';
 
 // ── Value formatting with KPI-specific modes ─────────────────────────────────
 
-function formatKPI(v, format) {
+function formatKPI(v, format, numberFormat) {
   if (typeof v !== 'number' || isNaN(v)) return '—';
   switch (format) {
     case 'currency':
@@ -17,16 +17,16 @@ function formatKPI(v, format) {
     case 'percent':
       return (v % 1 === 0 ? String(v) : v.toFixed(2)) + '%';
     default:
-      return formatValue(v);
+      return formatValue(v, numberFormat);
   }
 }
 
 // ── Compute aggregated value from data rows ──────────────────────────────────
 
-function computeValue(data, field, aggregation) {
+function computeValue(data, field, aggregation, opts) {
   if (!data?.length || !field) return null;
   const vals = data.map(r => +r[field] || 0);
-  return aggregate(vals, aggregation || 'sum');
+  return aggregate(vals, aggregation || 'sum', undefined, opts);
 }
 
 // ── Style 1: Card ────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ function renderCard(svg, value, target, widget, w, h, primaryColor) {
     .attr('font-weight', 700)
     .attr('fill', primaryColor)
     .attr('font-family', 'var(--font)')
-    .text(formatKPI(value, format));
+    .text(formatKPI(value, format, widget.numberFormat));
 
   // Subtitle (field name)
   const subtitleSize = Math.max(10, Math.min(14, valueFontSize * 0.28));
@@ -82,7 +82,7 @@ function renderCard(svg, value, target, widget, w, h, primaryColor) {
       .attr('font-weight', 600)
       .attr('fill', deltaColor)
       .attr('font-family', 'var(--font)')
-      .text(`${arrow} ${formatKPI(Math.abs(delta), format)} vs target`);
+      .text(`${arrow} ${formatKPI(Math.abs(delta), format, widget.numberFormat)} vs target`);
   }
 }
 
@@ -226,7 +226,7 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
     .attr('font-size', labelSize)
     .attr('fill', 'var(--text-muted)')
     .attr('font-family', 'var(--font)')
-    .text(formatKPI(gaugeMin, format));
+    .text(formatKPI(gaugeMin, format, widget.numberFormat));
 
   g.append('text')
     .attr('x', cx + radius).attr('y', cy + labelSize + 4)
@@ -234,7 +234,7 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
     .attr('font-size', labelSize)
     .attr('fill', 'var(--text-muted)')
     .attr('font-family', 'var(--font)')
-    .text(formatKPI(gaugeMax, format));
+    .text(formatKPI(gaugeMax, format, widget.numberFormat));
 
   // Value displayed below the arc
   const valueFontSize = Math.max(14, Math.min(36, radius * 0.32));
@@ -246,7 +246,7 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
     .attr('font-weight', 700)
     .attr('fill', 'var(--text)')
     .attr('font-family', 'var(--font)')
-    .text(formatKPI(value, format));
+    .text(formatKPI(value, format, widget.numberFormat));
 
   // Field name subtitle
   const subSize = Math.max(9, Math.min(12, valueFontSize * 0.36));
@@ -370,7 +370,7 @@ function renderSatellite(svg, value, target, widget, w, h, gradientScale) {
     .attr('font-weight', 700)
     .attr('fill', 'var(--text)')
     .attr('font-family', 'var(--font)')
-    .text(formatKPI(value, format));
+    .text(formatKPI(value, format, widget.numberFormat));
 
   // Field name below value
   const subSize = Math.max(9, Math.min(12, valueFontSize * 0.34));
@@ -399,8 +399,9 @@ export default function KPICard({ widget, data, onCrossFilter }) {
     }
 
     const svg = d3.select(svgRef.current);
-    const value = computeValue(data, widget.valueField, widget.aggregation);
-    const target = widget.yField ? computeValue(data, widget.yField, widget.aggregation) : null;
+    const distOpts = { distinct: widget.distinct };
+    const value = computeValue(data, widget.valueField, widget.aggregation, distOpts);
+    const target = widget.yField ? computeValue(data, widget.yField, widget.aggregation, distOpts) : null;
 
     if (value == null) {
       svg.selectAll('*').remove();

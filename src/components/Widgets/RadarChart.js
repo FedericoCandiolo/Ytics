@@ -56,7 +56,7 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
         name,
         values: axes.map(axis => {
           const vals = axisMap.get(axis) || [0];
-          return aggregate(vals, widget.aggregation || 'sum');
+          return aggregate(vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct });
         }),
       };
     });
@@ -91,7 +91,7 @@ export default function RadarChart({ widget, data, onCrossFilter }) {
       g.append('text')
         .attr('x', 4).attr('y', -r - 2)
         .attr('font-size', 9).attr('fill', 'var(--text-muted)')
-        .text(formatValue((maxVal / levels) * i));
+        .text(formatValue((maxVal / levels) * i, widget.numberFormat));
     }
 
     // Axis lines and labels
@@ -182,7 +182,7 @@ function RadarTip({ axis, value, series, color, hasSeries, widget }) {
         {axis}
       </div>
       {hasSeries && <div className="chart-tooltip-row"><span className="tt-label">Series</span><span className="tt-value">{series}</span></div>}
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
     </>
   );
 }

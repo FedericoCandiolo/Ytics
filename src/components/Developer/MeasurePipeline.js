@@ -1,13 +1,18 @@
 import { useState, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
-import { getColumnInfo, AGGREGATIONS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
+import { getColumnInfo, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
+import { useApp } from '../../context/AppContext';
 
-const STEP_TYPES = [
+const STEP_TYPES_BASIC = [
   { type: 'groupBy', label: 'Group & Aggregate', icon: '⊞', desc: 'Group rows and compute aggregated values' },
   { type: 'topN',    label: 'Top / Bottom N',    icon: '⊤', desc: 'Keep top or bottom N rows (per group)' },
   { type: 'filter',  label: 'Filter',            icon: '⊘', desc: 'Filter rows by condition' },
   { type: 'compute', label: 'Compute Column',    icon: 'ƒ', desc: 'Create a new column from expression' },
   { type: 'sort',    label: 'Sort',              icon: '↕', desc: 'Sort rows by a column' },
+];
+
+const STEP_TYPES_ADVANCED = [
+  { type: 'formula', label: 'Formula Measure', icon: '∑', desc: 'Compute a measure from a formula (e.g. std / mean)' },
 ];
 
 const AGG_SHORT = { sum: 'sum', count: 'count', mean: 'avg', min: 'min', max: 'max', median: 'med', std: 'std', p25: 'p25', p75: 'p75', p90: 'p90', p95: 'p95' };
@@ -21,6 +26,7 @@ function makeStep(type) {
     case 'topN':    return { ...base, groupBy: [], orderBy: '', direction: 'desc', n: 1 };
     case 'filter':  return { ...base, field: '', operator: '>', value: '' };
     case 'compute': return { ...base, newColumn: '', expression: '' };
+    case 'formula': return { ...base, newColumn: '', expression: '', description: '' };
     case 'sort':    return { ...base, field: '', direction: 'desc' };
     default:        return base;
   }
@@ -34,6 +40,9 @@ function aggOutputName(agg) {
 }
 
 export default function MeasurePipeline({ measures, dataset, onUpdate }) {
+  const { state } = useApp();
+  const advancedStats = state.dashboard.advancedStats;
+  const STEP_TYPES = advancedStats ? [...STEP_TYPES_BASIC, ...STEP_TYPES_ADVANCED] : STEP_TYPES_BASIC;
   const [expanded, setExpanded] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -161,6 +170,9 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
                 {step.type === 'compute' && step.newColumn && (
                   <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> → {step.newColumn}</span>
                 )}
+                {step.type === 'formula' && step.newColumn && (
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> → {step.newColumn}</span>
+                )}
                 {step.type === 'sort' && step.field && (
                   <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> {step.field} {step.direction}</span>
                 )}
@@ -182,6 +194,7 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
                 {step.type === 'topN' && <TopNEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
                 {step.type === 'filter' && <FilterEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
                 {step.type === 'compute' && <ComputeEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
+                {step.type === 'formula' && <FormulaEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
                 {step.type === 'sort' && <SortEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
               </div>
             )}
@@ -261,9 +274,68 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
   );
 }
 
+// ── Modifier tags for pipeline aggregations ─────────────────────────────────────
+
+function PipelineModifierTags({ distinct, total, onDistinctChange, onTotalChange }) {
+  const [open, setOpen] = useState(false);
+  const hasModifiers = distinct || total;
+  const tagStyle = {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    fontSize: 10, padding: '1px 6px', borderRadius: 10,
+    background: 'var(--accent, #3b82f6)', color: '#fff',
+    cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: '18px',
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2, paddingLeft: 2, flexWrap: 'wrap', position: 'relative' }}>
+      {distinct && (
+        <span style={tagStyle} onClick={() => onDistinctChange(false)} title="Remove Distinct modifier">
+          Distinct <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u2715'}</span>
+        </span>
+      )}
+      {total && (
+        <span style={tagStyle} onClick={() => onTotalChange(false)} title="Remove Total modifier">
+          Total <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u2715'}</span>
+        </span>
+      )}
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ fontSize: 10, padding: '0 4px', lineHeight: '18px', color: 'var(--text-muted)' }}
+        onClick={() => setOpen(o => !o)}
+        title="Add modifier"
+      >
+        {hasModifiers ? '+' : '+ Modifier'}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 20, marginTop: 2,
+          background: 'var(--bg-elevated, #fff)', border: '1px solid var(--border)', borderRadius: 'var(--radius, 6)',
+          boxShadow: '0 4px 12px rgba(0,0,0,.12)', padding: '6px 0', minWidth: 150,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+            <input type="checkbox" checked={!!distinct} onChange={e => { onDistinctChange(e.target.checked); }} style={{ margin: 0 }} />
+            <div>
+              <div style={{ fontWeight: 500 }}>Distinct</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Aggregate only unique values</div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+            <input type="checkbox" checked={!!total} onChange={e => { onTotalChange(e.target.checked); }} style={{ margin: 0 }} />
+            <div>
+              <div style={{ fontWeight: 500 }}>Total</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Ignore grouping, aggregate all data</div>
+            </div>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Step editors ────────────────────────────────────────────────────────────────
 
 function GroupByEditor({ step, cols, onChange }) {
+  const { state } = useApp();
+  const advancedStats = state.dashboard.advancedStats;
   const addAgg = () => {
     onChange({ aggregations: [...step.aggregations, { field: '', fn: 'sum', as: '' }] });
   };
@@ -297,9 +369,41 @@ function GroupByEditor({ step, cols, onChange }) {
         return (
           <div key={i} style={{ marginBottom: 6 }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <select className="select select-sm" value={agg.fn} onChange={e => updateAgg(i, { fn: e.target.value })} style={{ width: 80 }}>
-                {Object.entries(AGGREGATIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              <select className="select select-sm" value={agg.fn?.split(':')[0] || 'sum'} onChange={e => {
+                const pd = AGGREGATIONS_PARAM[e.target.value];
+                updateAgg(i, { fn: pd ? `${e.target.value}:${pd.default}` : e.target.value });
+              }} style={{ width: 80 }}>
+                <optgroup label="Basic">
+                  {Object.entries(AGGREGATIONS_BASIC).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </optgroup>
+                {advancedStats && (
+                  <optgroup label="Advanced">
+                    {Object.entries(AGGREGATIONS_ADVANCED).filter(([v]) => v !== 'concat').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </optgroup>
+                )}
+                {advancedStats && (
+                  <optgroup label="Parameterized">
+                    {Object.entries(AGGREGATIONS_PARAM).map(([v, def]) => <option key={v} value={v}>{def.label}</option>)}
+                  </optgroup>
+                )}
               </select>
+              {advancedStats && AGGREGATIONS_PARAM[agg.fn?.split(':')[0]] && (
+                AGGREGATIONS_PARAM[agg.fn.split(':')[0]].paramType === 'number' ? (
+                  <input type="number" className="input input-sm" style={{ width: 48 }}
+                    min={AGGREGATIONS_PARAM[agg.fn.split(':')[0]].min}
+                    max={AGGREGATIONS_PARAM[agg.fn.split(':')[0]].max}
+                    step={AGGREGATIONS_PARAM[agg.fn.split(':')[0]].step}
+                    value={agg.fn.split(':')[1] || AGGREGATIONS_PARAM[agg.fn.split(':')[0]].default}
+                    onChange={e => updateAgg(i, { fn: `${agg.fn.split(':')[0]}:${e.target.value}` })}
+                  />
+                ) : (
+                  <input type="text" className="input input-sm" style={{ width: 36 }}
+                    value={agg.fn.split(':').slice(1).join(':') ?? AGGREGATIONS_PARAM[agg.fn.split(':')[0]].default}
+                    onChange={e => updateAgg(i, { fn: `${agg.fn.split(':')[0]}:${e.target.value}` })}
+                    placeholder={AGGREGATIONS_PARAM[agg.fn.split(':')[0]].paramLabel}
+                  />
+                )
+              )}
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>of</span>
               <select className="select select-sm" value={agg.field} onChange={e => updateAgg(i, { field: e.target.value })} style={{ flex: 1 }}>
                 <option value="">— field —</option>
@@ -309,6 +413,11 @@ function GroupByEditor({ step, cols, onChange }) {
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAgg(i)}>✕</button>
               )}
             </div>
+            <PipelineModifierTags
+              distinct={agg.distinct} total={agg.total}
+              onDistinctChange={v => updateAgg(i, { distinct: v })}
+              onTotalChange={v => updateAgg(i, { total: v })}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, paddingLeft: 2 }}>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>→ save as</span>
               <input
@@ -408,6 +517,48 @@ function ComputeEditor({ step, cols, onChange }) {
           Use column names as variables. Available: {cols.map(c => c.name).join(', ')}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FormulaEditor({ step, cols, onChange }) {
+  const numCols = cols.filter(c => c.type === 'number');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="form-group">
+        <label className="form-label" style={{ fontSize: 11 }}>Output column name</label>
+        <input className="input input-sm" value={step.newColumn} onChange={e => onChange({ newColumn: e.target.value })} placeholder="e.g. coefficient_of_variation" />
+      </div>
+      <div className="form-group">
+        <label className="form-label" style={{ fontSize: 11 }}>Formula</label>
+        <textarea
+          className="input input-sm"
+          rows={2}
+          style={{ fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+          value={step.expression}
+          onChange={e => onChange({ expression: e.target.value })}
+          placeholder="e.g. std_revenue / mean_revenue"
+        />
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          Reference any column by name. Use arithmetic operators (+, -, *, /, **) and Math functions (Math.sqrt, Math.log, Math.abs, etc.)
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          Available columns: {cols.map(c => c.name).join(', ') || '(none yet)'}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label" style={{ fontSize: 11 }}>Description (optional)</label>
+        <input className="input input-sm" value={step.description || ''} onChange={e => onChange({ description: e.target.value })} placeholder="What this formula computes" />
+      </div>
+      {numCols.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, padding: '6px 8px', background: 'var(--bg-elevated)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 3 }}>Quick examples:</div>
+          <div><code>col_a / col_b</code> — ratio</div>
+          <div><code>Math.sqrt(col_a)</code> — square root</div>
+          <div><code>(col_a - col_b) / col_b * 100</code> — percent change</div>
+          <div><code>col_a &gt; 0 ? col_b / col_a : 0</code> — safe division</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -62,7 +62,7 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
   if (widget.sortBy && widget.sortBy !== 'original') {
     let sorted = xKeys.map(key => {
       const vals = xGroups.get(key).map(r => +r[widget.yField] || 0);
-      return { key, value: aggregate(vals, yAgg) };
+      return { key, value: aggregate(vals, yAgg, undefined, { distinct: widget.distinct }) };
     });
     sorted = sortAggregated(sorted, {
       sortBy: widget.sortBy || 'original',
@@ -93,7 +93,7 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
       grouped: false,
       pts: xKeys.map(key => {
         const vals = xGroups.get(key).map(r => +r[widget.yField] || 0);
-        return { key, value: aggregate(vals, yAgg) };
+        return { key, value: aggregate(vals, yAgg, undefined, { distinct: widget.distinct }) };
       }),
     };
   }
@@ -117,14 +117,14 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
       for (const [sKey, sMap] of lineSeriesMap) {
         const pts = xKeys.map(xKey => ({
           key: xKey,
-          value: sMap.has(xKey) ? aggregate(sMap.get(xKey), y2Agg) : null,
+          value: sMap.has(xKey) ? aggregate(sMap.get(xKey), y2Agg, undefined, { distinct: widget.distinct }) : null,
         })).filter(d => d.value !== null);
         lineSeriesMap.set(sKey, pts);
       }
     } else {
       linePts = xKeys.map(key => {
         const vals = xGroups.get(key).map(r => +r[widget.y2Field] || 0);
-        return { key, value: aggregate(vals, y2Agg) };
+        return { key, value: aggregate(vals, y2Agg, undefined, { distinct: widget.distinct }) };
       });
     }
   }
@@ -139,7 +139,7 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
     yMax = d3.max(xKeys, xKey =>
       d3.max(groupKeys, gKey => {
         const vals = pivotMap.get(`${xKey}|||${gKey}`);
-        return vals ? aggregate(vals, yAgg) : 0;
+        return vals ? aggregate(vals, yAgg, undefined, { distinct: widget.distinct }) : 0;
       })
     ) * 1.05 || 1;
   } else {
@@ -367,7 +367,7 @@ function renderGroupedBars(g, barData, xScale, yScale, yAgg, colors, opacity, wi
   xKeys.forEach(xKey => {
     groupKeys.forEach(gKey => {
       const vals = pivotMap.get(`${xKey}|||${gKey}`);
-      const value = vals ? aggregate(vals, yAgg) : 0;
+      const value = vals ? aggregate(vals, yAgg, undefined, { distinct: widget.distinct }) : 0;
       g.append('rect')
         .attr('x', xScale(xKey) + xInner(gKey)).attr('y', H)
         .attr('width', xInner.bandwidth()).attr('height', 0)
@@ -470,7 +470,7 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
         const { groupKeys, pivotMap } = barData;
         for (const gKey of groupKeys) {
           const rawVals = pivotMap.get(`${xKey}|||${gKey}`);
-          const value = rawVals ? aggregate(rawVals, yAgg) : 0;
+          const value = rawVals ? aggregate(rawVals, yAgg, undefined, { distinct: widget.distinct }) : 0;
           vals.push({
             label: `${widget.yField} (${gKey})`,
             value,
@@ -501,7 +501,7 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
         }
       }
 
-      showTooltip(ev, <ComboTip xLabel={xKey} vals={vals} />);
+      showTooltip(ev, <ComboTip xLabel={xKey} vals={vals} widget={widget} />);
       moveTooltip(ev);
     })
     .on('mouseleave', () => {
@@ -519,7 +519,7 @@ function BarTip({ d, widget, color, total }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {d.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(d.value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share</span><span className="tt-value">{pct}%</span></div>
     </>
   );
@@ -532,12 +532,12 @@ function GroupedBarTip({ x, group, value, color, widget }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {x} - {group}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
     </>
   );
 }
 
-function ComboTip({ xLabel, vals }) {
+function ComboTip({ xLabel, vals, widget }) {
   return (
     <>
       <div className="chart-tooltip-title">{xLabel}</div>
@@ -545,7 +545,7 @@ function ComboTip({ xLabel, vals }) {
         <div key={i} className="chart-tooltip-row">
           <span className="tt-dot" style={{ background: v.color }} />
           <span className="tt-label">{v.label}</span>
-          <span className="tt-value">{formatValue(v.value)}</span>
+          <span className="tt-value">{formatValue(v.value, widget?.numberFormat)}</span>
         </div>
       ))}
     </>

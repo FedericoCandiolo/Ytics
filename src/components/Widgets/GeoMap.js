@@ -383,7 +383,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
           .attr('r', r + 2).attr('fill', 'transparent')
           .style('cursor', 'pointer')
           .on('mouseover', (ev) => {
-            showTooltip(ev, <OverlayTip name={entry.name} slices={entry.slices} size={entry.size} sizeField={overlaySizeField} />);
+            showTooltip(ev, <OverlayTip name={entry.name} slices={entry.slices} size={entry.size} sizeField={overlaySizeField} widget={widget} />);
           })
           .on('mousemove', moveTooltip)
           .on('mouseleave', hideTooltip)
@@ -520,7 +520,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
             .attr('fill', 'transparent')
             .style('cursor', 'pointer')
             .on('mouseover', (ev) => {
-              showTooltip(ev, <OverlayTip name={label} slices={grp.slices} size={grp.size} sizeField={pointSizeField || pointFields[0]} />);
+              showTooltip(ev, <OverlayTip name={label} slices={grp.slices} size={grp.size} sizeField={pointSizeField || pointFields[0]} widget={widget} />);
             })
             .on('mousemove', moveTooltip)
             .on('mouseleave', hideTooltip);
@@ -529,7 +529,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     }
 
     // ── Legend ──
-    renderLegend(svg, colorScale, minVal, maxVal, w, h);
+    renderLegend(svg, colorScale, minVal, maxVal, w, h, widget);
 
     // ── Zoom ──
     const zoom = d3.zoom()
@@ -588,7 +588,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
   );
 }
 
-function renderLegend(svg, colorScale, minVal, maxVal, w, h) {
+function renderLegend(svg, colorScale, minVal, maxVal, w, h, widget) {
   const legendW = Math.min(200, w * 0.4);
   const legendH = 10;
   const lx = w - legendW - 20;
@@ -605,9 +605,9 @@ function renderLegend(svg, colorScale, minVal, maxVal, w, h) {
   legend.append('rect').attr('x', lx).attr('y', ly).attr('width', legendW).attr('height', legendH)
     .attr('fill', 'url(#geo-grad)').attr('rx', 3);
   legend.append('text').attr('x', lx).attr('y', ly - 4).attr('font-size', 9).attr('fill', 'var(--text-muted)')
-    .text(formatValue(minVal));
+    .text(formatValue(minVal, widget.numberFormat));
   legend.append('text').attr('x', lx + legendW).attr('y', ly - 4).attr('font-size', 9).attr('fill', 'var(--text-muted)')
-    .attr('text-anchor', 'end').text(formatValue(maxVal));
+    .attr('text-anchor', 'end').text(formatValue(maxVal, widget.numberFormat));
 }
 
 // ── Tooltip components ──
@@ -617,7 +617,7 @@ function GeoTip({ name, match, widget }) {
     <>
       <div className="chart-tooltip-title">{name}</div>
       {match ? (
-        <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(match.value)}</span></div>
+        <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(match.value, widget.numberFormat)}</span></div>
       ) : (
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No data</div>
       )}
@@ -625,20 +625,20 @@ function GeoTip({ name, match, widget }) {
   );
 }
 
-function OverlayTip({ name, slices, size, sizeField }) {
+function OverlayTip({ name, slices, size, sizeField, widget }) {
   return (
     <>
       <div className="chart-tooltip-title">{name}</div>
       {slices.map((s, i) => (
         <div key={i} className="chart-tooltip-row">
           <span className="tt-label">{s.label}</span>
-          <span className="tt-value">{formatValue(s.value)}</span>
+          <span className="tt-value">{formatValue(s.value, widget?.numberFormat)}</span>
         </div>
       ))}
       {sizeField && (
         <div className="chart-tooltip-row" style={{ borderTop: '1px solid var(--border)', marginTop: 2, paddingTop: 2 }}>
           <span className="tt-label">Size ({sizeField})</span>
-          <span className="tt-value">{formatValue(size)}</span>
+          <span className="tt-value">{formatValue(size, widget?.numberFormat)}</span>
         </div>
       )}
     </>
@@ -656,7 +656,7 @@ function PointTip({ label, grp, widget, pointSizeField, pointColorField }) {
       {pointSizeField && (
         <div className="chart-tooltip-row">
           <span className="tt-label">{pointSizeField}</span>
-          <span className="tt-value">{formatValue(grp.size)}</span>
+          <span className="tt-value">{formatValue(grp.size, widget.numberFormat)}</span>
         </div>
       )}
       {pointColorField && grp.rows[0] && (

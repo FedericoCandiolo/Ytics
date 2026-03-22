@@ -30,7 +30,7 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
 
     const agg = widget.aggregation || 'sum';
     const nested = d3.rollup(data,
-      v => aggregate(v.map(d => +d[widget.valueField] || 0), agg),
+      v => aggregate(v.map(d => +d[widget.valueField] || 0), agg, undefined, { distinct: widget.distinct }),
       d => String(d[widget.xField] ?? ''),
       d => String(d[widget.yField] ?? '')
     );
@@ -111,8 +111,8 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
       grad.append('stop').attr('offset', `${i * 10}%`).attr('stop-color', colorScale(vMin + (i / 10) * (vMax - vMin)));
     }
     legG.append('rect').attr('width', legW).attr('height', legH).attr('rx', 3).attr('fill', `url(#${gradId})`);
-    legG.append('text').attr('x', 0).attr('y', 20).attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin));
-    legG.append('text').attr('x', legW).attr('y', 20).attr('text-anchor', 'end').attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMax));
+    legG.append('text').attr('x', 0).attr('y', 20).attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin, widget.numberFormat));
+    legG.append('text').attr('x', legW).attr('y', 20).attr('text-anchor', 'end').attr('font-size', 9.5).attr('fill', 'var(--chart-axis-color)').text(formatValue(vMax, widget.numberFormat));
   }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
@@ -136,7 +136,7 @@ function HeatTip({ d, widget, colorScale }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.valueField}</span>
-        <span className="tt-value">{formatValue(d.value)}</span>
+        <span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span>
       </div>
     </>
   );

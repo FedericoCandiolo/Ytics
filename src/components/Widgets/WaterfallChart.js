@@ -64,7 +64,7 @@ function renderWaterfall(svg, data, widget, dims, showTooltip, moveTooltip, hide
   }
   let pts = Array.from(groups, ([key, vals]) => ({
     key,
-    value: aggregate(vals, widget.aggregation || 'sum'),
+    value: aggregate(vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct }),
   }));
 
   if (widget.sortBy && widget.sortBy !== 'original') {
@@ -203,7 +203,7 @@ function renderWaterfall(svg, data, widget, dims, showTooltip, moveTooltip, hide
     .attr('fill', 'var(--chart-axis-color)')
     .attr('font-family', 'var(--font)')
     .attr('opacity', 0)
-    .text(d => formatValue(d.change))
+    .text(d => formatValue(d.change, widget.numberFormat))
     .transition().delay(300).duration(300)
     .attr('opacity', 1);
 
@@ -239,10 +239,10 @@ function renderCandlestick(svg, data, widget, dims, showTooltip, moveTooltip, hi
 
   const candles = Array.from(groups, ([key, g]) => ({
     key,
-    open: aggregate(g.opens, widget.aggregation || 'avg'),
-    high: aggregate(g.highs, widget.aggregation || 'max'),
-    low: aggregate(g.lows, widget.aggregation || 'min'),
-    close: aggregate(g.closes, widget.aggregation || 'avg'),
+    open: aggregate(g.opens, widget.aggregation || 'avg', undefined, { distinct: widget.distinct }),
+    high: aggregate(g.highs, widget.aggregation || 'max', undefined, { distinct: widget.distinct }),
+    low: aggregate(g.lows, widget.aggregation || 'min', undefined, { distinct: widget.distinct }),
+    close: aggregate(g.closes, widget.aggregation || 'avg', undefined, { distinct: widget.distinct }),
   }));
 
   const allPrices = candles.flatMap(c => [c.high, c.low]);
@@ -313,8 +313,8 @@ function WaterfallTip({ d, widget, color }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {d.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(d.change)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Running Total</span><span className="tt-value">{formatValue(d.runningTotal)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(d.change, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Running Total</span><span className="tt-value">{formatValue(d.runningTotal, widget.numberFormat)}</span></div>
     </>
   );
 }
@@ -328,11 +328,11 @@ function CandleTip({ d, widget, bullColor, bearColor }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {d.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">Open</span><span className="tt-value">{formatValue(d.open)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">High</span><span className="tt-value">{formatValue(d.high)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Low</span><span className="tt-value">{formatValue(d.low)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Close</span><span className="tt-value">{formatValue(d.close)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Change</span><span className="tt-value" style={{ color }}>{formatValue(d.close - d.open)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Open</span><span className="tt-value">{formatValue(d.open, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">High</span><span className="tt-value">{formatValue(d.high, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Low</span><span className="tt-value">{formatValue(d.low, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Close</span><span className="tt-value">{formatValue(d.close, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Change</span><span className="tt-value" style={{ color }}>{formatValue(d.close - d.open, widget.numberFormat)}</span></div>
     </>
   );
 }

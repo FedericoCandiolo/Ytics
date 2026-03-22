@@ -222,7 +222,7 @@ function BumpTip({ d, s, widget, color, maxRank }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.valueField}</span>
-        <span className="tt-value">{formatValue(d.value)}</span>
+        <span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span>
       </div>
     </>
   );

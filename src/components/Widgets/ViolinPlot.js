@@ -352,7 +352,7 @@ function PointTip({ row, widget, value, color, cat, sub }) {
       {label && (
         <div className="chart-tooltip-row"><span className="tt-label">{widget.xField}</span><span className="tt-value">{cat}</span></div>
       )}
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
     </>
   );
 }
@@ -366,12 +366,12 @@ function ViolinTip({ cat, sub, stats, widget, color, n, iqrMultiplier }) {
       </div>
       {[
         ['n', n.toLocaleString()],
-        ['Mean', formatValue(stats.mean)],
-        ['Median', formatValue(stats.median)],
-        ['Std dev', formatValue(stats.std)],
-        ['Q1', formatValue(stats.q1)],
-        ['Q3', formatValue(stats.q3)],
-        ['IQR', formatValue(stats.iqr)],
+        ['Mean', formatValue(stats.mean, widget.numberFormat)],
+        ['Median', formatValue(stats.median, widget.numberFormat)],
+        ['Std dev', formatValue(stats.std, widget.numberFormat)],
+        ['Q1', formatValue(stats.q1, widget.numberFormat)],
+        ['Q3', formatValue(stats.q3, widget.numberFormat)],
+        ['IQR', formatValue(stats.iqr, widget.numberFormat)],
         ['IQR mult', String(iqrMultiplier)],
         ['Outliers', String(stats.outliers.length)],
       ].map(([label, val]) => (

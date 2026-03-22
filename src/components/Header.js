@@ -1,10 +1,11 @@
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { exportDashboard, importDashboard } from '../utils/exportUtils';
-import { useRef } from 'react';
 
 export default function Header({ onHelpOpen }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
+  const [saveFlash, setSaveFlash] = useState(false);
 
   const handleImport = async (e) => {
     const file = e.target.files[0];
@@ -16,6 +17,17 @@ export default function Header({ onHelpOpen }) {
       alert('Failed to import: ' + err.message);
     }
     e.target.value = '';
+  };
+
+  const handleNew = () => {
+    if (!window.confirm('Create a new dashboard? Unsaved changes will be lost.')) return;
+    dispatch({ type: 'NEW_DASHBOARD' });
+  };
+
+  const handleSave = () => {
+    // TODO: implement persistence
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 1500);
   };
 
   return (
@@ -49,6 +61,20 @@ export default function Header({ onHelpOpen }) {
       </div>
 
       <div className="flex gap-2">
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={handleNew}
+          title="New dashboard"
+        >
+          + New
+        </button>
+        <button
+          className={`btn btn-sm ${saveFlash ? 'btn-success' : 'btn-secondary'}`}
+          onClick={handleSave}
+          title="Save dashboard"
+        >
+          {saveFlash ? '✓ Saved' : '💾 Save'}
+        </button>
         <button
           className="btn btn-secondary btn-sm"
           onClick={onHelpOpen}

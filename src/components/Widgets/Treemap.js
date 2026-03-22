@@ -28,7 +28,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
     const agg = widget.aggregation || 'sum';
     if (widget.groupField) {
       const nested = d3.rollup(data,
-        v => aggregate(v.map(d => +d[widget.valueField] || 0), agg),
+        v => aggregate(v.map(d => +d[widget.valueField] || 0), agg, undefined, { distinct: widget.distinct }),
         d => String(d[widget.groupField] ?? ''),
         d => String(d[widget.labelField] ?? '')
       );
@@ -44,7 +44,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
         if (!flat.has(key)) flat.set(key, []);
         flat.get(key).push(val);
       }
-      let pts = Array.from(flat, ([name, vals]) => ({ key: name, value: aggregate(vals, agg) }));
+      let pts = Array.from(flat, ([name, vals]) => ({ key: name, value: aggregate(vals, agg, undefined, { distinct: widget.distinct }) }));
       if (widget.sortBy && widget.sortBy !== 'original') {
         pts = sortAggregated(pts, {
           sortBy: widget.sortBy || 'original',
@@ -111,7 +111,7 @@ export default function Treemap({ widget, data, onCrossFilter }) {
       .attr('x', 6).attr('y', 26)
       .attr('font-size', 10).attr('fill', 'rgba(255,255,255,.75)').attr('pointer-events', 'none')
       .attr('font-family', 'var(--font)')
-      .text(d => formatValue(d.data.value));
+      .text(d => formatValue(d.data.value, widget.numberFormat));
 
     // Parent group labels
     if (widget.groupField) {
@@ -167,7 +167,7 @@ function TreeTip({ d, widget, color, pct, parent }) {
       )}
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.valueField}</span>
-        <span className="tt-value">{formatValue(d.data.value)}</span>
+        <span className="tt-value">{formatValue(d.data.value, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">Share of total</span>

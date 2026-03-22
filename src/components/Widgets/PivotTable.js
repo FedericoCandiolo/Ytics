@@ -347,14 +347,14 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
         for (const cp of colPaths) {
           const colKey = cp.join(PATH_SEP);
           const v = getValue(row.rowKey, colKey);
-          parts.push(esc(v != null ? formatValue(v) : ''));
+          parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
         }
       } else {
         const v = getValue(row.rowKey, TOTAL_KEY);
-        parts.push(esc(v != null ? formatValue(v) : ''));
+        parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
       }
       const rowTotal = getValue(row.rowKey, TOTAL_KEY);
-      parts.push(esc(rowTotal != null ? formatValue(rowTotal) : ''));
+      parts.push(esc(rowTotal != null ? formatValue(rowTotal, widget.numberFormat) : ''));
       lines.push(parts.join(','));
     }
 
@@ -365,19 +365,19 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
         for (const cp of colPaths) {
           const colKey = cp.join(PATH_SEP);
           const v = getValue(TOTAL_KEY, colKey);
-          parts.push(esc(v != null ? formatValue(v) : ''));
+          parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
         }
       } else {
         const v = getValue(TOTAL_KEY, TOTAL_KEY);
-        parts.push(esc(v != null ? formatValue(v) : ''));
+        parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
       }
       const gt = getValue(TOTAL_KEY, TOTAL_KEY);
-      parts.push(esc(gt != null ? formatValue(gt) : ''));
+      parts.push(esc(gt != null ? formatValue(gt, widget.numberFormat) : ''));
       lines.push(parts.join(','));
     }
 
     downloadCSV(lines, (widget.title || 'pivot') + '.csv');
-  }, [colPaths, colHeaderRows, flatRows, getValue, widget.title]);
+  }, [colPaths, colHeaderRows, flatRows, getValue, widget.title, widget.numberFormat]);
 
   // ── Dimension chip renderer ────────────────────────────────────────────────
   const renderChip = (axis, dim, idx) => {
@@ -553,7 +553,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                       const v = getValue(row.rowKey, colKey);
                       return (
                         <td key={ci} className={isSubtotal ? 'pivot-cell pivot-total-cell' : 'pivot-cell'}>
-                          {v != null ? formatValue(v) : ''}
+                          {v != null ? formatValue(v, widget.numberFormat) : ''}
                         </td>
                       );
                     })
@@ -561,7 +561,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                     <td className={isSubtotal ? 'pivot-cell pivot-total-cell' : 'pivot-cell'}>
                       {(() => {
                         const v = getValue(row.rowKey, TOTAL_KEY);
-                        return v != null ? formatValue(v) : '';
+                        return v != null ? formatValue(v, widget.numberFormat) : '';
                       })()}
                     </td>
                   )}
@@ -569,7 +569,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                   <td className="pivot-cell pivot-total-cell">
                     {(() => {
                       const v = getValue(row.rowKey, TOTAL_KEY);
-                      return v != null ? formatValue(v) : '';
+                      return v != null ? formatValue(v, widget.numberFormat) : '';
                     })()}
                   </td>
                 </tr>
@@ -585,7 +585,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                   const v = getValue(TOTAL_KEY, colKey);
                   return (
                     <td key={ci} className="pivot-cell pivot-total-cell">
-                      {v != null ? formatValue(v) : ''}
+                      {v != null ? formatValue(v, widget.numberFormat) : ''}
                     </td>
                   );
                 })
@@ -593,14 +593,14 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                 <td className="pivot-cell pivot-total-cell">
                   {(() => {
                     const v = getValue(TOTAL_KEY, TOTAL_KEY);
-                    return v != null ? formatValue(v) : '';
+                    return v != null ? formatValue(v, widget.numberFormat) : '';
                   })()}
                 </td>
               )}
               <td className="pivot-cell pivot-total-cell">
                 {(() => {
                   const v = getValue(TOTAL_KEY, TOTAL_KEY);
-                  return v != null ? formatValue(v) : '';
+                  return v != null ? formatValue(v, widget.numberFormat) : '';
                 })()}
               </td>
             </tr>

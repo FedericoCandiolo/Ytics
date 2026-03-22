@@ -35,7 +35,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
 
     let cats = Array.from(groups, ([key, vals]) => ({
       key,
-      value: aggregate(vals, widget.aggregation || 'sum'),
+      value: aggregate(vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct }),
     }));
     cats = sortAggregated(cats, {
       sortBy: widget.sortBy || 'value',
@@ -135,7 +135,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
         }
         colorVals = finalCats.map(c => {
           const vals = gMap.get(c.key) || [0];
-          return aggregate(vals, widget.aggregation || 'sum');
+          return aggregate(vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct });
         });
       } else {
         colorVals = finalCats.map(c => c.value);
@@ -219,7 +219,7 @@ function WaffleTip({ cat, color, widget }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {cat.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(cat.value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(cat.value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share</span><span className="tt-value">{(cat.pct * 100).toFixed(1)}%</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Cells</span><span className="tt-value">{cat.cells} / {TOTAL_CELLS}</span></div>
     </>

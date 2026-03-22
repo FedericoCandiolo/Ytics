@@ -185,7 +185,7 @@ export function applyFilters(data, filters) {
   );
 }
 
-export function aggregateData(data, groupField, valueField, aggregation) {
+export function aggregateData(data, groupField, valueField, aggregation, opts = {}) {
   if (!data || !groupField || !valueField) return [];
   const groups = new Map();
   for (const row of data) {
@@ -193,14 +193,41 @@ export function aggregateData(data, groupField, valueField, aggregation) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(+row[valueField] || 0);
   }
+  const allVals = opts.total ? data.map(r => +r[valueField] || 0) : null;
   return Array.from(groups.entries()).map(([key, vals]) => ({
     key,
-    value: aggregate(vals, aggregation),
+    value: aggregate(opts.total ? allVals : vals, aggregation, undefined, opts),
   }));
 }
 
-export function aggregate(vals, fn) {
+// Build grouped value arrays from data. When total=true, every group shares all values.
+export function buildGroups(data, keyField, valueField, opts = {}) {
+  const groups = new Map();
+  for (const row of data) {
+    const key = String(row[keyField] ?? '(blank)');
+    const val = +row[valueField] || 0;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(val);
+  }
+  if (opts.total) {
+    const allVals = data.map(r => +r[valueField] || 0);
+    for (const key of groups.keys()) groups.set(key, allVals);
+  }
+  return groups;
+}
+
+export function aggregate(vals, fn, rawVals, opts = {}) {
   if (!vals.length) return 0;
+  // Apply distinct modifier: deduplicate values before aggregating
+  if (opts.distinct) {
+    vals = [...new Set(vals)];
+    if (rawVals) rawVals = [...new Set(rawVals)];
+  }
+  // Handle parameterized aggregations: "fractile:0.33", "concat:,", "moment:3", etc.
+  if (fn && fn.includes(':')) {
+    const [base, param] = fn.split(':', 2);
+    return _paramAggregate(vals, base, param, rawVals);
+  }
   switch (fn) {
     case 'count':  return vals.length;
     case 'mean':   return vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -211,11 +238,100 @@ export function aggregate(vals, fn) {
       const m = vals.reduce((a, b) => a + b, 0) / vals.length;
       return Math.sqrt(vals.reduce((s, v) => s + (v - m) ** 2, 0) / Math.max(vals.length - 1, 1));
     }
+    case 'variance': {
+      const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+      return vals.reduce((s, v) => s + (v - m) ** 2, 0) / Math.max(vals.length - 1, 1);
+    }
     case 'p25': return _quantile([...vals].sort((a, b) => a - b), 0.25);
     case 'p75': return _quantile([...vals].sort((a, b) => a - b), 0.75);
     case 'p90': return _quantile([...vals].sort((a, b) => a - b), 0.90);
     case 'p95': return _quantile([...vals].sort((a, b) => a - b), 0.95);
+    // ── Advanced ──
+    case 'geomean': {
+      const pos = vals.filter(v => v > 0);
+      if (!pos.length) return 0;
+      const logSum = pos.reduce((s, v) => s + Math.log(v), 0);
+      return Math.exp(logSum / pos.length);
+    }
+    case 'harmean': {
+      const pos = vals.filter(v => v > 0);
+      if (!pos.length) return 0;
+      return pos.length / pos.reduce((s, v) => s + 1 / v, 0);
+    }
+    case 'only': {
+      const unique = new Set(vals);
+      return unique.size === 1 ? vals[0] : null;
+    }
+    case 'concat': {
+      const src = rawVals || vals;
+      return src.map(String).join(', ');
+    }
+    case 'skewness': {
+      const n = vals.length;
+      if (n < 3) return 0;
+      const m = vals.reduce((a, b) => a + b, 0) / n;
+      const s = Math.sqrt(vals.reduce((s2, v) => s2 + (v - m) ** 2, 0) / (n - 1));
+      if (s === 0) return 0;
+      return (n / ((n - 1) * (n - 2))) * vals.reduce((s3, v) => s3 + ((v - m) / s) ** 3, 0);
+    }
+    case 'kurtosis': {
+      const n = vals.length;
+      if (n < 4) return 0;
+      const m = vals.reduce((a, b) => a + b, 0) / n;
+      const s2 = vals.reduce((s, v) => s + (v - m) ** 2, 0) / n;
+      if (s2 === 0) return 0;
+      const m4 = vals.reduce((s, v) => s + (v - m) ** 4, 0) / n;
+      return (m4 / (s2 * s2)) - 3; // excess kurtosis
+    }
     default:     return vals.reduce((a, b) => a + b, 0); // sum
+  }
+}
+
+function _paramAggregate(vals, base, param, rawVals) {
+  switch (base) {
+    case 'fractile': {
+      const p = parseFloat(param);
+      if (isNaN(p)) return 0;
+      return _quantile([...vals].sort((a, b) => a - b), Math.max(0, Math.min(1, p)));
+    }
+    case 'concat': {
+      const src = rawVals || vals;
+      return src.map(String).join(param);
+    }
+    case 'moment': {
+      const order = parseInt(param, 10);
+      if (isNaN(order) || order < 1) return 0;
+      const n = vals.length;
+      const m = vals.reduce((a, b) => a + b, 0) / n;
+      return vals.reduce((s, v) => s + (v - m) ** order, 0) / n;
+    }
+    case 'cmoment': {
+      // Centered moment = same as moment (already centered around mean)
+      const order = parseInt(param, 10);
+      if (isNaN(order) || order < 1) return 0;
+      const n = vals.length;
+      const m = vals.reduce((a, b) => a + b, 0) / n;
+      return vals.reduce((s, v) => s + (v - m) ** order, 0) / n;
+    }
+    case 'rmoment': {
+      // Reduced (standardized) moment: centered moment / std^order
+      const order = parseInt(param, 10);
+      if (isNaN(order) || order < 1) return 0;
+      const n = vals.length;
+      const m = vals.reduce((a, b) => a + b, 0) / n;
+      const std = Math.sqrt(vals.reduce((s, v) => s + (v - m) ** 2, 0) / n);
+      if (std === 0) return 0;
+      const cm = vals.reduce((s, v) => s + (v - m) ** order, 0) / n;
+      return cm / (std ** order);
+    }
+    case 'lmoment': {
+      // Local (raw) moment: E[X^k] (not centered)
+      const order = parseInt(param, 10);
+      if (isNaN(order) || order < 1) return 0;
+      return vals.reduce((s, v) => s + v ** order, 0) / vals.length;
+    }
+    default:
+      return vals.reduce((a, b) => a + b, 0);
   }
 }
 
@@ -227,12 +343,46 @@ function _quantile(sorted, p) {
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
-export function formatValue(v) {
-  if (typeof v !== 'number') return v;
-  if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(2) + 'B';
-  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2) + 'M';
-  if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + 'K';
-  return v % 1 === 0 ? String(v) : v.toFixed(2);
+// ── Number format registry ─────────────────────────────────────────────────────
+export const NUMBER_FORMATS = {
+  auto:       'Auto (K / M / B)',
+  number:     'Number (1,234,567)',
+  si:         'SI metric (k / M / G / T)',
+  scientific: 'Scientific (1.23e+6)',
+  currency:   'Currency ($1,234.56)',
+  percent:    'Percent (85.0%)',
+};
+
+export function formatValue(v, format) {
+  if (typeof v !== 'number' || isNaN(v)) return v == null ? '' : String(v);
+  if (!format || format === 'auto') {
+    // Default: abbreviated K/M/B
+    if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+    return v % 1 === 0 ? String(v) : v.toFixed(2);
+  }
+  switch (format) {
+    case 'number':
+      return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    case 'si': {
+      const abs = Math.abs(v);
+      if (abs >= 1e15) return (v / 1e15).toFixed(2) + 'P';
+      if (abs >= 1e12) return (v / 1e12).toFixed(2) + 'T';
+      if (abs >= 1e9)  return (v / 1e9).toFixed(2) + 'G';
+      if (abs >= 1e6)  return (v / 1e6).toFixed(2) + 'M';
+      if (abs >= 1e3)  return (v / 1e3).toFixed(2) + 'k';
+      return v % 1 === 0 ? String(v) : v.toFixed(2);
+    }
+    case 'scientific':
+      return v.toExponential(2);
+    case 'currency':
+      return v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+    case 'percent':
+      return (v * 100).toLocaleString(undefined, { maximumFractionDigits: 1 }) + '%';
+    default:
+      return v % 1 === 0 ? String(v) : v.toFixed(2);
+  }
 }
 
 // Descriptive, non-commercial color palette names
@@ -275,7 +425,7 @@ export const SCHEME_D3_MAP = {
   brownGreen: 'schemeBrBG[9]',
 };
 
-export const AGGREGATIONS = {
+export const AGGREGATIONS_BASIC = {
   sum:    'Sum',
   count:  'Count',
   mean:   'Average',
@@ -288,6 +438,28 @@ export const AGGREGATIONS = {
   p90:    '90th pct',
   p95:    '95th pct',
 };
+
+export const AGGREGATIONS_ADVANCED = {
+  variance: 'Variance',
+  geomean:  'Geometric mean',
+  harmean:  'Harmonic mean',
+  only:     'Only',
+  concat:   'Concat',
+  skewness: 'Skewness',
+  kurtosis: 'Kurtosis',
+};
+
+// Parameterized aggregations (shown as separate UI controls)
+export const AGGREGATIONS_PARAM = {
+  fractile: { label: 'Fractile', paramLabel: 'p', paramType: 'number', min: 0, max: 1, step: 0.01, default: 0.5 },
+  concat:   { label: 'Concat', paramLabel: 'delimiter', paramType: 'text', default: ', ' },
+  moment:   { label: 'Moment (centered)', paramLabel: 'order', paramType: 'number', min: 1, max: 10, step: 1, default: 2 },
+  rmoment:  { label: 'Moment (standardized)', paramLabel: 'order', paramType: 'number', min: 1, max: 10, step: 1, default: 3 },
+  lmoment:  { label: 'Moment (raw)', paramLabel: 'order', paramType: 'number', min: 1, max: 10, step: 1, default: 1 },
+};
+
+// Combined for backward compat — used where no basic/advanced split is needed
+export const AGGREGATIONS = { ...AGGREGATIONS_BASIC, ...AGGREGATIONS_ADVANCED };
 
 // ── Measure Pipeline ────────────────────────────────────────────────────────────
 // Per-widget multi-step aggregation pipeline.
@@ -303,6 +475,7 @@ export function executeMeasurePipeline(data, steps) {
       case 'topN':     result = executeTopN(result, step);     break;
       case 'filter':   result = applyFilter(result, step);     break;
       case 'compute':  result = applyCompute(result, step);    break;
+      case 'formula':  result = applyCompute(result, step);    break; // same as compute — expression over row columns
       case 'sort':     result = applySort(result, step);       break;
       default: break;
     }
@@ -318,14 +491,36 @@ function executeGroupBy(data, step) {
     if (!groups.has(key)) groups.set(key, { keyParts: step.fields.map(f => row[f]), rows: [] });
     groups.get(key).rows.push(row);
   }
+  // Pre-compute total (all-data) values for aggregations that use the total modifier
+  const totalCache = {};
+  for (const agg of step.aggregations) {
+    if (agg.total) {
+      const baseFn = agg.fn?.split(':')[0] || agg.fn;
+      const isText = baseFn === 'concat' || baseFn === 'only' || baseFn === 'count';
+      totalCache[agg.as || `${agg.fn}_${agg.field}`] = {
+        vals: baseFn === 'count' ? data.map(() => 1) : data.map(r => isText ? r[agg.field] : (+r[agg.field] || 0)),
+        rawVals: isText ? data.map(r => r[agg.field]) : undefined,
+      };
+    }
+  }
   return Array.from(groups.values()).map(({ keyParts, rows }) => {
     const result = {};
     step.fields.forEach((f, i) => { result[f] = keyParts[i]; });
     for (const agg of step.aggregations) {
-      const vals = agg.fn === 'count'
-        ? rows.map(() => 1)
-        : rows.map(r => +r[agg.field] || 0);
-      result[agg.as || `${agg.fn}_${agg.field}`] = aggregate(vals, agg.fn);
+      const baseFn = agg.fn?.split(':')[0] || agg.fn;
+      const isText = baseFn === 'concat' || baseFn === 'only' || baseFn === 'count';
+      const outputKey = agg.as || `${agg.fn}_${agg.field}`;
+      let vals, rawVals;
+      if (agg.total && totalCache[outputKey]) {
+        vals = totalCache[outputKey].vals;
+        rawVals = totalCache[outputKey].rawVals;
+      } else {
+        vals = baseFn === 'count'
+          ? rows.map(() => 1)
+          : rows.map(r => isText ? r[agg.field] : (+r[agg.field] || 0));
+        rawVals = isText ? rows.map(r => r[agg.field]) : undefined;
+      }
+      result[outputKey] = aggregate(vals, agg.fn, rawVals, { distinct: agg.distinct });
     }
     return result;
   });

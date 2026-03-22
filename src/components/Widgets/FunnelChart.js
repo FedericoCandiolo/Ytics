@@ -31,7 +31,7 @@ export default function FunnelChart({ widget, data, onCrossFilter }) {
     }
     let stages = Array.from(groups, ([key, vals]) => ({
       key,
-      value: aggregate(vals, widget.aggregation || 'sum'),
+      value: aggregate(vals, widget.aggregation || 'sum', undefined, { distinct: widget.distinct }),
       count: vals.length,
     }));
 
@@ -160,7 +160,7 @@ export default function FunnelChart({ widget, data, onCrossFilter }) {
         .attr('font-size', 11)
         .attr('font-family', 'var(--font)')
         .attr('font-weight', 600)
-        .text(formatValue(val));
+        .text(formatValue(val, widget.numberFormat));
 
       // Conversion rate between this stage and the next
       if (i < n - 1) {
@@ -199,7 +199,7 @@ function FunnelTip({ stage, value, color, pctOfFirst, widget }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {stage.key}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">% of first stage</span><span className="tt-value">{pctOfFirst}%</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Records</span><span className="tt-value">{stage.count.toLocaleString()}</span></div>
     </>

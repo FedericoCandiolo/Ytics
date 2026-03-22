@@ -263,7 +263,7 @@ function WordTip({ d, widget, color }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.valueField || 'Count'}</span>
-        <span className="tt-value">{formatValue(d.value)}</span>
+        <span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-stat">
         {d.count.toLocaleString()} records

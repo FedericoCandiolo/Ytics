@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
+import { aggregate, buildGroups, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient, contrastText } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
@@ -27,15 +27,10 @@ export default function PieChart({ widget, data, onCrossFilter }) {
     const cx = availW / 2, cy = h / 2;
 
     // Aggregate
-    const groups = new Map();
-    for (const row of data) {
-      const key = String(row[widget.labelField] ?? '(blank)');
-      const val = +row[widget.valueField] || 0;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(val);
-    }
+    const aggOpts = { distinct: widget.distinct };
+    const groups = buildGroups(data, widget.labelField, widget.valueField, { total: widget.total });
     let pts = Array.from(groups, ([key, vals]) => ({
-      key, value: aggregate(vals, 'sum'), count: vals.length,
+      key, value: aggregate(vals, widget.aggregation || 'sum', undefined, aggOpts), count: vals.length,
     }));
     if (widget.sortByValue !== false) pts.sort((a, b) => b.value - a.value);
 
@@ -141,7 +136,7 @@ export default function PieChart({ widget, data, onCrossFilter }) {
         .attr('font-weight', 600).attr('pointer-events', 'none')
         .text(d => {
           const pct = total > 0 ? `${((d.data.value / total) * 100).toFixed(0)}%` : '0%';
-          const val = formatValue(d.data.value);
+          const val = formatValue(d.data.value, widget.numberFormat);
           if (mode === 'value') return val;
           if (mode === 'both') return `${pct} (${val})`;
           return pct; // 'percent' or default
@@ -161,7 +156,7 @@ export default function PieChart({ widget, data, onCrossFilter }) {
     if (innerR > 0) {
       g.append('text').attr('text-anchor', 'middle').attr('dy', '-0.1em')
         .attr('font-size', Math.max(12, Math.min(22, innerR * 0.45)))
-        .attr('font-weight', 700).attr('fill', 'var(--text)').text(formatValue(total));
+        .attr('font-weight', 700).attr('fill', 'var(--text)').text(formatValue(total, widget.numberFormat));
       g.append('text').attr('text-anchor', 'middle').attr('dy', '1.4em')
         .attr('font-size', 10).attr('fill', 'var(--text-muted)').text('total');
     }
@@ -199,14 +194,14 @@ function PieTip({ d, widget, color, pct, total }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.valueField}</span>
-        <span className="tt-value">{formatValue(d.value)}</span>
+        <span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">Share</span>
         <span className="tt-value">{pct}%</span>
       </div>
       <div className="chart-tooltip-stat">
-        Total: {formatValue(total)} · {d.count.toLocaleString()} records
+        Total: {formatValue(total, widget.numberFormat)} · {d.count.toLocaleString()} records
       </div>
     </>
   );

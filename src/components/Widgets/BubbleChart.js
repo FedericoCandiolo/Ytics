@@ -168,7 +168,7 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
           .attr('font-size', valueFontSize)
           .attr('fill', 'rgba(255,255,255,0.8)')
           .attr('font-weight', 600)
-          .text(formatValue(d.data.value));
+          .text(formatValue(d.data.value, widget.numberFormat));
       }
 
       text.transition().duration(400).delay(leaves.length * 3 + 150)
@@ -226,7 +226,7 @@ function BubbleTip({ d, widget, valueField, color }) {
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{valueField}</span>
-        <span className="tt-value">{formatValue(d.value)}</span>
+        <span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span>
       </div>
       {widget.colorField && d.color !== d.label && (
         <div className="chart-tooltip-row">

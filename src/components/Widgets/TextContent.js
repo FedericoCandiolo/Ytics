@@ -8,7 +8,7 @@ import { aggregate, formatValue } from '../../utils/dataUtils';
 
 // ── Measure interpolation ────────────────────────────────────────────────────
 
-function resolveMeasures(template, data, defaultAgg) {
+function resolveMeasures(template, data, defaultAgg, numberFormat) {
   if (!template || !data?.length) return template || '';
   return template.replace(/\{\{(.+?)\}\}/g, (_, expr) => {
     const trimmed = expr.trim();
@@ -28,7 +28,7 @@ function resolveMeasures(template, data, defaultAgg) {
     if (data.length > 0 && !(field in data[0])) return `{{${trimmed}}}`;
     const vals = data.map(r => +r[field] || 0);
     const result = aggregate(vals, agg);
-    return formatValue(result);
+    return formatValue(result, numberFormat);
   });
 }
 
@@ -95,8 +95,8 @@ export default function TextContent({ widget, data }) {
   const fontSize = widget.textFontSize || 14;
 
   const resolved = useMemo(
-    () => resolveMeasures(content, data, widget.aggregation),
-    [content, data, widget.aggregation]
+    () => resolveMeasures(content, data, widget.aggregation, widget.numberFormat),
+    [content, data, widget.aggregation, widget.numberFormat]
   );
 
   const containerStyle = {

@@ -383,6 +383,20 @@ export default function DashboardBuilder() {
                           ))}
                         </div>
                       </div>
+
+                      <div className="form-group">
+                        <label className="checkbox-row" style={{ cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={dashboard.advancedStats || false}
+                            onChange={e => dispatch({ type: 'SET_THEME', payload: { __advancedStats: e.target.checked } })}
+                          />
+                          Advanced statistics
+                        </label>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          Enables geometric/harmonic means, skewness, kurtosis, moments, fractiles, formula editor, and more.
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

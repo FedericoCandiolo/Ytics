@@ -124,7 +124,7 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
 
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale)).call(styledAxis)
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
-    g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(formatValue)).call(styledAxis);
+    g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
 
     const bw = xScale.bandwidth();
 
@@ -283,11 +283,11 @@ function BoxTip({ s, color, widget, iqrMultiplier }) {
         {s.cat}{s.sub != null ? ` / ${s.sub}` : ''}
       </div>
       <div className="chart-tooltip-row"><span className="tt-label">n</span><span className="tt-value">{s.n}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Median</span><span className="tt-value">{formatValue(s.median)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Mean</span><span className="tt-value">{formatValue(s.mean)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Q1</span><span className="tt-value">{formatValue(s.q1)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Q3</span><span className="tt-value">{formatValue(s.q3)}</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">IQR</span><span className="tt-value">{formatValue(s.iqr)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Median</span><span className="tt-value">{formatValue(s.median, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Mean</span><span className="tt-value">{formatValue(s.mean, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Q1</span><span className="tt-value">{formatValue(s.q1, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">Q3</span><span className="tt-value">{formatValue(s.q3, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">IQR</span><span className="tt-value">{formatValue(s.iqr, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">IQR mult</span><span className="tt-value">{iqrMultiplier}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Outliers</span><span className="tt-value">{s.outliers.length}</span></div>
     </>
@@ -305,7 +305,7 @@ function PointTip({ row, widget, value, color, cat, sub }) {
       {label && (
         <div className="chart-tooltip-row"><span className="tt-label">{widget.xField}</span><span className="tt-value">{cat}</span></div>
       )}
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
     </>
   );
 }

@@ -80,12 +80,13 @@ function buildSeries(data, widget, yField) {
   const { isNum, isDate } = detectXType(allXRaw);
 
   // Build per-series aggregated + sorted point arrays
+  const allYVals = widget.total ? data.map(r => +r[yField] || 0) : null;
   const seriesMap = new Map();
   for (const sName of seriesNames) {
     const pts = [];
     for (const [key, bucket] of buckets) {
       if (!key.startsWith(sName + '\0')) continue;
-      const aggVal = aggregate(bucket.yVals, aggFn);
+      const aggVal = aggregate(allYVals || bucket.yVals, aggFn, undefined, { distinct: widget.distinct });
       pts.push({ x: bucket.xRaw, y: aggVal });
     }
     // Sort by x-value
@@ -316,7 +317,7 @@ function renderStacked(svgRef, data, widget, yField, dims, stackMode, showToolti
     for (const sk of seriesKeys) {
       const mapKey = `${xRaw}\0${sk}`;
       const vals = buckets.get(mapKey);
-      row[sk] = vals ? aggregate(vals, aggFn) : 0;
+      row[sk] = vals ? aggregate(vals, aggFn, undefined, { distinct: widget.distinct }) : 0;
     }
     return row;
   });
@@ -490,12 +491,12 @@ function LineTip({ xLabel, vals, colors, widget, yField }) {
         <div key={s.name} className="chart-tooltip-row">
           <span className="tt-dot" style={{ background: colors(s.name) }} />
           <span className="tt-label">{s.name === '__all__' ? (yField || widget.yField) : s.name}</span>
-          <span className="tt-value">{formatValue(s.value)}</span>
+          <span className="tt-value">{formatValue(s.value, widget.numberFormat)}</span>
         </div>
       ))}
       {vals.length > 1 && (
         <div className="chart-tooltip-stat">
-          {'\u03A3'} {formatValue(vals.reduce((s, v) => s + (v.value || 0), 0))}
+          {'\u03A3'} {formatValue(vals.reduce((s, v) => s + (v.value || 0), 0), widget.numberFormat)}
         </div>
       )}
     </>

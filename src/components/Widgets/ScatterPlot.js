@@ -411,16 +411,16 @@ function ScatterTip({ d, widget, color }) {
       )}
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.xField}</span>
-        <span className="tt-value">{formatValue(d.x)}</span>
+        <span className="tt-value">{formatValue(d.x, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.yField}</span>
-        <span className="tt-value">{formatValue(d.y)}</span>
+        <span className="tt-value">{formatValue(d.y, widget.numberFormat)}</span>
       </div>
       {widget.sizeField && (
         <div className="chart-tooltip-row">
           <span className="tt-label">{widget.sizeField}</span>
-          <span className="tt-value">{formatValue(d.size)}</span>
+          <span className="tt-value">{formatValue(d.size, widget.numberFormat)}</span>
         </div>
       )}
     </>
@@ -434,16 +434,16 @@ function MiniChartTip({ d, widget, slices }) {
       <div className="chart-tooltip-title">{title}</div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.xField}</span>
-        <span className="tt-value">{formatValue(d.x)}</span>
+        <span className="tt-value">{formatValue(d.x, widget.numberFormat)}</span>
       </div>
       <div className="chart-tooltip-row">
         <span className="tt-label">{widget.yField}</span>
-        <span className="tt-value">{formatValue(d.y)}</span>
+        <span className="tt-value">{formatValue(d.y, widget.numberFormat)}</span>
       </div>
       {slices.map((s, i) => (
         <div key={i} className="chart-tooltip-row">
           <span className="tt-label">{s.label}</span>
-          <span className="tt-value">{formatValue(s.value)}</span>
+          <span className="tt-value">{formatValue(s.value, widget.numberFormat)}</span>
         </div>
       ))}
     </>
