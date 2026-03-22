@@ -21,8 +21,7 @@ export default function Header({ onHelpOpen }) {
   return (
     <header className="header">
       <div className="header-logo">
-        <div className="header-logo-icon">◈</div>
-        Ytics
+        <img src="/logo.png" alt="Ytics" className="header-logo-img" />
       </div>
 
       <div className="header-title-area">

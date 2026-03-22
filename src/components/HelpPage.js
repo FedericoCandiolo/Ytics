@@ -739,7 +739,7 @@ export default function HelpPage({ onClose }) {
           </Section>
 
           <div className="help-footer">
-            Built with React, D3.js, and react-grid-layout.
+            Ytics — Dashboard builder for data analytics and visualization.
           </div>
         </div>
       </div>
