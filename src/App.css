@@ -186,6 +186,7 @@
 
 .di-center {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -195,6 +196,7 @@
   flex: 1;
   overflow: auto;
   padding: 16px;
+  contain: size layout;
 }
 
 .di-right {
@@ -246,10 +248,84 @@
   background: var(--bg);
 }
 
+/* ── Data Model (ER Diagram) ──────────────────────────────────────────── */
+.dm-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  position: relative;
+}
+
+.dm-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dm-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dm-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dm-legend-sep { color: var(--border-strong); }
+
+.dm-legend-badge {
+  background: var(--primary-subtle);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* ── Data view toggle tabs ────────────────────────────────────────────── */
+.di-view-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+
+.di-view-tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all .12s;
+}
+.di-view-tab:hover { color: var(--text); background: var(--bg); }
+.di-view-tab--active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
 /* ── Data Table ────────────────────────────────────────────────────────── */
-.data-table-wrap { overflow: auto; }
+.data-table-wrap {
+  overflow: visible;
+}
 .data-table {
-  width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
   font-size: 12px;
 }

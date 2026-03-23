@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo, readCSVFile } from '../../utils/dataUtils';
+import DataModel from './DataModel';
 
 // ── File Uploader ─────────────────────────────────────────────────────────────
 function FileUploader({ onLoad }) {
@@ -231,6 +232,11 @@ function DataPreview({ dataset }) {
 export default function DataIntegration() {
   const { state, dispatch } = useApp();
   const [showForm, setShowForm] = useState(false);
+  const [view, setView] = useState('data'); // 'data' | 'model'
+  const modelPositions = state.dashboard.modelPositions;
+  const setModelPositions = useCallback((pos) => {
+    dispatch({ type: 'SET_MODEL_POSITIONS', payload: typeof pos === 'function' ? pos(state.dashboard.modelPositions) : pos });
+  }, [dispatch, state.dashboard.modelPositions]);
 
   const activeDataset = state.datasets.find(d => d.id === state.activeDatasetId);
 
@@ -277,18 +283,36 @@ export default function DataIntegration() {
         </div>
       </div>
 
-      {/* ── Center: data preview ── */}
+      {/* ── Center: data preview or model ── */}
       <div className="di-center">
-        <div className="di-preview">
-          {activeDataset
-            ? <DataPreview dataset={activeDataset} />
-            : <div className="empty-state" style={{ height: '100%' }}>
-                <div className="empty-state-icon">📊</div>
-                <h3>No dataset selected</h3>
-                <p>Load a CSV file from the left panel to preview and transform your data.</p>
-              </div>
-          }
+        <div className="di-view-tabs">
+          <button
+            className={`di-view-tab ${view === 'data' ? 'di-view-tab--active' : ''}`}
+            onClick={() => setView('data')}
+          >
+            📋 Data Preview
+          </button>
+          <button
+            className={`di-view-tab ${view === 'model' ? 'di-view-tab--active' : ''}`}
+            onClick={() => setView('model')}
+          >
+            🔗 Data Model
+          </button>
         </div>
+        {view === 'data' ? (
+          <div className="di-preview">
+            {activeDataset
+              ? <DataPreview dataset={activeDataset} />
+              : <div className="empty-state" style={{ height: '100%' }}>
+                  <div className="empty-state-icon">📊</div>
+                  <h3>No dataset selected</h3>
+                  <p>Load a CSV file from the left panel to preview and transform your data.</p>
+                </div>
+            }
+          </div>
+        ) : (
+          <DataModel positions={modelPositions} onPositionsChange={setModelPositions} />
+        )}
       </div>
 
       {/* ── Right: transforms ── */}

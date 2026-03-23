@@ -93,7 +93,7 @@ export default function Header({ onHelpOpen }) {
 
         <button
           className="btn btn-primary btn-sm"
-          disabled={!state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0)}
+          disabled={!state.datasets.length && !state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0)}
           onClick={() => exportDashboard(state.datasets, state.dashboard)}
           title="Export as .ytics"
         >

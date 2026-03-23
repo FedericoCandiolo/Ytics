@@ -149,6 +149,7 @@ const initialState = {
     theme: { ...defaultTheme },
     dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
     advancedStats: false,  // enable advanced aggregation functions + formula editor
+    modelPositions: null,  // { datasetId: { x, y }, ... } for data model ER diagram
     // Shared dimension definitions + state
     hierarchicDimensions: [], // [{ id, name, levels: [field,...], currentLevel: 0, filters: [] }]
     cyclicDimensions: [],     // [{ id, name, fields: [field,...], activeIndex: 0 }]
@@ -595,6 +596,9 @@ function reducer(state, action) {
       return { ...state, filters: {} };
 
     // ── Dimension colors ───────────────────────────────────────
+    case 'SET_MODEL_POSITIONS':
+      return { ...state, dashboard: { ...state.dashboard, modelPositions: action.payload } };
+
     case 'SET_DIMENSION_COLOR': {
       const { value, colorDef } = action.payload; // colorDef: { type: 'custom', color } | { type: 'palette', index }
       return {
