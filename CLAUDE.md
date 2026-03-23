@@ -38,6 +38,11 @@ Claude has full access to read, write, and execute any file or command in this p
 - **Theme inheritance**: `dashboard.theme` holds global styles. Widget properties use `null` to inherit from theme (e.g., `colorScheme: null` means use `theme.colorScheme`).
 - **Grid**: Uses `compactType={null}` + `preventCollision={true}` for free-placement. All 8 resize handles enabled.
 - **Export/Import**: `.ytics` zip files containing `dashboard.json` (full dashboard object with pages, layout, theme) and dataset CSVs.
+- **Number formatting**: `NUMBER_FORMATS` registry in `chartHelpers.js` — `auto`, `number`, `si`, `scientific`, `currency`, `percent`. Applied via `formatValue(v, format)`. Per-measure `numberFormat` overrides widget-level `numberFormat`.
+- **Multi-measure mode**: Charts supporting multiple measures store them in `*ChartMeasures[]` arrays (e.g., `lineChartMeasures`, `barChartMeasures`, `straightTableMeasures`). Each measure object: `{ field, aggregation, label, numberFormat }`. The primary measure uses the widget's top-level `yField`/`aggregation`/`numberFormat`.
+- **Aggregation modifiers**: `distinct` (count unique values) and `total` (grand total across all groups) can be combined with aggregations. Stored as `aggregation: 'distinct_count'`, `'total_sum'`, etc.
+- **Combo chart dual formatting**: `widget.numberFormat` for primary Y-axis, `widget.y2NumberFormat` for secondary Y-axis.
+- **Line chart x-axis spacing**: `widget.xAxisSpacing` — `'equal'` (default, scalePoint) or `'linear'` (proportional, scaleLinear/scaleTime).
 
 ### Commands
 

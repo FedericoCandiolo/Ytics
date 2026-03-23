@@ -222,8 +222,9 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
 
   // ── Left Y axis ────────────────────────────────────────────────────────────
   const leftAxisColor = dualAxis && hasY2 ? (barData.grouped ? 'var(--chart-axis-color)' : barColors(xKeys[0])) : 'var(--chart-axis-color)';
+  const yTickFmt = widget.numberFormat ? v => formatValue(v, widget.numberFormat) : fmtTick;
   g.append('g')
-    .call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtTick))
+    .call(d3.axisLeft(yScale).ticks(5).tickFormat(yTickFmt))
     .call(styledAxis)
     .call(a => {
       if (dualAxis && hasY2) a.selectAll('text').attr('fill', leftAxisColor);
@@ -232,9 +233,10 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
   // ── Right Y axis (dual axis) ──────────────────────────────────────────────
   if (dualAxis && hasY2) {
     const rightAxisColor = lineSeriesColors ? 'var(--chart-axis-color)' : lineColor;
+    const y2TickFmt = widget.y2NumberFormat ? v => formatValue(v, widget.y2NumberFormat) : (widget.numberFormat ? v => formatValue(v, widget.numberFormat) : fmtTick);
     g.append('g')
       .attr('transform', `translate(${W},0)`)
-      .call(d3.axisRight(y2Scale).ticks(5).tickFormat(fmtTick))
+      .call(d3.axisRight(y2Scale).ticks(5).tickFormat(y2TickFmt))
       .call(styledAxis)
       .call(a => a.selectAll('text').attr('fill', rightAxisColor));
   }
@@ -466,6 +468,8 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
       const vals = [];
 
       // Primary value
+      const yFmt = widget.numberFormat;
+      const y2Fmt = widget.y2NumberFormat || widget.numberFormat;
       if (barData.grouped) {
         const { groupKeys, pivotMap } = barData;
         for (const gKey of groupKeys) {
@@ -476,6 +480,7 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
             value,
             color: barColors(gKey),
             type: comboType === 'barLine' ? 'bar' : 'line',
+            format: yFmt,
           });
         }
       } else {
@@ -485,6 +490,7 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
           value: pt?.value ?? 0,
           color: comboType === 'barLine' ? barColors(xKey) : getPrimaryColor(widget.colorScheme || 'vivid'),
           type: comboType === 'barLine' ? 'bar' : 'line',
+          format: yFmt,
         });
       }
 
@@ -493,11 +499,11 @@ function addHoverOverlay(g, svg, xKeys, xScale, yScale, y2Scale, barData, linePt
         if (lineSeriesMap.size > 0) {
           for (const [sKey, pts] of lineSeriesMap) {
             const pt = pts.find(d => d.key === xKey);
-            vals.push({ label: `${widget.y2Field} (${sKey})`, value: pt?.value ?? 0, color: lineSeriesColors(sKey), type: 'line' });
+            vals.push({ label: `${widget.y2Field} (${sKey})`, value: pt?.value ?? 0, color: lineSeriesColors(sKey), type: 'line', format: y2Fmt });
           }
         } else {
           const pt = linePts.find(d => d.key === xKey);
-          vals.push({ label: widget.y2Field, value: pt?.value ?? 0, color: lineColor, type: 'line' });
+          vals.push({ label: widget.y2Field, value: pt?.value ?? 0, color: lineColor, type: 'line', format: y2Fmt });
         }
       }
 
@@ -537,7 +543,7 @@ function GroupedBarTip({ x, group, value, color, widget }) {
   );
 }
 
-function ComboTip({ xLabel, vals, widget }) {
+function ComboTip({ xLabel, vals }) {
   return (
     <>
       <div className="chart-tooltip-title">{xLabel}</div>
@@ -545,7 +551,7 @@ function ComboTip({ xLabel, vals, widget }) {
         <div key={i} className="chart-tooltip-row">
           <span className="tt-dot" style={{ background: v.color }} />
           <span className="tt-label">{v.label}</span>
-          <span className="tt-value">{formatValue(v.value, widget?.numberFormat)}</span>
+          <span className="tt-value">{formatValue(v.value, v.format)}</span>
         </div>
       ))}
     </>

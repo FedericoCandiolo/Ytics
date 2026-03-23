@@ -220,11 +220,13 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
     bar: [
       { key: 'xField',    label: 'Dimension (X axis)',       filter: null },
       { key: 'yField',    label: 'Measure',                  filter: null },
+      { key: '_barChartMeasures', label: 'Additional measures', multi: true },
       { key: 'groupField',label: 'Color / Series (optional)', filter: null, optional: true },
     ],
     line: [
       { key: 'xField',    label: 'Dimension (X axis)',       filter: null },
       { key: 'yField',    label: 'Measure',                  filter: null },
+      { key: '_lineChartMeasures', label: 'Additional measures', multi: true },
       { key: 'colorField',label: 'Color / Series (optional)', filter: null, optional: true },
     ],
     scatter: [
@@ -580,6 +582,158 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
             </div>
           );
         }
+        // Special: multi-measure for Line Chart
+        if (f.key === '_lineChartMeasures') {
+          const current = widget.lineChartMeasures || [];
+          const numCols = cols.filter(c => c.type === 'number');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {current.map((m, i) => (
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], field: e.target.value };
+                          onUpdate({ lineChartMeasures: next });
+                        }}>
+                        <option value="">— none —</option>
+                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <AggregationSelect
+                        value={m.aggregation || 'sum'}
+                        onChange={v => {
+                          const next = [...current];
+                          next[i] = { ...next[i], aggregation: v };
+                          onUpdate({ lineChartMeasures: next });
+                        }}
+                        advancedStats={state.dashboard.advancedStats}
+                        style={{ width: 80 }}
+                      />
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
+                        const next = [...current];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        onUpdate({ lineChartMeasures: next });
+                      }} title="Move up">{'\u2191'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
+                        const next = [...current];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        onUpdate({ lineChartMeasures: next });
+                      }} title="Move down">{'\u2193'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                        onUpdate({ lineChartMeasures: current.filter((_, j) => j !== i) });
+                      }}>{'\u2715'}</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input className="input input-sm" style={{ flex: 1 }}
+                        placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                        value={m.label || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], label: e.target.value };
+                          onUpdate({ lineChartMeasures: next });
+                        }}
+                      />
+                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
+                        value={m.numberFormat || 'auto'}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], numberFormat: e.target.value };
+                          onUpdate({ lineChartMeasures: next });
+                        }}
+                        title="Number format for this measure">
+                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                          <option key={k} value={k}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ lineChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
+                }}>+ Add measure</button>
+              </div>
+            </div>
+          );
+        }
+        // Special: multi-measure for Bar Chart
+        if (f.key === '_barChartMeasures') {
+          const current = widget.barChartMeasures || [];
+          const numCols = cols.filter(c => c.type === 'number');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {current.map((m, i) => (
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], field: e.target.value };
+                          onUpdate({ barChartMeasures: next });
+                        }}>
+                        <option value="">— none —</option>
+                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <AggregationSelect
+                        value={m.aggregation || 'sum'}
+                        onChange={v => {
+                          const next = [...current];
+                          next[i] = { ...next[i], aggregation: v };
+                          onUpdate({ barChartMeasures: next });
+                        }}
+                        advancedStats={state.dashboard.advancedStats}
+                        style={{ width: 80 }}
+                      />
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
+                        const next = [...current];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        onUpdate({ barChartMeasures: next });
+                      }} title="Move up">{'\u2191'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
+                        const next = [...current];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        onUpdate({ barChartMeasures: next });
+                      }} title="Move down">{'\u2193'}</button>
+                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                        onUpdate({ barChartMeasures: current.filter((_, j) => j !== i) });
+                      }}>{'\u2715'}</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input className="input input-sm" style={{ flex: 1 }}
+                        placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                        value={m.label || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], label: e.target.value };
+                          onUpdate({ barChartMeasures: next });
+                        }}
+                      />
+                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
+                        value={m.numberFormat || 'auto'}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], numberFormat: e.target.value };
+                          onUpdate({ barChartMeasures: next });
+                        }}
+                        title="Number format for this measure">
+                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                          <option key={k} value={k}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ barChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
+                }}>+ Add measure</button>
+              </div>
+            </div>
+          );
+        }
         // Special: multi-select for Scatter mini chart fields
         if (f.key === '_scatterOverlayFields') {
           const current = widget.scatterOverlayFields || [];
@@ -782,7 +936,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
       )}
 
       <div className="form-group" style={{ marginBottom: 10 }}>
-        <label className="form-label">Number format</label>
+        <label className="form-label">{widget.type === 'combo' ? 'Primary number format' : 'Number format'}</label>
         <select className="select select-sm" value={widget.numberFormat || 'auto'}
           onChange={e => onUpdate({ numberFormat: e.target.value })}>
           {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
@@ -790,6 +944,17 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
           ))}
         </select>
       </div>
+      {widget.type === 'combo' && (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Secondary number format</label>
+          <select className="select select-sm" value={widget.y2NumberFormat || 'auto'}
+            onChange={e => onUpdate({ y2NumberFormat: e.target.value })}>
+            {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }
@@ -1551,7 +1716,7 @@ function OptionsTab({ widget, columns, onUpdate }) {
           <option value="horizontal">Horizontal</option>
         </select>
       </div>
-      {widget.groupField && (
+      {(widget.groupField || widget.barChartMeasures?.some(m => m.field)) && (
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label className="form-label">Bar mode</label>
           <select className="select select-sm" value={widget.barMode || 'stacked'} onChange={e => onUpdate({ barMode: e.target.value })}>
@@ -1585,6 +1750,13 @@ function OptionsTab({ widget, columns, onUpdate }) {
           <option value="stepBefore">Step before</option>
           <option value="stepAfter">Step after</option>
           <option value="cardinal">Cardinal</option>
+        </select>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">X-axis spacing</label>
+        <select className="select select-sm" value={widget.xAxisSpacing || 'equal'} onChange={e => onUpdate({ xAxisSpacing: e.target.value })}>
+          <option value="equal">Equally spaced</option>
+          <option value="linear">Proportional to value</option>
         </select>
       </div>
       <label className="checkbox-row" style={{ marginBottom: 8 }}>

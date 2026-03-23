@@ -60,40 +60,21 @@ function detectXType(allX) {
 
 /* ── Build aggregated series from raw data ───────────────────────────────
    Groups by (xField, colorField), aggregates yField values, then sorts
-   each series by x-value so lines are drawn in order. */
+   each series by x-value so lines are drawn in order.
+   Multi-measure mode: when lineChartMeasures is defined, each measure
+   becomes its own series line (colorField is ignored). */
 function buildSeries(data, widget, yField) {
-  const aggFn = widget.aggregation || 'sum';
-  // Group raw y-values by (seriesKey, xValue)
-  const buckets = new Map(); // key: "seriesName|||xRaw" → [yVals]
-  const seriesSet = new Set();
-  for (const row of data) {
-    const sKey = widget.colorField ? String(row[widget.colorField] ?? '') : '__all__';
-    const xRaw = row[widget.xField];
-    seriesSet.add(sKey);
-    const mapKey = `${sKey}\0${xRaw}`;
-    if (!buckets.has(mapKey)) buckets.set(mapKey, { xRaw, yVals: [] });
-    buckets.get(mapKey).yVals.push(+row[yField] || 0);
-  }
+  const extraMeasures = widget.lineChartMeasures?.filter(m => m.field) || [];
+  const multiMeasure = extraMeasures.length > 0;
 
-  const seriesNames = [...seriesSet];
   const allXRaw = data.map(d => d[widget.xField]);
   const { isNum, isDate } = detectXType(allXRaw);
 
-  // Build per-series aggregated + sorted point arrays
-  const allYVals = widget.total ? data.map(r => +r[yField] || 0) : null;
-  const seriesMap = new Map();
-  for (const sName of seriesNames) {
-    const pts = [];
-    for (const [key, bucket] of buckets) {
-      if (!key.startsWith(sName + '\0')) continue;
-      const aggVal = aggregate(allYVals || bucket.yVals, aggFn, undefined, { distinct: widget.distinct });
-      pts.push({ x: bucket.xRaw, y: aggVal });
-    }
-    // Sort by x-value
+  // Helper: sort points by x
+  const sortPts = (pts) => {
     if (isNum) pts.sort((a, b) => (+a.x) - (+b.x));
     else if (isDate) pts.sort((a, b) => new Date(a.x) - new Date(b.x));
     else {
-      // For categorical: preserve order of first appearance in data
       const orderMap = new Map();
       let idx = 0;
       for (const row of data) {
@@ -102,12 +83,78 @@ function buildSeries(data, widget, yField) {
       }
       pts.sort((a, b) => (orderMap.get(String(a.x)) ?? 0) - (orderMap.get(String(b.x)) ?? 0));
     }
-    seriesMap.set(sName, pts);
+    return pts;
+  };
+
+  // Helper: aggregate one field into a series
+  const buildOneSeries = (field, aggFn) => {
+    const buckets = new Map();
+    for (const row of data) {
+      const xRaw = row[widget.xField];
+      const mapKey = String(xRaw);
+      if (!buckets.has(mapKey)) buckets.set(mapKey, { xRaw, yVals: [] });
+      const isCount = aggFn === 'count';
+      buckets.get(mapKey).yVals.push(isCount ? 1 : (+row[field] || 0));
+    }
+    const allYVals = widget.total ? data.map(r => +r[field] || 0) : null;
+    const pts = [];
+    for (const [, bucket] of buckets) {
+      pts.push({ x: bucket.xRaw, y: aggregate(allYVals || bucket.yVals, aggFn, undefined, { distinct: widget.distinct }) });
+    }
+    return sortPts(pts);
+  };
+
+  const seriesMap = new Map();
+  const seriesNames = [];
+  // Per-series metadata (numberFormat, etc.)
+  const seriesMeta = new Map();
+
+  if (multiMeasure) {
+    // Primary measure
+    const primaryAgg = widget.aggregation || 'sum';
+    const primaryLabel = widget.primaryMeasureLabel || `${yField} (${primaryAgg})`;
+    seriesNames.push(primaryLabel);
+    seriesMap.set(primaryLabel, buildOneSeries(yField, primaryAgg));
+    seriesMeta.set(primaryLabel, { numberFormat: widget.numberFormat });
+
+    // Additional measures
+    for (const m of extraMeasures) {
+      const agg = m.aggregation || 'sum';
+      const label = m.label || `${m.field} (${agg})`;
+      seriesNames.push(label);
+      seriesMap.set(label, buildOneSeries(m.field, agg));
+      seriesMeta.set(label, { numberFormat: m.numberFormat || widget.numberFormat });
+    }
+  } else {
+    // Original colorField-based series mode
+    const aggFn = widget.aggregation || 'sum';
+    const buckets = new Map();
+    const seriesSet = new Set();
+    for (const row of data) {
+      const sKey = widget.colorField ? String(row[widget.colorField] ?? '') : '__all__';
+      const xRaw = row[widget.xField];
+      seriesSet.add(sKey);
+      const mapKey = `${sKey}\0${xRaw}`;
+      if (!buckets.has(mapKey)) buckets.set(mapKey, { xRaw, yVals: [] });
+      buckets.get(mapKey).yVals.push(+row[yField] || 0);
+    }
+
+    const names = [...seriesSet];
+    const allYVals = widget.total ? data.map(r => +r[yField] || 0) : null;
+    for (const sName of names) {
+      const pts = [];
+      for (const [key, bucket] of buckets) {
+        if (!key.startsWith(sName + '\0')) continue;
+        pts.push({ x: bucket.xRaw, y: aggregate(allYVals || bucket.yVals, aggFn, undefined, { distinct: widget.distinct }) });
+      }
+      seriesMap.set(sName, sortPts(pts));
+      seriesNames.push(sName);
+      seriesMeta.set(sName, { numberFormat: widget.numberFormat });
+    }
   }
 
   // Sort categorical x-axis if sortBy is set (no-op for numeric/date)
   if (!isNum && !isDate && widget.sortBy && widget.sortBy !== 'original') {
-    // Compute aggregated value per x-key across all series for sorting by value
     const xAggMap = new Map();
     for (const [, pts] of seriesMap) {
       for (const pt of pts) {
@@ -128,7 +175,7 @@ function buildSeries(data, widget, yField) {
     }
   }
 
-  return { seriesMap, seriesNames, isNum, isDate };
+  return { seriesMap, seriesNames, seriesMeta, isNum, isDate, multiMeasure };
 }
 
 /* ── Normal (non-stacked) line/area ──────────────────────────────────────── */
@@ -139,7 +186,7 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
   const H = h - m.top - m.bottom;
   if (W <= 0 || H <= 0) return;
 
-  const { seriesMap, seriesNames, isNum, isDate } = buildSeries(data, widget, yField);
+  const { seriesMap, seriesNames, seriesMeta, isNum, isDate, multiMeasure } = buildSeries(data, widget, yField);
   const showPoints = widget.showPoints !== false; // default true
   const opacity = widget.opacity ?? 1;
 
@@ -161,18 +208,31 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
   const allX = allPts.map(d => d.x);
   const allY = allPts.map(d => d.y);
 
-  // X scale
+  // X scale — default: equally spaced; option "linear" = proportional to value
+  const useLinearSpacing = widget.xAxisSpacing === 'linear';
   let xScale;
-  if (isNum) xScale = d3.scaleLinear().domain(d3.extent(allX.map(Number))).range([0, W]).nice();
-  else if (isDate) xScale = d3.scaleTime().domain(d3.extent(allX.map(v => new Date(v)))).range([0, W]).nice();
-  else xScale = d3.scalePoint().domain([...new Set(allX.map(String))]).range([0, W]).padding(0.1);
+  if (isDate) {
+    xScale = d3.scaleTime().domain(d3.extent(allX.map(v => new Date(v)))).range([0, W]).nice();
+  } else if (isNum && useLinearSpacing) {
+    // Proportional spacing — scaleLinear
+    xScale = d3.scaleLinear().domain(d3.extent(allX.map(Number))).range([0, W]).nice();
+  } else if (useLinearSpacing && allX.every(v => !isNaN(+v))) {
+    // Non-numeric detected but values are parseable as numbers + user wants linear
+    xScale = d3.scaleLinear().domain(d3.extent(allX.map(Number))).range([0, W]).nice();
+  } else {
+    // Default: equally spaced (scalePoint)
+    const uniqueX = [...new Set(allX.map(String))];
+    if (isNum) uniqueX.sort((a, b) => +a - +b);
+    xScale = d3.scalePoint().domain(uniqueX).range([0, W]).padding(0.1);
+  }
 
   // Y scale
   const yScale = d3.scaleLinear().domain([Math.min(0, d3.min(allY)), d3.max(allY) * 1.08]).range([H, 0]).nice();
 
   // Curve and generators
   const curve = CURVES[widget.curveType] || CURVES[widget.lineType] || d3.curveLinear;
-  const xPos = d => (isDate ? xScale(new Date(d.x)) : isNum ? xScale(+d.x) : xScale(String(d.x)));
+  const isLinearScale = xScale.invert !== undefined; // linear/time scales have invert, point doesn't
+  const xPos = d => (isDate ? xScale(new Date(d.x)) : isLinearScale ? xScale(+d.x) : xScale(String(d.x)));
   const lineGen = d3.line().x(xPos).y(d => yScale(d.y)).curve(curve).defined(d => !isNaN(d.y));
   const areaGen = d3.area().x(xPos).y0(H).y1(d => yScale(d.y)).curve(curve).defined(d => !isNaN(d.y));
 
@@ -253,7 +313,7 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
   }
 
   // Legend
-  if (widget.showLegend && widget.colorField && seriesNames.length > 1) {
+  if (widget.showLegend && (widget.colorField || multiMeasure) && seriesNames.length > 1) {
     const leg = g.append('g').attr('transform', `translate(${W + 8}, 0)`);
     seriesNames.slice(0, 10).forEach((name, i) => {
       const row = leg.append('g').attr('transform', `translate(0,${i * 18})`);
@@ -270,7 +330,7 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
     .attr('text-anchor', 'middle').attr('x', W / 2).attr('y', H + 46).text(widget.xField);
 
   // Hover overlay
-  addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
+  addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, seriesMeta, colors, xScale, yScale, isNum, isDate, multiMeasure, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
 }
 
 /* ── Stacked area line chart ─────────────────────────────────────────────── */
@@ -411,10 +471,11 @@ function renderStacked(svgRef, data, widget, yField, dims, stackMode, showToolti
 }
 
 /* ── Hover overlay for normal line chart ─────────────────────────────────── */
-function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors, xScale, yScale, isNum, isDate, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
+function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, seriesMeta, colors, xScale, yScale, isNum, isDate, multiMeasure, W, H, m, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   // Collect all unique sorted x values across series
   const allPts = [...seriesMap.values()].flat();
-  const sortedXs = isNum || isDate
+  const hasInvert = !!xScale.invert; // linear/time have invert, point does not
+  const sortedXs = hasInvert
     ? [...new Set(allPts.map(v => isDate ? new Date(v.x).getTime() : +v.x))].sort((a, b) => a - b)
     : [...new Set(allPts.map(d => String(d.x)))];
 
@@ -429,14 +490,19 @@ function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors,
   });
 
   const findClosestX = (mx) => {
-    if (isNum || isDate) {
+    if (hasInvert) {
       const xVal = isDate ? xScale.invert(mx).getTime() : xScale.invert(mx);
       const bisect = d3.bisectCenter(sortedXs, xVal);
       return sortedXs[Math.max(0, Math.min(sortedXs.length - 1, bisect))];
     } else {
-      const each = W / sortedXs.length;
-      const idx = Math.max(0, Math.min(sortedXs.length - 1, Math.round(mx / each)));
-      return sortedXs[idx];
+      // scalePoint: find closest domain value
+      const domain = xScale.domain();
+      let closest = domain[0], minDist = Infinity;
+      for (const v of domain) {
+        const dist = Math.abs(xScale(v) - mx);
+        if (dist < minDist) { minDist = dist; closest = v; }
+      }
+      return closest;
     }
   };
 
@@ -455,12 +521,12 @@ function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors,
       const [mx] = d3.pointer(ev, g.node());
       const closestX = findClosestX(mx);
 
-      const cx = isDate ? xScale(new Date(closestX)) : isNum ? xScale(closestX) : xScale(String(closestX));
+      const cx = isDate ? xScale(new Date(closestX)) : hasInvert ? xScale(closestX) : xScale(String(closestX));
       focusLine.style('display', null).attr('transform', `translate(${cx},0)`);
 
       const vals = seriesNames.map(name => {
         const pts = seriesMap.get(name);
-        const pt = isNum || isDate
+        const pt = hasInvert
           ? pts.reduce((best, p) => {
               const pv = isDate ? new Date(p.x).getTime() : +p.x;
               const bv = isDate ? new Date(best.x).getTime() : +best.x;
@@ -468,11 +534,12 @@ function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors,
             }, pts[0])
           : pts.find(p => String(p.x) === String(closestX));
         if (pt) focusDots.find(d => d.name === name)?.dot.style('display', null).attr('cx', cx).attr('cy', yScale(pt.y));
-        return { name, value: pt?.y };
+        const meta = seriesMeta?.get(name);
+        return { name, value: pt?.y, format: meta?.numberFormat || widget.numberFormat };
       }).filter(s => s.value !== undefined);
 
       const xLabel = isDate ? new Date(closestX).toLocaleDateString() : String(closestX);
-      showTooltip(ev, <LineTip xLabel={xLabel} vals={vals} colors={colors} widget={widget} yField={yField} />);
+      showTooltip(ev, <LineTip xLabel={xLabel} vals={vals} colors={colors} widget={widget} yField={yField} multiMeasure={multiMeasure} />);
       moveTooltip(ev);
     })
     .on('mouseleave', () => {
@@ -483,7 +550,7 @@ function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, colors,
 }
 
 /* ── Tooltip component ───────────────────────────────────────────────────── */
-function LineTip({ xLabel, vals, colors, widget, yField }) {
+function LineTip({ xLabel, vals, colors, widget, yField, multiMeasure }) {
   return (
     <>
       <div className="chart-tooltip-title">{xLabel}</div>
@@ -491,10 +558,10 @@ function LineTip({ xLabel, vals, colors, widget, yField }) {
         <div key={s.name} className="chart-tooltip-row">
           <span className="tt-dot" style={{ background: colors(s.name) }} />
           <span className="tt-label">{s.name === '__all__' ? (yField || widget.yField) : s.name}</span>
-          <span className="tt-value">{formatValue(s.value, widget.numberFormat)}</span>
+          <span className="tt-value">{formatValue(s.value, s.format || widget.numberFormat)}</span>
         </div>
       ))}
-      {vals.length > 1 && (
+      {vals.length > 1 && !multiMeasure && (
         <div className="chart-tooltip-stat">
           {'\u03A3'} {formatValue(vals.reduce((s, v) => s + (v.value || 0), 0), widget.numberFormat)}
         </div>

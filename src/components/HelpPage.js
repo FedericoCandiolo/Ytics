@@ -9,6 +9,8 @@ const TOC = [
   { id: 'building', label: 'Building a Dashboard' },
   { id: 'chart-types', label: 'Chart Types Reference' },
   { id: 'configuring', label: 'Configuring Widgets' },
+  { id: 'number-format', label: 'Number Formatting' },
+  { id: 'multi-measure', label: 'Multi-Measure Mode' },
   { id: 'measure-pipeline', label: 'Measure Pipeline' },
   { id: 'colors', label: 'Colors & Styling' },
   { id: 'conditional-fmt', label: 'Conditional Formatting' },
@@ -263,9 +265,9 @@ export default function HelpPage({ onClose }) {
           <Section id="chart-types" title="6. Chart Types Reference">
             <div className="help-chart-grid">
               <ChartCard icon="📊" name="Bar Chart"
-                desc="Compares categorical values with vertical or horizontal bars."
-                fields="Category (X), Numeric (Y). Optional: Group field for stacked/grouped."
-                options="Orientation, bar mode, sort by/order."
+                desc="Compares categorical values with vertical or horizontal bars. Supports multi-measure mode."
+                fields="Category (X), Numeric (Y). Optional: Group field or additional measures for stacked/grouped."
+                options="Orientation, bar mode, sort by/order. Per-measure number format."
                 gradient="Bar value" />
               <ChartCard icon="📦" name="Box Plot"
                 desc="Statistical distribution: quartiles, median, mean, whiskers, outliers."
@@ -284,8 +286,8 @@ export default function HelpPage({ onClose }) {
                 gradient="Series total value" />
               <ChartCard icon="📊📈" name="Combo Chart"
                 desc="Overlays bars and lines on the same axes for dual-measure comparison."
-                fields="X (category), Y1 (bars), Y2 (line). Optional: Color field."
-                options="Bar mode, line type, dual-axis."
+                fields="X (category), Y1 (bars), Y2 (line). Optional: Color field. Independent number format per axis."
+                options="Bar mode, line type, dual-axis, primary/secondary number format."
                 gradient="Bar or line value" />
               <ChartCard icon="🎠" name="Carousel"
                 desc="Cycles through multiple chart slides on the same dataset."
@@ -323,9 +325,9 @@ export default function HelpPage({ onClose }) {
                 options="Style (card/gauge/satellite), format (number/currency/percent), gauge min/max, gauge segments with auto-colors from palette."
                 gradient="Gauge arc or satellite rings" />
               <ChartCard icon="📈" name="Line Chart"
-                desc="Plots trends over a continuous or categorical X-axis."
-                fields="X, Y (numeric). Optional: Color field for multi-series."
-                options="Line type (6 curves), points, area, stack mode."
+                desc="Plots trends over a continuous or categorical X-axis. Supports multi-measure and proportional spacing."
+                fields="X, Y (numeric). Optional: Color field for multi-series, or additional measures for multi-measure lines."
+                options="Line type (6 curves), points, area, stack mode, X-axis spacing (equal/proportional). Per-measure number format."
                 gradient="Series total" />
               <ChartCard icon="▰▱" name="Mekko Chart"
                 desc="Variable-width stacked bars showing two dimensions of proportion."
@@ -353,9 +355,9 @@ export default function HelpPage({ onClose }) {
                 options="Legend, opacity."
                 gradient="Max flow per node" />
               <ChartCard icon="📋" name="Straight Table"
-                desc="Simple flat data table with sorting and optional conditional formatting."
-                fields="All columns shown by default."
-                options="Conditional formatting (gradient or rules)."
+                desc="Simple flat data table with sorting, multiple measures, and optional conditional formatting."
+                fields="Dimensions, multiple measures (each with independent aggregation, label, and number format)."
+                options="Conditional formatting (gradient or rules). Per-measure number format, totals row."
                 gradient="N/A — uses conditional formatting" />
               <ChartCard icon="⬤" name="Scatter Plot"
                 desc="Individual data points on X/Y coordinates with optional size encoding."
@@ -437,7 +439,7 @@ export default function HelpPage({ onClose }) {
                 <li><strong>Geo Map</strong>: Map projection (Natural Earth, Mercator, Equal Earth, Orthographic).</li>
                 <li><strong>Histogram</strong>: Number of bins.</li>
                 <li><strong>KPI Card</strong>: Style (card/gauge/satellite), format, gauge min/max, gauge segments with auto-palette colors, invert gradient.</li>
-                <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode.</li>
+                <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode, X-axis spacing.</li>
                 <li><strong>Pie Chart</strong>: Inner radius (donut hole size).</li>
                 <li><strong>Scatter / Bubble</strong>: Dot size min/max.</li>
                 <li><strong>Carousel</strong>: Auto-play toggle, interval.</li>
@@ -445,8 +447,93 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 8. Measure Pipeline ─────────────────────────────────────── */}
-          <Section id="measure-pipeline" title="8. Measure Pipeline">
+          {/* ── 8. Number Formatting ──────────────────────────────────── */}
+          <Section id="number-format" title="8. Number Formatting">
+            <p>Control how numeric values appear in axes, tooltips, and table cells.</p>
+            <Sub title="Available Formats">
+              <Table
+                headers={['Format', 'Example', 'Description']}
+                rows={[
+                  ['Auto', '1234.5', 'Default display with no special formatting.'],
+                  ['Number', '1,234.50', 'Thousands separators with 2 decimal places.'],
+                  ['SI', '1.2k', 'SI suffixes (k, M, G) for compact display.'],
+                  ['Scientific', '1.23e+3', 'Scientific notation.'],
+                  ['Currency', '$1,234.50', 'Dollar sign with thousands separators.'],
+                  ['Percent', '12.35%', 'Multiplies by 100 and adds % sign.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Per-Measure Formatting">
+              <p>
+                Charts with multiple measures let you set a <strong>number format independently for each measure</strong>.
+                This is useful when comparing values with different units (e.g., revenue in currency vs. quantity as a number).
+              </p>
+              <ul className="help-ul">
+                <li><strong>Straight Table</strong>: Each measure has its own number format dropdown.</li>
+                <li><strong>Line Chart / Bar Chart</strong>: Each additional measure has a format dropdown in the Fields tab.</li>
+                <li><strong>Combo Chart</strong>: Separate "Primary number format" and "Secondary number format" dropdowns in the Fields tab.</li>
+              </ul>
+              <Tip>When a measure's format is set to Auto, it inherits the widget-level number format.</Tip>
+            </Sub>
+            <Sub title="Aggregation Modifiers">
+              <p>Two modifiers can be combined with any aggregation function:</p>
+              <Table
+                headers={['Modifier', 'Effect', 'Example']}
+                rows={[
+                  ['Distinct', 'Operates only on unique values.', 'distinct count of customers'],
+                  ['Total', 'Computes the grand total across all groups (ignoring grouping).', 'total sum of revenue'],
+                ]}
+              />
+              <Tip>Combine both: "distinct total count" counts all unique values across the entire dataset.</Tip>
+            </Sub>
+          </Section>
+
+          {/* ── 9. Multi-Measure Mode ────────────────────────────────────── */}
+          <Section id="multi-measure" title="9. Multi-Measure Mode">
+            <p>
+              Several chart types support plotting <strong>multiple measures</strong> on the same visualization,
+              letting you compare related metrics side by side.
+            </p>
+            <Sub title="Supported Charts">
+              <Table
+                headers={['Chart', 'How It Works']}
+                rows={[
+                  ['Straight Table', 'Add any number of measures, each with its own field, aggregation, label, and number format. Measures appear as columns.'],
+                  ['Line Chart', 'Add additional measures in the Fields tab. Each measure becomes its own line series. Use this instead of Color field when you want to compare different metrics (e.g., sales vs. costs).'],
+                  ['Bar Chart', 'Add additional measures in the Fields tab. Each measure becomes a group in stacked or grouped bar mode.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Adding Measures">
+              <ol className="help-ol">
+                <li>Select a widget and open the <strong>Fields</strong> tab.</li>
+                <li>Under <strong>Additional measures</strong>, click <strong>+ Add measure</strong>.</li>
+                <li>Pick a field, aggregation, optional label, and number format for each measure.</li>
+                <li>Reorder measures with the arrow buttons, or remove with the delete button.</li>
+              </ol>
+            </Sub>
+            <Sub title="Multi-Measure vs. Group Field">
+              <p>
+                <strong>Group / Color field</strong> splits one measure by a dimension (e.g., revenue by country).
+                <strong>Multi-measure</strong> plots different fields on the same axis (e.g., revenue vs. cost).
+                For Line and Bar charts, use one or the other — they are mutually exclusive modes.
+              </p>
+            </Sub>
+            <Sub title="Line Chart: X-Axis Spacing">
+              <p>When the X-axis contains numeric values, the Line Chart offers two spacing modes:</p>
+              <Table
+                headers={['Mode', 'Behavior']}
+                rows={[
+                  ['Equally spaced (default)', 'Each X value is evenly spaced regardless of its numeric value. Best for categorical or ordinal data.'],
+                  ['Proportional to value', 'X values are positioned proportionally to their numeric distance. E.g., the gap between 20 and 40 is twice the gap between 10 and 20.'],
+                ]}
+              />
+              <Tip>Find this setting in the Options tab of the Line Chart editor.</Tip>
+            </Sub>
+          </Section>
+
+          {/* ── 10. Measure Pipeline ────────────────────────────────────── */}
+          <Section id="measure-pipeline" title="10. Measure Pipeline">
             <p>
               The measure pipeline transforms data <em>before</em> it reaches the chart, without modifying the original dataset.
               Open a widget's editor and go to the <strong>Measures</strong> tab to configure.
@@ -483,8 +570,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 9. Colors & Styling ─────────────────────────────────────── */}
-          <Section id="colors" title="9. Colors & Styling">
+          {/* ── 11. Colors & Styling ────────────────────────────────────── */}
+          <Section id="colors" title="11. Colors & Styling">
             <Sub title="Color Modes">
               <p>Every chart supports two color modes, selectable in the <strong>Colors</strong> tab:</p>
               <ul className="help-ul">
@@ -564,8 +651,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 10. Conditional Formatting ──────────────────────────────── */}
-          <Section id="conditional-fmt" title="10. Conditional Formatting">
+          {/* ── 12. Conditional Formatting ─────────────────────────────── */}
+          <Section id="conditional-fmt" title="12. Conditional Formatting">
             <p>Available for <strong>Data Table</strong> and <strong>Pivot Table</strong> widgets. Found in the Colors tab.</p>
             <Sub title="Gradient Mode">
               <p>Colors cells on a continuous scale from the column's minimum to maximum value. Select a gradient scheme. Text color adjusts automatically for readability.</p>
@@ -586,8 +673,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 11. Dashboard Themes ────────────────────────────────────── */}
-          <Section id="themes" title="11. Dashboard Themes">
+          {/* ── 13. Dashboard Themes ───────────────────────────────────── */}
+          <Section id="themes" title="13. Dashboard Themes">
             <p>Global visual settings found in the <strong>Dashboard Styles</strong> section of the developer sidebar.</p>
             <Table
               headers={['Setting', 'Options', 'Default']}
@@ -610,8 +697,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 12. Multi-Page ──────────────────────────────────────────── */}
-          <Section id="multi-page" title="12. Multi-Page Dashboards">
+          {/* ── 14. Multi-Page ─────────────────────────────────────────── */}
+          <Section id="multi-page" title="14. Multi-Page Dashboards">
             <p>Organize complex dashboards into multiple pages, like tabs in a spreadsheet.</p>
             <Table
               headers={['Action', 'How']}
@@ -631,8 +718,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 13. Viewer Mode ─────────────────────────────────────────── */}
-          <Section id="viewer-mode" title="13. Viewer Mode">
+          {/* ── 15. Viewer Mode ────────────────────────────────────────── */}
+          <Section id="viewer-mode" title="15. Viewer Mode">
             <p>Switch by clicking <strong>Viewer</strong> in the header. This is the presentation mode.</p>
             <ul className="help-ul">
               <li><strong>Read-only canvas</strong> — Widgets display but cannot be moved or edited.</li>
@@ -643,8 +730,8 @@ export default function HelpPage({ onClose }) {
             </ul>
           </Section>
 
-          {/* ── 14. Filtering ───────────────────────────────────────────── */}
-          <Section id="filtering" title="14. Filtering & Cross-Filtering">
+          {/* ── 16. Filtering ──────────────────────────────────────────── */}
+          <Section id="filtering" title="16. Filtering & Cross-Filtering">
             <Sub title="Adding Filters">
               <ol className="help-ol">
                 <li>Click <strong>+ Filter</strong> in the viewer top bar.</li>
@@ -669,8 +756,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 15. Export & Import ──────────────────────────────────────── */}
-          <Section id="export-import" title="15. Export & Import">
+          {/* ── 17. Export & Import ─────────────────────────────────────── */}
+          <Section id="export-import" title="17. Export & Import">
             <Sub title="Exporting">
               <p>Click <strong>Export</strong> in the header. Ytics saves a <code>.ytics</code> file (ZIP archive) containing:</p>
               <Table
@@ -687,8 +774,8 @@ export default function HelpPage({ onClose }) {
             </Sub>
           </Section>
 
-          {/* ── 16. Keyboard Shortcuts ──────────────────────────────────── */}
-          <Section id="shortcuts" title="16. Keyboard Shortcuts">
+          {/* ── 18. Keyboard Shortcuts ─────────────────────────────────── */}
+          <Section id="shortcuts" title="18. Keyboard Shortcuts">
             <Table
               headers={['Shortcut', 'Mode', 'Action']}
               rows={[
@@ -705,8 +792,8 @@ export default function HelpPage({ onClose }) {
             </p>
           </Section>
 
-          {/* ── 17. Tips & Best Practices ───────────────────────────────── */}
-          <Section id="tips" title="17. Tips & Best Practices">
+          {/* ── 19. Tips & Best Practices ──────────────────────────────── */}
+          <Section id="tips" title="19. Tips & Best Practices">
             <Sub title="Data Preparation">
               <ul className="help-ul">
                 <li><strong>Clean your CSVs</strong> before uploading — mixed text and numbers in a column may be treated as strings.</li>

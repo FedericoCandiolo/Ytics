@@ -18,12 +18,16 @@ export default function BarChart({ widget, data, onCrossFilter }) {
       return;
     }
 
+    const extraMeasures = widget.barChartMeasures?.filter(m => m.field) || [];
     const hasGroup = !!widget.groupField;
+    const hasMultiMeasure = extraMeasures.length > 0 && !hasGroup;
     const isH = widget.orientation === 'horizontal';
     const barMode = widget.barMode || 'stacked';
     const opacity = widget.opacity ?? 1;
 
-    if (hasGroup) {
+    if (hasMultiMeasure) {
+      renderMultiMeasure(svgRef, data, widget, extraMeasures, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
+    } else if (hasGroup) {
       renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
     } else {
       renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter);
@@ -228,6 +232,136 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
   }
 }
 
+// ── Multi-measure bar (each measure = one group key) ───────────────────────────
+function renderMultiMeasure(svgRef, data, widget, extraMeasures, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
+  const { w, h } = dims;
+  const m = { top: 14, right: 18, bottom: isH ? 46 : 70, left: isH ? 130 : 58 };
+  const W = w - m.left - m.right;
+  const H = h - m.top - m.bottom;
+  if (W <= 0 || H <= 0) return;
+
+  // Build list of all measures (primary + extras)
+  const allMeasures = [
+    {
+      field: widget.yField,
+      aggregation: widget.aggregation || 'sum',
+      label: widget.primaryMeasureLabel || `${widget.yField} (${widget.aggregation || 'sum'})`,
+      numberFormat: widget.numberFormat,
+    },
+    ...extraMeasures.map(em => ({
+      field: em.field,
+      aggregation: em.aggregation || 'sum',
+      label: em.label || `${em.field} (${em.aggregation || 'sum'})`,
+      numberFormat: em.numberFormat || widget.numberFormat,
+    })),
+  ];
+
+  const aggOpts = { distinct: widget.distinct };
+  const groupKeys = allMeasures.map(m => m.label);
+
+  // Aggregate per (xKey, measure)
+  const xKeySet = new Set();
+  const buckets = new Map(); // "xKey|||measureLabel" → [vals]
+  for (const row of data) {
+    const xKey = String(row[widget.xField] ?? '(blank)');
+    xKeySet.add(xKey);
+    for (const meas of allMeasures) {
+      const mapKey = `${xKey}|||${meas.label}`;
+      if (!buckets.has(mapKey)) buckets.set(mapKey, []);
+      const agg = meas.aggregation;
+      buckets.get(mapKey).push(agg === 'count' ? 1 : (+row[meas.field] || 0));
+    }
+  }
+
+  // Build pivot data
+  let pivotData = [...xKeySet].map(xKey => {
+    const row = { __x: xKey };
+    for (const meas of allMeasures) {
+      const vals = buckets.get(`${xKey}|||${meas.label}`) || [];
+      row[meas.label] = aggregate(vals, meas.aggregation, undefined, aggOpts);
+    }
+    return row;
+  });
+
+  // Sort
+  const pivotForSort = pivotData.map(d => ({
+    key: d.__x,
+    value: groupKeys.reduce((s, k) => s + (d[k] || 0), 0),
+  }));
+  const sortedKeys = sortAggregated(pivotForSort, {
+    sortBy: widget.sortBy || 'value',
+    sortOrder: widget.sortOrder || 'desc',
+    customOrder: widget.customSortOrder,
+  }).map(d => d.key);
+
+  // Pareto grouping
+  if (widget.paretoEnabled) {
+    const forPareto = [...pivotForSort].sort((a, b) => b.value - a.value);
+    const grouped = applyParetoGrouping(forPareto, {
+      method: widget.paretoMethod || 'topN',
+      topN: widget.paretoTopN ?? 10,
+      threshold: widget.paretoThreshold ?? 0.8,
+      othersLabel: widget.othersLabel || 'Others',
+    });
+    const othersLabel = widget.othersLabel || 'Others';
+    const keptKeys = new Set(grouped.filter(d => d.key !== othersLabel).map(d => d.key));
+    const hasOthers = grouped.some(d => d.key === othersLabel);
+
+    const keptPivot = pivotData.filter(d => keptKeys.has(d.__x));
+    if (hasOthers) {
+      const othersRow = { __x: othersLabel };
+      const droppedPivot = pivotData.filter(d => !keptKeys.has(d.__x));
+      for (const gk of groupKeys) {
+        othersRow[gk] = droppedPivot.reduce((s, d) => s + (d[gk] || 0), 0);
+      }
+      keptPivot.push(othersRow);
+    }
+    pivotData = keptPivot;
+
+    const nonOthersForSort = pivotData
+      .filter(d => d.__x !== othersLabel)
+      .map(d => ({ key: d.__x, value: groupKeys.reduce((s, k) => s + (d[k] || 0), 0) }));
+    const reSorted = sortAggregated(nonOthersForSort, {
+      sortBy: widget.sortBy || 'value',
+      sortOrder: widget.sortOrder || 'desc',
+      customOrder: widget.customSortOrder,
+    }).map(d => d.key);
+    if (hasOthers) reSorted.push(othersLabel);
+    const orderMap = new Map(reSorted.map((k, i) => [k, i]));
+    pivotData.sort((a, b) => (orderMap.get(a.__x) ?? Infinity) - (orderMap.get(b.__x) ?? Infinity));
+  } else {
+    const orderMap = new Map(sortedKeys.map((k, i) => [k, i]));
+    pivotData.sort((a, b) => (orderMap.get(a.__x) ?? Infinity) - (orderMap.get(b.__x) ?? Infinity));
+  }
+
+  const colorScale = getOrdinalWithOverrides(widget.colorScheme, groupKeys, widget.dimensionColors);
+
+  // Build a measure-label → format map for tooltips
+  const fmtMap = new Map(allMeasures.map(m => [m.label, m.numberFormat]));
+
+  const svg = d3.select(svgRef.current);
+  svg.selectAll('*').remove();
+  svg.attr('width', w).attr('height', h);
+  const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
+  if (barMode === 'stacked') {
+    renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter, fmtMap);
+  } else {
+    renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter, fmtMap);
+  }
+
+  // Legend
+  if (widget.showLegend && groupKeys.length > 1) {
+    const leg = g.append('g').attr('transform', `translate(${W - groupKeys.length * 80}, ${-10})`);
+    groupKeys.slice(0, 10).forEach((key, i) => {
+      const item = leg.append('g').attr('transform', `translate(${i * 80}, 0)`);
+      item.append('rect').attr('width', 10).attr('height', 10).attr('rx', 2).attr('fill', colorScale(key));
+      item.append('text').attr('x', 14).attr('y', 9).attr('font-size', 10).attr('fill', 'var(--text-muted)')
+        .text(truncate(key, 8));
+    });
+  }
+}
+
 // ── Grouped/Stacked bar ────────────────────────────────────────────────────────
 function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
   const { w, h } = dims;
@@ -344,7 +478,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
   }
 }
 
-function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
+function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter, fmtMap) {
   const stack = d3.stack().keys(groupKeys);
   const stacked = stack(pivotData);
 
@@ -358,13 +492,13 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
     g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
     g.append('g').call(d3.axisLeft(yScale).tickFormat(d => truncate(d, 18))).call(styledAxis).call(a => a.selectAll('.tick line').remove());
 
-    stacked.forEach(layer => {
-      g.selectAll(`.bar-${layer.key}`).data(layer).join('rect')
+    stacked.forEach((layer, li) => {
+      g.selectAll(`.bar-l${li}`).data(layer).join('rect').attr('class', `bar-l${li}`)
         .attr('y', d => yScale(d.data.__x)).attr('x', d => xScale(safeLogVal(widget, d[0])))
         .attr('height', yScale.bandwidth()).attr('width', 0)
         .attr('fill', colorScale(layer.key)).attr('opacity', opacity).attr('rx', 2)
         .on('mouseover', (ev, d) => {
-          showTooltip(ev, <StackedTip x={d.data.__x} group={layer.key} value={d[1] - d[0]} color={colorScale(layer.key)} total={groupKeys.reduce((s, k) => s + (d.data[k] || 0), 0)} widget={widget} />);
+          showTooltip(ev, <StackedTip x={d.data.__x} group={layer.key} value={d[1] - d[0]} color={colorScale(layer.key)} total={groupKeys.reduce((s, k) => s + (d.data[k] || 0), 0)} widget={widget} fmtMap={fmtMap} />);
         })
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
@@ -385,13 +519,13 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
       .selectAll('text').attr('transform', 'rotate(-38)').style('text-anchor', 'end').attr('dy', '0.4em').attr('dx', '-0.4em');
     g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(v => formatValue(v, widget.numberFormat))).call(styledAxis);
 
-    stacked.forEach(layer => {
-      g.selectAll(`.bar-${layer.key}`).data(layer).join('rect')
+    stacked.forEach((layer, li) => {
+      g.selectAll(`.bar-l${li}`).data(layer).join('rect').attr('class', `bar-l${li}`)
         .attr('x', d => xScale(d.data.__x)).attr('y', H)
         .attr('width', xScale.bandwidth()).attr('height', 0)
         .attr('fill', colorScale(layer.key)).attr('opacity', opacity).attr('rx', 2)
         .on('mouseover', (ev, d) => {
-          showTooltip(ev, <StackedTip x={d.data.__x} group={layer.key} value={d[1] - d[0]} color={colorScale(layer.key)} total={groupKeys.reduce((s, k) => s + (d.data[k] || 0), 0)} widget={widget} />);
+          showTooltip(ev, <StackedTip x={d.data.__x} group={layer.key} value={d[1] - d[0]} color={colorScale(layer.key)} total={groupKeys.reduce((s, k) => s + (d.data[k] || 0), 0)} widget={widget} fmtMap={fmtMap} />);
         })
         .on('mousemove', moveTooltip)
         .on('mouseleave', hideTooltip)
@@ -408,7 +542,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
   }
 }
 
-function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter) {
+function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, isH, opacity, showTooltip, moveTooltip, hideTooltip, onCrossFilter, fmtMap) {
   const maxVal = d3.max(pivotData, d => d3.max(groupKeys, k => d[k] || 0)) * 1.05 || 1;
 
   if (isH) {
@@ -427,7 +561,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           .attr('height', yInner.bandwidth()).attr('width', 0)
           .attr('fill', colorScale(gk)).attr('opacity', opacity).attr('rx', 2)
           .on('mouseover', (ev) => {
-            showTooltip(ev, <StackedTip x={row.__x} group={gk} value={row[gk] || 0} color={colorScale(gk)} total={groupKeys.reduce((s, k) => s + (row[k] || 0), 0)} widget={widget} />);
+            showTooltip(ev, <StackedTip x={row.__x} group={gk} value={row[gk] || 0} color={colorScale(gk)} total={groupKeys.reduce((s, k) => s + (row[k] || 0), 0)} widget={widget} fmtMap={fmtMap} />);
           })
           .on('mousemove', moveTooltip)
           .on('mouseleave', hideTooltip)
@@ -456,7 +590,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
           .attr('width', xInner.bandwidth()).attr('height', 0)
           .attr('fill', colorScale(gk)).attr('opacity', opacity).attr('rx', 2)
           .on('mouseover', (ev) => {
-            showTooltip(ev, <StackedTip x={row.__x} group={gk} value={row[gk] || 0} color={colorScale(gk)} total={groupKeys.reduce((s, k) => s + (row[k] || 0), 0)} widget={widget} />);
+            showTooltip(ev, <StackedTip x={row.__x} group={gk} value={row[gk] || 0} color={colorScale(gk)} total={groupKeys.reduce((s, k) => s + (row[k] || 0), 0)} widget={widget} fmtMap={fmtMap} />);
           })
           .on('mousemove', moveTooltip)
           .on('mouseleave', hideTooltip)
@@ -490,7 +624,8 @@ function BarTip({ d, widget, color, total }) {
   );
 }
 
-function StackedTip({ x, group, value, color, total, widget }) {
+function StackedTip({ x, group, value, color, total, widget, fmtMap }) {
+  const fmt = fmtMap?.get(group) || widget.numberFormat;
   const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '–';
   return (
     <>
@@ -498,7 +633,7 @@ function StackedTip({ x, group, value, color, total, widget }) {
         <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: color, marginRight: 6, verticalAlign: 'middle' }} />
         {x} — {group}
       </div>
-      <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(value, widget.numberFormat)}</span></div>
+      <div className="chart-tooltip-row"><span className="tt-label">{fmtMap ? group : widget.yField}</span><span className="tt-value">{formatValue(value, fmt)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share of {x}</span><span className="tt-value">{pct}%</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Total</span><span className="tt-value">{formatValue(total, widget.numberFormat)}</span></div>
     </>
