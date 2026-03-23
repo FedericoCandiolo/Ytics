@@ -201,6 +201,18 @@ export default function HelpPage({ onClose }) {
                 it visualizes, so a single dashboard can combine data from multiple sources.
               </p>
             </Sub>
+            <Sub title="Data Model View">
+              <p>
+                Switch to the <strong>Data Model</strong> tab (next to Data Preview) to see an interactive ER diagram
+                of all loaded datasets and their relationships.
+              </p>
+              <ul className="help-ul">
+                <li><strong>Auto-detected relationships</strong> — Ytics matches column names across datasets and infers cardinality (1:1, 1:N, N:1, M:N) based on unique value counts.</li>
+                <li><strong>Selection-aware coloring</strong> — Click a table card (or select it from the left panel) to highlight it in dark blue. Directly related tables appear in light blue; others are gray.</li>
+                <li><strong>Draggable layout</strong> — Drag table cards to arrange them. Positions are preserved when switching tabs, saved to localStorage, and included in <code>.ytics</code> exports.</li>
+                <li><strong>Relationship lines</strong> — Curved lines connect related tables, labeled with cardinality. Lines connected to the selected table are highlighted.</li>
+              </ul>
+            </Sub>
           </Section>
 
           {/* ── 4. Data Transforms ──────────────────────────────────────── */}
@@ -763,11 +775,12 @@ export default function HelpPage({ onClose }) {
               <Table
                 headers={['File', 'Contents']}
                 rows={[
-                  ['dashboard.json', 'Full configuration: pages, widgets, layouts, theme, dimension colors.'],
+                  ['dashboard.json', 'Full configuration: pages, widgets, layouts, theme, dimension colors, data model positions.'],
                   ['data/*.csv', 'A CSV export of each dataset.'],
                   ['README.md', 'A human-readable summary.'],
                 ]}
               />
+              <Tip>You can export at any point — even with no visualizations. As long as you have at least one dataset loaded, the Export button is enabled.</Tip>
             </Sub>
             <Sub title="Importing">
               <p>Click <strong>Import</strong> in the header and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs datasets, restores the dashboard state, and switches to Viewer mode.</p>

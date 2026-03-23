@@ -26,7 +26,7 @@ Claude has full access to read, write, and execute any file or command in this p
 ### Architecture
 
 - `src/context/AppContext.js` — Central state via `useReducer`. Exports `AppProvider`, `useApp`, `defaultTheme`.
-- `src/components/Developer/` — Developer mode: `DeveloperMode.js`, `DashboardBuilder.js` (grid canvas + sidebar), `WidgetEditor.js` (per-widget config), `DataIntegration.js` (dataset management), `MeasurePipeline.js` (measure/calculation pipeline).
+- `src/components/Developer/` — Developer mode: `DeveloperMode.js`, `DashboardBuilder.js` (grid canvas + sidebar), `WidgetEditor.js` (per-widget config), `DataIntegration.js` (dataset management + data model view), `DataModel.js` (interactive SVG ER diagram), `MeasurePipeline.js` (measure/calculation pipeline).
 - `src/components/Viewer/` — Viewer mode: `ViewerMode.js`, `FilterPanel.js`.
 - `src/components/Widgets/` — Chart components: `BarChart`, `BoxPlot`, `BubbleChart`, `BumpChart`, `Carousel`, `ComboChart`, `DataTable`, `FunnelChart`, `GeoMap`, `HeatMap`, `Histogram`, `KPICard`, `LineChart`, `MekkoChart`, `PieChart`, `PivotTable`, `RadarChart`, `SankeyDiagram`, `ScatterPlot`, `StraightTable`, `StreamGraph`, `Treemap`, `ViolinPlot`, `WaffleChart`, `WaterfallChart`, `WidgetContainer` (wrapper), `WordCloud`. Shared helpers: `chartHelpers.js`, `useTooltip.js`.
 - `src/components/` — `Header.js` (top bar), `HelpPage.js` (help/docs view).
@@ -37,7 +37,8 @@ Claude has full access to read, write, and execute any file or command in this p
 - **Dashboard state**: `state.dashboard.pages[]` — each page has `widgets[]` and `layout[]`. Widgets reference datasets by `datasetId`.
 - **Theme inheritance**: `dashboard.theme` holds global styles. Widget properties use `null` to inherit from theme (e.g., `colorScheme: null` means use `theme.colorScheme`).
 - **Grid**: Uses `compactType={null}` + `preventCollision={true}` for free-placement. All 8 resize handles enabled.
-- **Export/Import**: `.ytics` zip files containing `dashboard.json` (full dashboard object with pages, layout, theme) and dataset CSVs.
+- **Export/Import**: `.ytics` zip files containing `dashboard.json` (full dashboard object with pages, layout, theme, model positions) and dataset CSVs. Export is enabled whenever there are datasets or widgets (either suffices).
+- **Data Model**: Interactive ER diagram in the Data tab. Relationships auto-detected by matching column names across datasets (cardinality: 1:1, 1:N, N:1, M:N). Table card positions stored in `dashboard.modelPositions` and persisted across tab switches, localStorage saves, and `.ytics` export/import. Selection-aware coloring: dark blue = selected table, light blue = directly related, gray = other.
 - **Number formatting**: `NUMBER_FORMATS` registry in `chartHelpers.js` — `auto`, `number`, `si`, `scientific`, `currency`, `percent`. Applied via `formatValue(v, format)`. Per-measure `numberFormat` overrides widget-level `numberFormat`.
 - **Multi-measure mode**: Charts supporting multiple measures store them in `*ChartMeasures[]` arrays (e.g., `lineChartMeasures`, `barChartMeasures`, `straightTableMeasures`). Each measure object: `{ field, aggregation, label, numberFormat }`. The primary measure uses the widget's top-level `yField`/`aggregation`/`numberFormat`.
 - **Aggregation modifiers**: `distinct` (count unique values) and `total` (grand total across all groups) can be combined with aggregations. Stored as `aggregation: 'distinct_count'`, `'total_sum'`, etc.
