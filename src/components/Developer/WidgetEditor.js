@@ -354,11 +354,11 @@ const AGG_VALUE_KEY = {
   pivot: 'valueField',
   waterfall: 'valueField', wordcloud: 'valueField', funnel: 'valueField',
   kpi: 'valueField', bubble: 'valueField', combo: 'yField',
-  straighttable: 'valueField', mekko: 'yField',
+  straighttable: 'valueField', mekko: 'yField', network: 'sizeField',
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'text', 'image', 'embed'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -382,6 +382,8 @@ const COLOR_DIMENSION_FIELD = {
   bubble: w => w.colorField,
   combo: w => w.xField,
   mekko: w => w.colorField,
+  graph: w => w.colorField,
+  network: w => w.colorField,
 };
 
 // ── Fields tab content ────────────────────────────────────────────────────────
@@ -465,6 +467,21 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
       { key: '_sankeyFields', label: 'Intermediate dimensions', multi: true },
     ],
+    graph: [
+      { key: 'sourceField', label: 'Source node',                 filter: null },
+      { key: 'targetField', label: 'Target node',                 filter: null },
+      { key: 'labelField',  label: 'Node label (optional)',       filter: null, optional: true },
+      { key: 'colorField',  label: 'Node group (optional)',       filter: null, optional: true },
+      { key: 'sizeField',   label: 'Node size measure (optional)',filter: ['number'], optional: true },
+      { key: 'valueField',  label: 'Edge measure (optional)',     filter: ['number'], optional: true },
+    ],
+    network: [
+      { key: 'sourceField', label: 'Parent node',                  filter: null },
+      { key: 'targetField', label: 'Child node',                   filter: null },
+      { key: 'labelField',  label: 'Node label (optional)',        filter: null, optional: true },
+      { key: 'colorField',  label: 'Node group (optional)',        filter: null, optional: true },
+      { key: 'sizeField',   label: 'Node size measure (optional)', filter: ['number'], optional: true },
+    ],
     geo: [
       { key: 'geoField',    label: 'Geography dimension',     filter: null },
       { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
@@ -547,7 +564,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
     onUpdate(updates);
   };
 
-  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'geo'].includes(widget.type);
+  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'graph', 'network', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'geo'].includes(widget.type);
 
   return (
     <div>
@@ -2077,6 +2094,147 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           <option value="straight">Straight</option>
           <option value="curved">Curved (smooth)</option>
         </select>
+      </div>
+    </div>
+  );
+
+  if (widget.type === 'graph') return (
+    <div>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.graphDirected} onChange={e => onUpdate({ graphDirected: e.target.checked })} />
+        Directed graph (arrows)
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={widget.graphShowLabels !== false} onChange={e => onUpdate({ graphShowLabels: e.target.checked })} />
+        Show node labels
+      </label>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Node size range — {widget.graphNodeSizeMin ?? 6}px – {widget.graphNodeSizeMax ?? 24}px</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Min</span>
+          <input type="range" min={2} max={30} value={widget.graphNodeSizeMin ?? 6}
+            onChange={e => onUpdate({ graphNodeSizeMin: parseInt(e.target.value) })} style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Max</span>
+          <input type="range" min={8} max={60} value={widget.graphNodeSizeMax ?? 24}
+            onChange={e => onUpdate({ graphNodeSizeMax: parseInt(e.target.value) })} style={{ flex: 1 }} />
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Edge width mode</label>
+        <select className="select select-sm" value={widget.graphEdgeWidthMode || 'constant'} onChange={e => onUpdate({ graphEdgeWidthMode: e.target.value })}>
+          <option value="constant">Constant</option>
+          <option value="measure">By edge measure</option>
+        </select>
+      </div>
+      {widget.graphEdgeWidthMode === 'measure' ? (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Edge width range — {widget.graphEdgeWidthMin ?? 1}px – {widget.graphEdgeWidthMax ?? 8}px</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Min</span>
+            <input type="range" min={0.5} max={6} step={0.5} value={widget.graphEdgeWidthMin ?? 1}
+              onChange={e => onUpdate({ graphEdgeWidthMin: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Max</span>
+            <input type="range" min={2} max={20} step={0.5} value={widget.graphEdgeWidthMax ?? 8}
+              onChange={e => onUpdate({ graphEdgeWidthMax: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+          </div>
+        </div>
+      ) : (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Edge width — {widget.graphEdgeWidth ?? 2}px</label>
+          <input type="range" min={0.5} max={10} step={0.5} value={widget.graphEdgeWidth ?? 2}
+            onChange={e => onUpdate({ graphEdgeWidth: parseFloat(e.target.value) })} />
+        </div>
+      )}
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Edge color mode</label>
+        <select className="select select-sm" value={widget.graphEdgeColorMode || 'source'} onChange={e => onUpdate({ graphEdgeColorMode: e.target.value })}>
+          <option value="source">Same as source node</option>
+          <option value="target">Same as target node</option>
+          <option value="constant">Constant color</option>
+          <option value="measure">By edge measure (gradient)</option>
+        </select>
+      </div>
+      {widget.graphEdgeColorMode === 'constant' && (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Edge color</label>
+          <input type="color" value={widget.graphEdgeColor || '#999999'}
+            onChange={e => onUpdate({ graphEdgeColor: e.target.value })} />
+        </div>
+      )}
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Repulsion strength — {widget.graphCharge ?? -200}</label>
+        <input type="range" min={-600} max={-20} value={widget.graphCharge ?? -200}
+          onChange={e => onUpdate({ graphCharge: parseInt(e.target.value) })} />
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>More negative = nodes spread further apart</div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Link strength — {widget.graphLinkStrength ?? 0.4}</label>
+        <input type="range" min={0} max={1} step={0.05} value={widget.graphLinkStrength ?? 0.4}
+          onChange={e => onUpdate({ graphLinkStrength: parseFloat(e.target.value) })} />
+      </div>
+    </div>
+  );
+
+  if (widget.type === 'network') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Layout direction</label>
+        <select className="select select-sm" value={widget.networkLayout || 'top-down'} onChange={e => onUpdate({ networkLayout: e.target.value })}>
+          <option value="top-down">Top → Down</option>
+          <option value="bottom-up">Bottom → Up</option>
+          <option value="left-right">Left → Right</option>
+          <option value="right-left">Right → Left</option>
+          <option value="radial">Radial</option>
+        </select>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Node style</label>
+        <select className="select select-sm" value={widget.networkNodeStyle || 'circle'} onChange={e => onUpdate({ networkNodeStyle: e.target.value })}>
+          <option value="circle">Circles</option>
+          <option value="card">Cards (rectangle with label)</option>
+        </select>
+      </div>
+      {widget.networkNodeStyle === 'card' ? (
+        <>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Card width — {widget.networkCardWidth ?? 100}px</label>
+            <input type="range" min={50} max={200} value={widget.networkCardWidth ?? 100}
+              onChange={e => onUpdate({ networkCardWidth: parseInt(e.target.value) })} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Card height — {widget.networkCardHeight ?? 36}px</label>
+            <input type="range" min={20} max={80} value={widget.networkCardHeight ?? 36}
+              onChange={e => onUpdate({ networkCardHeight: parseInt(e.target.value) })} />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Node size range — {widget.networkNodeSizeMin ?? 6}px – {widget.networkNodeSizeMax ?? 20}px</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Min</span>
+              <input type="range" min={2} max={20} value={widget.networkNodeSizeMin ?? 6}
+                onChange={e => onUpdate({ networkNodeSizeMin: parseInt(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Max</span>
+              <input type="range" min={8} max={40} value={widget.networkNodeSizeMax ?? 20}
+                onChange={e => onUpdate({ networkNodeSizeMax: parseInt(e.target.value) })} style={{ flex: 1 }} />
+            </div>
+          </div>
+          <label className="checkbox-row" style={{ marginBottom: 8 }}>
+            <input type="checkbox" checked={widget.networkShowLabels !== false} onChange={e => onUpdate({ networkShowLabels: e.target.checked })} />
+            Show node labels
+          </label>
+        </>
+      )}
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Link width — {widget.networkLinkWidth ?? 1.5}px</label>
+        <input type="range" min={0.5} max={6} step={0.5} value={widget.networkLinkWidth ?? 1.5}
+          onChange={e => onUpdate({ networkLinkWidth: parseFloat(e.target.value) })} />
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Link color</label>
+        <input type="color" value={widget.networkLinkColor || '#cccccc'}
+          onChange={e => onUpdate({ networkLinkColor: e.target.value })} />
       </div>
     </div>
   );

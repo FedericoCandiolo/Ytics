@@ -36,6 +36,8 @@ export const CHART_REQUIRED_FIELDS = {
   combo:     ['xField', 'yField', 'y2Field'],
   straighttable: ['valueField'],
   mekko:     ['xField', 'yField', 'colorField'],
+  graph:     ['sourceField', 'targetField'],
+  network:   ['sourceField', 'targetField'],
   text:      [],
   image:     [],
   embed:     [],
@@ -74,6 +76,13 @@ export function canReplaceType(sourceType, targetType, widget) {
 // Map fields from source type to target type, preserving as much as possible
 export function mapFieldsForTypeChange(sourceType, targetType, widget) {
   const updates = { type: targetType };
+
+  // When switching to graph/network types, clear labelField if it was set for a different
+  // purpose (e.g. pie slice label ≠ node display label) to avoid stale long-text fields
+  if (['graph', 'network'].includes(targetType) && !['graph', 'network'].includes(sourceType)) {
+    if (widget.labelField != null) updates.labelField = null;
+  }
+
   // Cross-mapping for category fields
   const categoryMap = ['xField', 'labelField', 'axisField', 'geoField', 'sourceField'];
   const numericMap = ['yField', 'valueField'];
@@ -295,6 +304,30 @@ function defaultWidget(overrides = {}) {
     imageUrl: '',
     imageFit: 'contain',    // 'contain' | 'cover' | 'fill'
     embedUrl: '',
+    // Graph chart
+    graphDirected: false,
+    graphShowLabels: true,
+    graphNodeSizeMin: 6,
+    graphNodeSizeMax: 24,
+    graphEdgeWidth: 2,
+    graphEdgeWidthMode: 'constant',   // 'constant' | 'measure'
+    graphEdgeWidthMin: 1,
+    graphEdgeWidthMax: 8,
+    graphEdgeColorMode: 'source',     // 'source' | 'target' | 'constant' | 'measure'
+    graphEdgeColor: '#999999',
+    graphCharge: -200,
+    graphLinkStrength: 0.4,
+    // Network chart (organigram/tree)
+    networkLayout: 'top-down',        // 'top-down' | 'bottom-up' | 'left-right' | 'right-left' | 'radial'
+    networkNodeStyle: 'circle',       // 'circle' | 'card'
+    networkNodeRadius: 8,
+    networkNodeSizeMin: 6,
+    networkNodeSizeMax: 20,
+    networkShowLabels: true,
+    networkLinkColor: null,
+    networkLinkWidth: 1.5,
+    networkCardWidth: 100,
+    networkCardHeight: 36,
     // Measure pipeline
     measures: [],           // array of pipeline steps
     slides: [],             // for carousel widget
