@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp, canReplaceType } from '../../context/AppContext';
-import { applyFilters, executeMeasurePipeline } from '../../utils/dataUtils';
+import { executeMeasurePipeline } from '../../utils/dataUtils';
+import { resolveWidgetData } from '../../utils/associativeEngine';
 import BarChart from './BarChart';
 import LineChart from './LineChart';
 import ScatterPlot from './ScatterPlot';
@@ -139,7 +140,7 @@ function DimensionControls({ boundHierarchies, boundCyclics, dispatch }) {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage, onTypeReplace }) {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, associativeState } = useApp();
   const [maximized, setMaximized] = useState(false);
   const [dropHover, setDropHover] = useState(false);
   const theme = state.dashboard.theme || {};
@@ -180,7 +181,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
 
   // ── Cross-filter with drill-down interception ───────────────────────────
   const onCrossFilter = useCallback(({ field, value }) => {
-    if (isEditing || !widget.datasetId || !field) return;
+    if (isEditing || !field) return;
 
     // Check if this field is the active level of a bound hierarchy → drill down
     for (const { dim: hd } of boundHierarchies) {
@@ -191,44 +192,9 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
       }
     }
 
-    // Normal cross-filter
-    const strVal = String(value);
-    const filterId = `cross_${widget.datasetId}_${field}`;
-    const existing = state.filters[filterId];
-    if (existing && existing.values?.length === 1 && existing.values[0] === strVal) {
-      dispatch({ type: 'REMOVE_FILTER', payload: filterId });
-    } else {
-      dispatch({
-        type: 'SET_FILTER',
-        payload: {
-          id: filterId, datasetId: widget.datasetId, field,
-          filterType: 'categorical', active: true, values: [strVal],
-        },
-      });
-    }
-  }, [isEditing, widget.datasetId, boundHierarchies, state.filters, dispatch]);
-
-  // ── Data pipeline ───────────────────────────────────────────────────────
-  const dataset = state.datasets.find(d => d.id === widget.datasetId);
-  const raw = dataset?.data ?? [];
-
-  let data = isEditing ? raw : applyFilters(raw, state.filters);
-  if (widget.measures?.length > 0) {
-    try { data = executeMeasurePipeline(data, widget.measures); } catch { /* fallback */ }
-  }
-
-  // Apply drill filters from bound hierarchies
-  const drillFilters = useMemo(() => {
-    const filters = [];
-    for (const { dim: hd } of boundHierarchies) {
-      if (hd.filters?.length) filters.push(...hd.filters);
-    }
-    return filters;
-  }, [boundHierarchies]);
-
-  if (drillFilters.length > 0) {
-    data = data.filter(row => drillFilters.every(f => String(row[f.field]) === f.value));
-  }
+    // Associative cross-filter: toggle selection on field
+    dispatch({ type: 'TOGGLE_SELECTION', payload: { field, value: String(value) } });
+  }, [isEditing, boundHierarchies, dispatch]);
 
   // ── Resolve effective widget (field overrides + color scheme) ───────────
   const effectiveWidget = useMemo(() => {
@@ -253,16 +219,45 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     return ew;
   }, [widget, theme.colorScheme, state.dashboard.dimensionColors, boundHierarchies, boundCyclics]);
 
+  // ── Data pipeline (associative) ─────────────────────────────────────────
+  const resolvedData = useMemo(() => {
+    const resolved = resolveWidgetData(
+      effectiveWidget, state.datasets, state.colStore,
+      isEditing ? null : associativeState
+    );
+    if (widget.measures?.length > 0) {
+      try { return executeMeasurePipeline(resolved, widget.measures); } catch { return resolved; }
+    }
+    return resolved;
+  }, [effectiveWidget, state.datasets, state.colStore, associativeState, isEditing, widget.measures]);
+
+  // Apply drill filters from bound hierarchies
+  const drillFilters = useMemo(() => {
+    const filters = [];
+    for (const { dim: hd } of boundHierarchies) {
+      if (hd.filters?.length) filters.push(...hd.filters);
+    }
+    return filters;
+  }, [boundHierarchies]);
+
+  const data = useMemo(() => {
+    if (drillFilters.length > 0) {
+      return resolvedData.filter(row => drillFilters.every(f => String(row[f.field]) === f.value));
+    }
+    return resolvedData;
+  }, [resolvedData, drillFilters]);
+
   const Chart = CHART_MAP[widget.type] || BarChart;
   const closeMaximize = useCallback(() => setMaximized(false), []);
 
   const crossFilter = isEditing ? undefined : onCrossFilter;
-  const chartBody = dataset
+  const hasData = data.length > 0 || state.datasets.length > 0;
+  const chartBody = hasData
     ? <Chart widget={effectiveWidget} data={data} onCrossFilter={crossFilter} />
     : (
       <div className="empty-state" style={{ height: '100%' }}>
-        <div style={{ fontSize: 28, opacity: .3 }}>🗄</div>
-        <p>No dataset selected</p>
+        <div style={{ fontSize: 28, opacity: .3 }}>⚙</div>
+        <p>Configure fields to display data</p>
       </div>
     );
 

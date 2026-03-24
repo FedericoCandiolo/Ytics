@@ -9,7 +9,7 @@ export async function exportDashboard(datasets, dashboard) {
   }
 
   zip.file('dashboard.json', JSON.stringify({
-    version: '2.0',
+    version: '3.0',
     dashboard,
     datasetMeta: datasets.map(d => ({ id: d.id, name: d.name })),
   }, null, 2));

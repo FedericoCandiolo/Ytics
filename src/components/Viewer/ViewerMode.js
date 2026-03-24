@@ -46,7 +46,7 @@ export default function ViewerMode() {
 
   const currentPage = pages[Math.min(pageIdx, pages.length - 1)] || pages[0] || { widgets: [], layout: [] };
   const layouts = { lg: currentPage.layout };
-  const activeFilters = Object.values(state.filters);
+  const activeSelections = Object.entries(state.selections || {}).filter(([, v]) => v?.length > 0);
   const totalWidgets = pages.reduce((sum, p) => sum + p.widgets.length, 0);
 
   return (
@@ -55,9 +55,9 @@ export default function ViewerMode() {
       <div className="viewer-topbar">
         <FilterPanel />
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
-          {activeFilters.length > 0 && (
+          {activeSelections.length > 0 && (
             <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
-              {activeFilters.length} filter{activeFilters.length > 1 ? 's' : ''} active
+              {activeSelections.length} selection{activeSelections.length > 1 ? 's' : ''} active
             </span>
           )}
           <button

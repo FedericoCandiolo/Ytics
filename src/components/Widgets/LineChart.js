@@ -65,7 +65,8 @@ function detectXType(allX) {
    becomes its own series line (colorField is ignored). */
 function buildSeries(data, widget, yField) {
   const extraMeasures = widget.lineChartMeasures?.filter(m => m.field) || [];
-  const multiMeasure = extraMeasures.length > 0;
+  const seriesMode = widget.seriesMode || (extraMeasures.length > 0 ? 'measures' : 'dimensions');
+  const multiMeasure = seriesMode === 'measures' && extraMeasures.length > 0;
 
   const allXRaw = data.map(d => d[widget.xField]);
   const { isNum, isDate } = detectXType(allXRaw);

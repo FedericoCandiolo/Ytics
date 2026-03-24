@@ -1,7 +1,107 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { getColumnInfo, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
 import { useApp } from '../../context/AppContext';
+
+// ── Searchable field picker for pipeline step editors ────────────────────────
+// Supports single-select (click) and multi-select (checkboxes).
+function PipelineFieldPicker({ cols, tableGroups, value, onChange, placeholder = '— field —',
+                                mode = 'single', style }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  useEffect(() => { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
+
+  const q = search.toLowerCase();
+  const groups = useMemo(() => {
+    if (tableGroups && tableGroups.length > 1) {
+      return tableGroups
+        .map(g => ({ ...g, fields: q ? g.fields.filter(c => c.name.toLowerCase().includes(q)) : g.fields }))
+        .filter(g => g.fields.length > 0);
+    }
+    // Flat list
+    const list = q ? cols.filter(c => c.name.toLowerCase().includes(q)) : cols;
+    if (list.length === 0) return [];
+    return [{ key: '__flat', fields: list }];
+  }, [tableGroups, cols, q]);
+
+  const showGroupLabels = tableGroups && tableGroups.length > 1;
+
+  const handlePick = useCallback((val) => {
+    if (mode === 'single') { onChange(val); setOpen(false); setSearch(''); }
+  }, [mode, onChange]);
+
+  const handleToggle = useCallback((name) => {
+    const arr = Array.isArray(value) ? value : [];
+    onChange(arr.includes(name) ? arr.filter(n => n !== name) : [...arr, name]);
+  }, [value, onChange]);
+
+  const displayText = mode === 'single'
+    ? (value || placeholder)
+    : (Array.isArray(value) && value.length > 0 ? `${value.length} selected` : placeholder);
+
+  const itemStyle = { padding: '3px 8px', cursor: 'pointer', fontSize: 11, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 4 };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <div className="select select-sm"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          color: (mode === 'single' && !value) ? 'var(--text-muted)' : undefined, userSelect: 'none' }}
+        onClick={() => setOpen(!open)}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayText}</span>
+        <span style={{ fontSize: 8, marginLeft: 3, flexShrink: 0 }}>{open ? '\u25B2' : '\u25BC'}</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300,
+          background: 'var(--bg, #fff)', border: '1px solid var(--border)', borderRadius: 6,
+          boxShadow: '0 4px 12px rgba(0,0,0,.1)', marginTop: 1, maxHeight: 220, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '4px 4px 3px', borderBottom: '1px solid var(--border)' }}>
+            <input ref={inputRef} className="input input-sm" style={{ width: '100%', fontSize: 11 }}
+              placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)}
+              onClick={e => e.stopPropagation()} />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: '2px 0' }}>
+            {mode === 'single' && (
+              <div style={{ ...itemStyle, color: 'var(--text-muted)' }} onClick={() => handlePick('')}>{placeholder}</div>
+            )}
+            {groups.length === 0 && (
+              <div style={{ padding: '6px 8px', fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>No match</div>
+            )}
+            {groups.map(g => (
+              <div key={g.key || g.tableId}>
+                {showGroupLabels && g.tableName && (
+                  <div style={{ padding: '3px 8px 1px', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{g.tableName}</div>
+                )}
+                {g.fields.map(c => mode === 'multi' ? (
+                  <label key={c.name} style={{ ...itemStyle, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={Array.isArray(value) && value.includes(c.name)} onChange={() => handleToggle(c.name)} />
+                    {c.name} <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>({c.type})</span>
+                  </label>
+                ) : (
+                  <div key={c.name} style={{ ...itemStyle, background: value === c.name ? '#eff6ff' : undefined }}
+                    onClick={() => handlePick(c.name)}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                    onMouseLeave={e => e.currentTarget.style.background = value === c.name ? '#eff6ff' : ''}>
+                    {c.name} <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>({c.type})</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STEP_TYPES_BASIC = [
   { type: 'groupBy', label: 'Group & Aggregate', icon: '⊞', desc: 'Group rows and compute aggregated values' },
@@ -39,7 +139,7 @@ function aggOutputName(agg) {
   return `${AGG_SHORT[agg.fn] || agg.fn}_${agg.field}`;
 }
 
-export default function MeasurePipeline({ measures, dataset, onUpdate }) {
+export default function MeasurePipeline({ measures, dataset, onUpdate, allColumns, tableGroups }) {
   const { state } = useApp();
   const advancedStats = state.dashboard.advancedStats;
   const STEP_TYPES = advancedStats ? [...STEP_TYPES_BASIC, ...STEP_TYPES_ADVANCED] : STEP_TYPES_BASIC;
@@ -47,7 +147,10 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
   const [showPreview, setShowPreview] = useState(false);
 
   const rawData = useMemo(() => dataset?.data ?? [], [dataset]);
-  const rawCols = useMemo(() => getColumnInfo(rawData), [rawData]);
+  const dataCols = useMemo(() => getColumnInfo(rawData), [rawData]);
+  // Use allColumns (all fields from all tables) for first step's field dropdowns,
+  // falling back to columns detected from the data
+  const rawCols = allColumns?.length > 0 ? allColumns : dataCols;
 
   // Compute columns available at each step (input columns) AND output columns after each step
   const { stepInputCols, stepOutputCols, stepRowCounts } = useMemo(() => {
@@ -190,12 +293,12 @@ export default function MeasurePipeline({ measures, dataset, onUpdate }) {
 
             {isOpen && (
               <div style={{ padding: '8px 8px 4px', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 var(--radius) var(--radius)', background: 'var(--bg)' }}>
-                {step.type === 'groupBy' && <GroupByEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
-                {step.type === 'topN' && <TopNEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
-                {step.type === 'filter' && <FilterEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
-                {step.type === 'compute' && <ComputeEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
-                {step.type === 'formula' && <FormulaEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
-                {step.type === 'sort' && <SortEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} />}
+                {step.type === 'groupBy' && <GroupByEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
+                {step.type === 'topN' && <TopNEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
+                {step.type === 'filter' && <FilterEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
+                {step.type === 'compute' && <ComputeEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
+                {step.type === 'formula' && <FormulaEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
+                {step.type === 'sort' && <SortEditor step={step} cols={cols} onChange={u => updateStep(step.id, u)} tableGroups={idx === 0 ? tableGroups : null} />}
               </div>
             )}
 
@@ -333,7 +436,7 @@ function PipelineModifierTags({ distinct, total, onDistinctChange, onTotalChange
 
 // ── Step editors ────────────────────────────────────────────────────────────────
 
-function GroupByEditor({ step, cols, onChange }) {
+function GroupByEditor({ step, cols, onChange, tableGroups }) {
   const { state } = useApp();
   const advancedStats = state.dashboard.advancedStats;
   const addAgg = () => {
@@ -351,16 +454,9 @@ function GroupByEditor({ step, cols, onChange }) {
     <div>
       <div className="form-group" style={{ marginBottom: 8 }}>
         <label className="form-label" style={{ fontSize: 11 }}>Group by columns</label>
-        <select
-          className="select select-sm"
-          multiple
-          value={step.fields}
-          onChange={e => onChange({ fields: [...e.target.selectedOptions].map(o => o.value) })}
-          style={{ height: Math.max(60, Math.min(120, cols.length * 22)) }}
-        >
-          {cols.map(c => <option key={c.name} value={c.name}>{c.name} ({c.type})</option>)}
-        </select>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Hold Ctrl/Cmd to select multiple</div>
+        <PipelineFieldPicker cols={cols} tableGroups={tableGroups}
+          mode="multi" value={step.fields} placeholder="Select columns..."
+          onChange={fields => onChange({ fields })} />
       </div>
 
       <label className="form-label" style={{ fontSize: 11 }}>Aggregations</label>
@@ -405,10 +501,8 @@ function GroupByEditor({ step, cols, onChange }) {
                 )
               )}
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>of</span>
-              <select className="select select-sm" value={agg.field} onChange={e => updateAgg(i, { field: e.target.value })} style={{ flex: 1 }}>
-                <option value="">— field —</option>
-                {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-              </select>
+              <PipelineFieldPicker cols={cols} tableGroups={tableGroups} style={{ flex: 1 }}
+                value={agg.field} onChange={v => updateAgg(i, { field: v })} />
               {step.aggregations.length > 1 && (
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAgg(i)}>✕</button>
               )}
@@ -439,7 +533,7 @@ function GroupByEditor({ step, cols, onChange }) {
   );
 }
 
-function TopNEditor({ step, cols, onChange }) {
+function TopNEditor({ step, cols, onChange, tableGroups }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div className="form-group">
@@ -448,10 +542,8 @@ function TopNEditor({ step, cols, onChange }) {
       </div>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Order by</label>
-        <select className="select select-sm" value={step.orderBy} onChange={e => onChange({ orderBy: e.target.value })}>
-          <option value="">— column —</option>
-          {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
+        <PipelineFieldPicker cols={cols} tableGroups={tableGroups}
+          value={step.orderBy} placeholder="— column —" onChange={v => onChange({ orderBy: v })} />
       </div>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Direction</label>
@@ -462,30 +554,22 @@ function TopNEditor({ step, cols, onChange }) {
       </div>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Per group (optional)</label>
-        <select
-          className="select select-sm"
-          multiple
-          value={step.groupBy || []}
-          onChange={e => onChange({ groupBy: [...e.target.selectedOptions].map(o => o.value) })}
-          style={{ height: Math.max(44, Math.min(80, cols.length * 22)) }}
-        >
-          {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
+        <PipelineFieldPicker cols={cols} tableGroups={tableGroups}
+          mode="multi" value={step.groupBy || []} placeholder="Select columns..."
+          onChange={groupBy => onChange({ groupBy })} />
         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Leave empty for global top/bottom N</div>
       </div>
     </div>
   );
 }
 
-function FilterEditor({ step, cols, onChange }) {
+function FilterEditor({ step, cols, onChange, tableGroups }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Column</label>
-        <select className="select select-sm" value={step.field} onChange={e => onChange({ field: e.target.value })}>
-          <option value="">— column —</option>
-          {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
+        <PipelineFieldPicker cols={cols} tableGroups={tableGroups}
+          value={step.field} placeholder="— column —" onChange={v => onChange({ field: v })} />
       </div>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Operator</label>
@@ -503,7 +587,7 @@ function FilterEditor({ step, cols, onChange }) {
   );
 }
 
-function ComputeEditor({ step, cols, onChange }) {
+function ComputeEditor({ step, cols, onChange, tableGroups }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div className="form-group">
@@ -521,7 +605,7 @@ function ComputeEditor({ step, cols, onChange }) {
   );
 }
 
-function FormulaEditor({ step, cols, onChange }) {
+function FormulaEditor({ step, cols, onChange, tableGroups }) {
   const numCols = cols.filter(c => c.type === 'number');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -563,15 +647,13 @@ function FormulaEditor({ step, cols, onChange }) {
   );
 }
 
-function SortEditor({ step, cols, onChange }) {
+function SortEditor({ step, cols, onChange, tableGroups }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Sort by</label>
-        <select className="select select-sm" value={step.field} onChange={e => onChange({ field: e.target.value })}>
-          <option value="">— column —</option>
-          {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
+        <PipelineFieldPicker cols={cols} tableGroups={tableGroups}
+          value={step.field} placeholder="— column —" onChange={v => onChange({ field: v })} />
       </div>
       <div className="form-group">
         <label className="form-label" style={{ fontSize: 11 }}>Direction</label>

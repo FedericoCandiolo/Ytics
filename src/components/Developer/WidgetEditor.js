@@ -1,52 +1,223 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
-import { getColumnInfo, COLOR_SCHEMES, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, NUMBER_FORMATS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
+import { COLOR_SCHEMES, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, NUMBER_FORMATS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
 import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray, resolveGradient } from '../../utils/colorUtils';
 import { TYPE_ICONS } from '../Widgets/WidgetContainer';
 import MeasurePipeline from './MeasurePipeline';
+import { getAllFields, getFieldsByTable, resolveWidgetData } from '../../utils/associativeEngine';
+
+// ── Searchable field picker ─────────────────────────────────────────────────
+// Replaces native <select> with a searchable dropdown.
+// mode='single': click to pick one value. mode='multi': checkboxes.
+function SearchableFieldPicker({ tableGroups, customFields, typeFilter, value, onChange,
+                                  mode = 'single', placeholder = '— none —', showType = true,
+                                  extraGroups, style }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+
+  const q = search.toLowerCase();
+
+  const filtered = useMemo(() => {
+    const groups = [];
+    // Custom fields first
+    const customs = (typeFilter && customFields)
+      ? customFields.filter(c => typeFilter.includes(c.type))
+      : (customFields || []);
+    const matchedCustom = q ? customs.filter(c => c.name.toLowerCase().includes(q)) : customs;
+    if (matchedCustom.length > 0) groups.push({ label: 'Custom', key: '__custom', fields: matchedCustom });
+
+    // Extra groups (hierarchies, cyclics)
+    if (extraGroups) {
+      for (const eg of extraGroups) {
+        const matchedEg = q ? eg.items.filter(it => it.label.toLowerCase().includes(q)) : eg.items;
+        if (matchedEg.length > 0) groups.push({ label: eg.label, key: eg.key, items: matchedEg, isExtra: true });
+      }
+    }
+
+    // Table groups
+    const tGroups = typeFilter
+      ? tableGroups.map(g => ({ ...g, fields: g.fields.filter(c => typeFilter.includes(c.type)) })).filter(g => g.fields.length > 0)
+      : tableGroups;
+    for (const g of tGroups) {
+      const matchedFields = q ? g.fields.filter(c => c.name.toLowerCase().includes(q)) : g.fields;
+      if (matchedFields.length > 0) groups.push({ label: g.tableName, key: g.tableId, fields: matchedFields });
+    }
+    return groups;
+  }, [tableGroups, customFields, typeFilter, q, extraGroups]);
+
+  const totalCount = filtered.reduce((n, g) => n + (g.isExtra ? g.items.length : g.fields.length), 0);
+  const singleGroup = filtered.length === 1 && !filtered[0].isExtra && !(customFields?.length > 0);
+
+  const handlePick = useCallback((val) => {
+    if (mode === 'single') {
+      onChange(val || null);
+      setOpen(false);
+      setSearch('');
+    }
+  }, [mode, onChange]);
+
+  const isChecked = useCallback((name) => {
+    if (!Array.isArray(value)) return false;
+    return value.includes(name);
+  }, [value]);
+
+  const handleToggle = useCallback((name) => {
+    if (!Array.isArray(value)) {
+      onChange([name]);
+    } else if (value.includes(name)) {
+      onChange(value.filter(n => n !== name));
+    } else {
+      onChange([...value, name]);
+    }
+  }, [value, onChange]);
+
+  // Display text for single mode
+  const displayText = mode === 'single'
+    ? (value || placeholder)
+    : (Array.isArray(value) && value.length > 0 ? `${value.length} selected` : placeholder);
+
+  const itemStyle = {
+    padding: '4px 10px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+    borderRadius: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <div
+        className="select select-sm"
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none',
+          color: (mode === 'single' && !value) ? 'var(--text-muted)' : undefined }}
+        onClick={() => setOpen(!open)}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{displayText}</span>
+        <span style={{ fontSize: 9, marginLeft: 4, flexShrink: 0 }}>{open ? '\u25B2' : '\u25BC'}</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300,
+          background: 'var(--bg, #fff)', border: '1px solid var(--border)', borderRadius: 6,
+          boxShadow: '0 4px 16px rgba(0,0,0,.12)', marginTop: 2, maxHeight: 300, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '6px 6px 4px', borderBottom: '1px solid var(--border)' }}>
+            <input
+              ref={inputRef}
+              className="input input-sm"
+              style={{ width: '100%' }}
+              placeholder="Search fields..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+            {mode === 'single' && (
+              <div style={{ ...itemStyle, color: 'var(--text-muted)' }} onClick={() => handlePick('')}>
+                {placeholder}
+              </div>
+            )}
+            {totalCount === 0 && (
+              <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>No fields match</div>
+            )}
+            {filtered.map(group => (
+              <div key={group.key}>
+                {!singleGroup && (
+                  <div style={{ padding: '4px 10px 2px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {group.label}
+                  </div>
+                )}
+                {group.isExtra
+                  ? group.items.map(it => (
+                      <div key={it.value} style={{ ...itemStyle, background: value === it.value ? 'var(--accent-bg, #eff6ff)' : undefined }}
+                        onClick={() => handlePick(it.value)}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+                        onMouseLeave={e => e.currentTarget.style.background = value === it.value ? 'var(--accent-bg, #eff6ff)' : ''}>
+                        {it.label}
+                      </div>
+                    ))
+                  : group.fields.map(c => {
+                      if (mode === 'multi') {
+                        return (
+                          <label key={c.name} style={{ ...itemStyle, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={isChecked(c.name)} onChange={() => handleToggle(c.name)} style={{ marginRight: 2 }} />
+                            <span style={{ flex: 1 }}>{c.name}</span>
+                            {showType && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({c.type})</span>}
+                          </label>
+                        );
+                      }
+                      return (
+                        <div key={c.name} style={{ ...itemStyle, background: value === c.name ? 'var(--accent-bg, #eff6ff)' : undefined }}
+                          onClick={() => handlePick(c.name)}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+                          onMouseLeave={e => e.currentTarget.style.background = value === c.name ? 'var(--accent-bg, #eff6ff)' : ''}>
+                          <span style={{ flex: 1 }}>{c.name}</span>
+                          {showType && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>({c.type})</span>}
+                        </div>
+                      );
+                    })
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Field selector ────────────────────────────────────────────────────────────
-function FieldSelect({ label, value, columns, typeFilter, onChange, optional }) {
+function FieldSelect({ label, value, columns, typeFilter, onChange, optional, customFields }) {
   const { state } = useApp();
   const hierarchies = state.dashboard.hierarchicDimensions || [];
   const cyclics = state.dashboard.cyclicDimensions || [];
-  const filtered = typeFilter
-    ? columns.filter(c => typeFilter.includes(c.type))
-    : columns;
-  // Only show dimensions on non-numeric fields (dimensions are categorical)
   const showDims = !typeFilter || !typeFilter.length || typeFilter.includes(null);
+  const tableGroups = useMemo(() => getFieldsByTable(state.colStore), [state.colStore]);
+
+  const extraGroups = useMemo(() => {
+    if (!showDims) return null;
+    const groups = [];
+    if (hierarchies.length > 0) {
+      groups.push({
+        label: 'Hierarchic dimensions', key: '__hier',
+        items: hierarchies.map(h => ({ value: `__hier__${h.id}`, label: `\u2195 ${h.name || h.levels?.join(' \u203A ')}` })),
+      });
+    }
+    if (cyclics.length > 0) {
+      groups.push({
+        label: 'Cyclic dimensions', key: '__cyclic',
+        items: cyclics.map(c => ({ value: `__cyclic__${c.id}`, label: `\u21BB ${c.name || c.fields?.join(' / ')}` })),
+      });
+    }
+    return groups.length > 0 ? groups : null;
+  }, [showDims, hierarchies, cyclics]);
+
   return (
     <div className="form-group editor-section" style={{ marginBottom: 10 }}>
       <label className="form-label">
         {label} {!optional && <span style={{ color: 'var(--danger)' }}>*</span>}
       </label>
-      <select className="select select-sm" value={value || ''} onChange={e => onChange(e.target.value || null)}>
-        <option value="">— none —</option>
-        {showDims && hierarchies.length > 0 && (
-          <optgroup label="Hierarchic dimensions">
-            {hierarchies.map(h => (
-              <option key={h.id} value={`__hier__${h.id}`}>
-                {'\u2195'} {h.name || h.levels?.join(' \u203A ')}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {showDims && cyclics.length > 0 && (
-          <optgroup label="Cyclic dimensions">
-            {cyclics.map(c => (
-              <option key={c.id} value={`__cyclic__${c.id}`}>
-                {'\u21BB'} {c.name || c.fields?.join(' / ')}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {filtered.map(c => (
-          <option key={c.name} value={c.name}>
-            {c.name} ({c.type})
-          </option>
-        ))}
-      </select>
+      <SearchableFieldPicker
+        tableGroups={tableGroups}
+        customFields={customFields}
+        typeFilter={typeFilter}
+        value={value || ''}
+        onChange={onChange}
+        extraGroups={extraGroups}
+        showType
+      />
     </div>
   );
 }
@@ -214,20 +385,18 @@ const COLOR_DIMENSION_FIELD = {
 };
 
 // ── Fields tab content ────────────────────────────────────────────────────────
-function FieldsTab({ widget, dataset, columns, onUpdate }) {
+function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFields }) {
   const { state } = useApp();
   const fieldMap = {
     bar: [
       { key: 'xField',    label: 'Dimension (X axis)',       filter: null },
       { key: 'yField',    label: 'Measure',                  filter: null },
-      { key: '_barChartMeasures', label: 'Additional measures', multi: true },
-      { key: 'groupField',label: 'Color / Series (optional)', filter: null, optional: true },
+      { key: '_barMode' },
     ],
     line: [
       { key: 'xField',    label: 'Dimension (X axis)',       filter: null },
       { key: 'yField',    label: 'Measure',                  filter: null },
-      { key: '_lineChartMeasures', label: 'Additional measures', multi: true },
-      { key: 'colorField',label: 'Color / Series (optional)', filter: null, optional: true },
+      { key: '_lineMode' },
     ],
     scatter: [
       { key: 'xField',    label: 'X Axis (numeric)',         filter: ['number'] },
@@ -383,6 +552,162 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
   return (
     <div>
       {fields.map(f => {
+        // Special: Bar chart mode toggle (multi-dimension vs multi-measure)
+        if (f.key === '_barMode') {
+          const seriesMode = widget.seriesMode || (widget.barChartMeasures?.some(m => m.field) ? 'measures' : 'dimensions');
+          return (
+            <div key={f.key} style={{ marginBottom: 10 }}>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label className="form-label">Series mode</label>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--bg-elevated)', borderRadius: 'var(--radius, 6)', padding: 2 }}>
+                  {[{ v: 'dimensions', l: 'Multi dimension' }, { v: 'measures', l: 'Multi measure' }].map(opt => (
+                    <button key={opt.v} className="btn btn-sm" style={{
+                      flex: 1, fontSize: 11, fontWeight: seriesMode === opt.v ? 600 : 400, padding: '4px 6px',
+                      background: seriesMode === opt.v ? 'var(--bg, #fff)' : 'transparent',
+                      boxShadow: seriesMode === opt.v ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                      border: seriesMode === opt.v ? '1px solid var(--border)' : '1px solid transparent',
+                    }} onClick={() => onUpdate({ seriesMode: opt.v })}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {seriesMode === 'dimensions' ? (
+                <FieldSelect label="Color / Series" value={widget.groupField} columns={cols}
+                  typeFilter={null} optional onChange={v => onUpdate({ groupField: v })} customFields={customFields} />
+              ) : (
+                /* Render bar multi-measure list inline */
+                (() => {
+                  const current = widget.barChartMeasures || [];
+                  return (
+                    <div className="form-group editor-section" style={{ marginBottom: 10 }}>
+                      <label className="form-label">Additional measures</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {current.map((m, i) => (
+                          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              <SearchableFieldPicker style={{ flex: 1 }}
+                                tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                                value={m.field || ''} onChange={v => {
+                                  const next = [...current]; next[i] = { ...next[i], field: v || '' };
+                                  onUpdate({ barChartMeasures: next });
+                                }} />
+                              <AggregationSelect value={m.aggregation || 'sum'} onChange={v => {
+                                const next = [...current]; next[i] = { ...next[i], aggregation: v };
+                                onUpdate({ barChartMeasures: next });
+                              }} advancedStats={state.dashboard.advancedStats} style={{ width: 80 }} />
+                              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                                onUpdate({ barChartMeasures: current.filter((_, j) => j !== i) });
+                              }}>{'\u2715'}</button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <input className="input input-sm" style={{ flex: 1 }}
+                                placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                                value={m.label || ''} onChange={e => {
+                                  const next = [...current]; next[i] = { ...next[i], label: e.target.value };
+                                  onUpdate({ barChartMeasures: next });
+                                }} />
+                              <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
+                                value={m.numberFormat || 'auto'} onChange={e => {
+                                  const next = [...current]; next[i] = { ...next[i], numberFormat: e.target.value };
+                                  onUpdate({ barChartMeasures: next });
+                                }} title="Number format">
+                                {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                                  <option key={k} value={k}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                        <button className="btn btn-ghost btn-sm" onClick={() => {
+                          onUpdate({ barChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
+                        }}>+ Add measure</button>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          );
+        }
+        // Special: Line chart mode toggle (multi-dimension vs multi-measure)
+        if (f.key === '_lineMode') {
+          const seriesMode = widget.seriesMode || (widget.lineChartMeasures?.some(m => m.field) ? 'measures' : 'dimensions');
+          return (
+            <div key={f.key} style={{ marginBottom: 10 }}>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label className="form-label">Series mode</label>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--bg-elevated)', borderRadius: 'var(--radius, 6)', padding: 2 }}>
+                  {[{ v: 'dimensions', l: 'Multi dimension' }, { v: 'measures', l: 'Multi measure' }].map(opt => (
+                    <button key={opt.v} className="btn btn-sm" style={{
+                      flex: 1, fontSize: 11, fontWeight: seriesMode === opt.v ? 600 : 400, padding: '4px 6px',
+                      background: seriesMode === opt.v ? 'var(--bg, #fff)' : 'transparent',
+                      boxShadow: seriesMode === opt.v ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                      border: seriesMode === opt.v ? '1px solid var(--border)' : '1px solid transparent',
+                    }} onClick={() => onUpdate({ seriesMode: opt.v })}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {seriesMode === 'dimensions' ? (
+                <FieldSelect label="Color / Series" value={widget.colorField} columns={cols}
+                  typeFilter={null} optional onChange={v => onUpdate({ colorField: v })} customFields={customFields} />
+              ) : (
+                /* Render line multi-measure list inline */
+                (() => {
+                  const current = widget.lineChartMeasures || [];
+                  return (
+                    <div className="form-group editor-section" style={{ marginBottom: 10 }}>
+                      <label className="form-label">Additional measures</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {current.map((m, i) => (
+                          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              <SearchableFieldPicker style={{ flex: 1 }}
+                                tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                                value={m.field || ''} onChange={v => {
+                                  const next = [...current]; next[i] = { ...next[i], field: v || '' };
+                                  onUpdate({ lineChartMeasures: next });
+                                }} />
+                              <AggregationSelect value={m.aggregation || 'sum'} onChange={v => {
+                                const next = [...current]; next[i] = { ...next[i], aggregation: v };
+                                onUpdate({ lineChartMeasures: next });
+                              }} advancedStats={state.dashboard.advancedStats} style={{ width: 80 }} />
+                              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                                onUpdate({ lineChartMeasures: current.filter((_, j) => j !== i) });
+                              }}>{'\u2715'}</button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <input className="input input-sm" style={{ flex: 1 }}
+                                placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                                value={m.label || ''} onChange={e => {
+                                  const next = [...current]; next[i] = { ...next[i], label: e.target.value };
+                                  onUpdate({ lineChartMeasures: next });
+                                }} />
+                              <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
+                                value={m.numberFormat || 'auto'} onChange={e => {
+                                  const next = [...current]; next[i] = { ...next[i], numberFormat: e.target.value };
+                                  onUpdate({ lineChartMeasures: next });
+                                }} title="Number format">
+                                {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                                  <option key={k} value={k}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                        <button className="btn btn-ghost btn-sm" onClick={() => {
+                          onUpdate({ lineChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
+                        }}>+ Add measure</button>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          );
+        }
         // Special: dynamic dimensions list for Straight Table
         if (f.key === '_straightTableDimensions') {
           const currentDims = widget.straightTableDimensions || [];
@@ -392,15 +717,13 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {currentDims.map((fld, i) => (
                   <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={fld || ''}
-                      onChange={e => {
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields}
+                      value={fld || ''} onChange={v => {
                         const next = [...currentDims];
-                        next[i] = e.target.value;
+                        next[i] = v || '';
                         onUpdate({ straightTableDimensions: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
+                      }} />
                     <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
                       const next = [...currentDims];
                       [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -450,11 +773,10 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                   {REPR_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
                 {isChart && (
-                  <select className="select select-sm" style={{ flex: 1 }} value={widget.primaryChartDimension || ''}
-                    onChange={e => onUpdate({ primaryChartDimension: e.target.value || undefined })}>
-                    <option value="">Breakdown dim…</option>
-                    {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                  </select>
+                  <SearchableFieldPicker style={{ flex: 1 }}
+                    tableGroups={tableGroups} customFields={customFields}
+                    value={widget.primaryChartDimension || ''} placeholder="Breakdown dim…"
+                    onChange={v => onUpdate({ primaryChartDimension: v || undefined })} />
                 )}
               </div>
             </div>
@@ -479,15 +801,13 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                   <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {/* Row 1: field, aggregation, reorder & delete */}
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
-                        onChange={e => {
+                      <SearchableFieldPicker style={{ flex: 1 }}
+                        tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                        value={m.field || ''} onChange={v => {
                           const next = [...current];
-                          next[i] = { ...next[i], field: e.target.value };
+                          next[i] = { ...next[i], field: v || '' };
                           onUpdate({ straightTableMeasures: next });
-                        }}>
-                        <option value="">— none —</option>
-                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                      </select>
+                        }} />
                       <AggregationSelect
                         value={m.aggregation || 'sum'}
                         onChange={v => {
@@ -562,15 +882,14 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
                         {REPR_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                       {(m.representation && m.representation !== 'text') && (
-                        <select className="select select-sm" style={{ flex: 1 }} value={m.dimension || ''}
-                          onChange={e => {
+                        <SearchableFieldPicker style={{ flex: 1 }}
+                          tableGroups={tableGroups} customFields={customFields}
+                          value={m.dimension || ''} placeholder="Breakdown dim…"
+                          onChange={v => {
                             const next = [...current];
-                            next[i] = { ...next[i], dimension: e.target.value || undefined };
+                            next[i] = { ...next[i], dimension: v || undefined };
                             onUpdate({ straightTableMeasures: next });
-                          }}>
-                          <option value="">Breakdown dim…</option>
-                          {allCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                        </select>
+                          }} />
                       )}
                     </div>
                   </div>
@@ -582,177 +901,21 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
             </div>
           );
         }
-        // Special: multi-measure for Line Chart
-        if (f.key === '_lineChartMeasures') {
-          const current = widget.lineChartMeasures || [];
-          const numCols = cols.filter(c => c.type === 'number');
-          return (
-            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
-              <label className="form-label">{f.label}</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {current.map((m, i) => (
-                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], field: e.target.value };
-                          onUpdate({ lineChartMeasures: next });
-                        }}>
-                        <option value="">— none —</option>
-                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                      </select>
-                      <AggregationSelect
-                        value={m.aggregation || 'sum'}
-                        onChange={v => {
-                          const next = [...current];
-                          next[i] = { ...next[i], aggregation: v };
-                          onUpdate({ lineChartMeasures: next });
-                        }}
-                        advancedStats={state.dashboard.advancedStats}
-                        style={{ width: 80 }}
-                      />
-                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
-                        const next = [...current];
-                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                        onUpdate({ lineChartMeasures: next });
-                      }} title="Move up">{'\u2191'}</button>
-                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
-                        const next = [...current];
-                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
-                        onUpdate({ lineChartMeasures: next });
-                      }} title="Move down">{'\u2193'}</button>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
-                        onUpdate({ lineChartMeasures: current.filter((_, j) => j !== i) });
-                      }}>{'\u2715'}</button>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input className="input input-sm" style={{ flex: 1 }}
-                        placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
-                        value={m.label || ''}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], label: e.target.value };
-                          onUpdate({ lineChartMeasures: next });
-                        }}
-                      />
-                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
-                        value={m.numberFormat || 'auto'}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], numberFormat: e.target.value };
-                          onUpdate({ lineChartMeasures: next });
-                        }}
-                        title="Number format for this measure">
-                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
-                          <option key={k} value={k}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ))}
-                <button className="btn btn-ghost btn-sm" onClick={() => {
-                  onUpdate({ lineChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
-                }}>+ Add measure</button>
-              </div>
-            </div>
-          );
-        }
-        // Special: multi-measure for Bar Chart
-        if (f.key === '_barChartMeasures') {
-          const current = widget.barChartMeasures || [];
-          const numCols = cols.filter(c => c.type === 'number');
-          return (
-            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
-              <label className="form-label">{f.label}</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {current.map((m, i) => (
-                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <select className="select select-sm" style={{ flex: 1 }} value={m.field || ''}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], field: e.target.value };
-                          onUpdate({ barChartMeasures: next });
-                        }}>
-                        <option value="">— none —</option>
-                        {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                      </select>
-                      <AggregationSelect
-                        value={m.aggregation || 'sum'}
-                        onChange={v => {
-                          const next = [...current];
-                          next[i] = { ...next[i], aggregation: v };
-                          onUpdate({ barChartMeasures: next });
-                        }}
-                        advancedStats={state.dashboard.advancedStats}
-                        style={{ width: 80 }}
-                      />
-                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
-                        const next = [...current];
-                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                        onUpdate({ barChartMeasures: next });
-                      }} title="Move up">{'\u2191'}</button>
-                      <button className="btn btn-ghost btn-icon btn-sm" disabled={i === current.length - 1} onClick={() => {
-                        const next = [...current];
-                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
-                        onUpdate({ barChartMeasures: next });
-                      }} title="Move down">{'\u2193'}</button>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
-                        onUpdate({ barChartMeasures: current.filter((_, j) => j !== i) });
-                      }}>{'\u2715'}</button>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input className="input input-sm" style={{ flex: 1 }}
-                        placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
-                        value={m.label || ''}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], label: e.target.value };
-                          onUpdate({ barChartMeasures: next });
-                        }}
-                      />
-                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto' }}
-                        value={m.numberFormat || 'auto'}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], numberFormat: e.target.value };
-                          onUpdate({ barChartMeasures: next });
-                        }}
-                        title="Number format for this measure">
-                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
-                          <option key={k} value={k}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ))}
-                <button className="btn btn-ghost btn-sm" onClick={() => {
-                  onUpdate({ barChartMeasures: [...current, { field: '', aggregation: 'sum' }] });
-                }}>+ Add measure</button>
-              </div>
-            </div>
-          );
-        }
         // Special: multi-select for Scatter mini chart fields
         if (f.key === '_scatterOverlayFields') {
           const current = widget.scatterOverlayFields || [];
-          const numCols = cols.filter(c => c.type === 'number');
           return (
             <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
               <label className="form-label">{f.label}</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {current.map((fld, i) => (
                   <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
-                      onChange={e => {
-                        const next = [...current];
-                        next[i] = e.target.value;
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
                         onUpdate({ scatterOverlayFields: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
+                      }} />
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
                       onUpdate({ scatterOverlayFields: current.filter((_, j) => j !== i) });
                     }}>✕</button>
@@ -768,22 +931,18 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
         // Special: multi-select for Geo overlay chart fields
         if (f.key === '_geoOverlayFields') {
           const current = widget.overlayFields || [];
-          const numCols = cols.filter(c => c.type === 'number');
           return (
             <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
               <label className="form-label">{f.label}</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {current.map((fld, i) => (
                   <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
-                      onChange={e => {
-                        const next = [...current];
-                        next[i] = e.target.value;
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
                         onUpdate({ overlayFields: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
+                      }} />
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
                       onUpdate({ overlayFields: current.filter((_, j) => j !== i) });
                     }}>✕</button>
@@ -799,22 +958,18 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
         // Special: multi-select for Point layer chart fields
         if (f.key === '_pointOverlayFields') {
           const current = widget.pointOverlayFields || [];
-          const numCols = cols.filter(c => c.type === 'number');
           return (
             <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
               <label className="form-label">{f.label}</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {current.map((fld, i) => (
                   <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
-                      onChange={e => {
-                        const next = [...current];
-                        next[i] = e.target.value;
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
                         onUpdate({ pointOverlayFields: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {numCols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
+                      }} />
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
                       onUpdate({ pointOverlayFields: current.filter((_, j) => j !== i) });
                     }}>✕</button>
@@ -836,15 +991,12 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {current.map((fld, i) => (
                   <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <select className="select select-sm" style={{ flex: 1 }} value={fld}
-                      onChange={e => {
-                        const next = [...current];
-                        next[i] = e.target.value;
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
                         onUpdate({ sankeyFields: next });
-                      }}>
-                      <option value="">— none —</option>
-                      {cols.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
+                      }} />
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
                       onUpdate({ sankeyFields: current.filter((_, j) => j !== i) });
                     }}>✕</button>
@@ -866,6 +1018,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
             typeFilter={f.filter}
             optional={f.optional}
             onChange={v => handleFieldChange(f.key, v)}
+            customFields={customFields}
           />
         );
       })}
@@ -875,19 +1028,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
         const allNames = cols.map(c => c.name);
         const visible = widget.visibleColumns;
         const allChecked = !Array.isArray(visible) || visible.length === allNames.length;
-        const toggleColumn = (colName) => {
-          let next;
-          if (!Array.isArray(visible)) {
-            next = allNames.filter(n => n !== colName);
-          } else if (visible.includes(colName)) {
-            next = visible.filter(n => n !== colName);
-            if (next.length === 0) return;
-          } else {
-            next = [...visible, colName];
-          }
-          if (next.length === allNames.length) next = null;
-          onUpdate({ visibleColumns: next });
-        };
+        const currentVisible = Array.isArray(visible) ? visible : allNames;
         return (
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label className="form-label">Visible columns</label>
@@ -895,18 +1036,16 @@ function FieldsTab({ widget, dataset, columns, onUpdate }) {
               <input type="checkbox" checked={allChecked} onChange={() => onUpdate({ visibleColumns: allChecked ? [] : null })} />
               All columns
             </label>
-            <div style={{
-              maxHeight: 280, overflowY: 'auto',
-              border: '1px solid var(--border)', borderRadius: 6,
-              padding: '6px 8px',
-            }}>
-              {allNames.map(name => (
-                <label key={name} className="checkbox-row" style={{ marginBottom: 4 }}>
-                  <input type="checkbox" checked={!Array.isArray(visible) || visible.includes(name)} onChange={() => toggleColumn(name)} />
-                  {name}
-                </label>
-              ))}
-            </div>
+            <SearchableFieldPicker
+              tableGroups={tableGroups} customFields={customFields}
+              mode="multi" showType
+              value={currentVisible}
+              onChange={next => {
+                if (!next || next.length === 0) return;
+                if (next.length === allNames.length) { onUpdate({ visibleColumns: null }); return; }
+                onUpdate({ visibleColumns: next });
+              }}
+            />
           </div>
         );
       })()}
@@ -1705,7 +1844,7 @@ function TemplateEditor({ value, onChange, columns, multiline, placeholder }) {
 }
 
 // ── Options tab (type-specific) ───────────────────────────────────────────────
-function OptionsTab({ widget, columns, onUpdate }) {
+function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
   const { state } = useApp();
   if (widget.type === 'bar') return (
     <div>
@@ -2443,7 +2582,7 @@ const SLIDE_FIELD_MAP = {
 function CarouselTab({ widget, dataset, onUpdate }) {
   const { state } = useApp();
   const [selIdx, setSelIdx] = useState(0);
-  const cols = dataset ? getColumnInfo(dataset.data) : [];
+  const cols = useMemo(() => getAllFields(state.colStore), [state.colStore]);
   const slides = widget.slides || [];
 
   const addSlide = () => {
@@ -2561,22 +2700,51 @@ export default function WidgetEditor({ widgetId }) {
   const [tab, setTab] = useState('fields');
 
   const widget = state.dashboard.pages.flatMap(p => p.widgets).find(w => w.id === widgetId);
-  const dataset = state.datasets.find(d => d.id === widget?.datasetId);
 
-  // Compute effective columns (raw or pipeline output)
+  // Unified field list from ALL tables (associative model)
+  const allFields = useMemo(() => getAllFields(state.colStore), [state.colStore]);
+
+  // Build a synthetic dataset for components that still expect dataset.data
+  // Use the primary table's full data (all rows, all columns) so MeasurePipeline
+  // and color pickers can see every field, not just the ones selected in the widget.
+  const syntheticData = useMemo(() => {
+    if (!widget || !state.datasets.length) return [];
+    // First try resolveWidgetData (returns full table rows when fields match)
+    const resolved = resolveWidgetData(widget, state.datasets, state.colStore, null);
+    if (resolved.length > 0) return resolved;
+    // Fallback: use first dataset's raw data
+    return state.datasets[0]?.data ?? [];
+  }, [widget, state.datasets, state.colStore]);
+
+  const dataset = useMemo(() => {
+    if (!syntheticData.length && !state.datasets.length) return null;
+    return { data: syntheticData };
+  }, [syntheticData, state.datasets]);
+
+  // Table-grouped fields for all dropdowns
+  const tableGroups = useMemo(() => getFieldsByTable(state.colStore), [state.colStore]);
+
+  // Derived/custom columns from MeasurePipeline (columns NOT present in any table)
+  const customFields = useMemo(() => {
+    if (!widget?.measures?.length || !syntheticData.length) return [];
+    try {
+      const output = executeMeasurePipeline(syntheticData.slice(0, 100), widget.measures);
+      if (output.length > 0) {
+        const types = detectColumnTypes(output);
+        const allFieldNames = new Set(allFields.map(f => f.name));
+        return Object.keys(types)
+          .filter(name => !allFieldNames.has(name))
+          .map(name => ({ name, type: types[name] }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch { /* fallback */ }
+    return [];
+  }, [allFields, syntheticData, widget?.measures]);
+
+  // Compute effective columns (all fields + custom derived ones)
   const columns = useMemo(() => {
-    if (!dataset?.data?.length) return [];
-    if (widget?.measures?.length > 0) {
-      try {
-        const output = executeMeasurePipeline(dataset.data.slice(0, 100), widget.measures);
-        if (output.length > 0) {
-          const types = detectColumnTypes(output);
-          return Object.keys(types).map(name => ({ name, type: types[name] }));
-        }
-      } catch { /* fallback */ }
-    }
-    return getColumnInfo(dataset.data);
-  }, [dataset, widget?.measures]);
+    return [...customFields, ...allFields];
+  }, [allFields, customFields]);
 
   if (!widget) return null;
 
@@ -2605,15 +2773,6 @@ export default function WidgetEditor({ widgetId }) {
           title="Close editor">✕</button>
       </div>
 
-      {/* Dataset selector always visible */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <div className="form-label" style={{ marginBottom: 4 }}>Dataset</div>
-        <select className="select select-sm" value={widget.datasetId || ''} onChange={e => onUpdate({ datasetId: e.target.value || null })}>
-          <option value="">— select dataset —</option>
-          {state.datasets.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </div>
-
       <div className="editor-tabs">
         {tabs.map(t => (
           <button key={t} className={`editor-tab ${tab === t ? 'editor-tab--active' : ''}`} onClick={() => setTab(t)}>
@@ -2624,11 +2783,11 @@ export default function WidgetEditor({ widgetId }) {
 
       <div className="editor-body">
         {tab === 'slides'     && <CarouselTab widget={widget} dataset={dataset} onUpdate={onUpdate} />}
-        {tab === 'fields'     && <FieldsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} />}
-        {tab === 'measures'   && <MeasurePipeline measures={widget.measures || []} dataset={dataset} onUpdate={m => onUpdate({ measures: m })} />}
+        {tab === 'fields'     && <FieldsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} tableGroups={tableGroups} customFields={customFields} />}
+        {tab === 'measures'   && <MeasurePipeline measures={widget.measures || []} dataset={dataset} onUpdate={m => onUpdate({ measures: m })} allColumns={allFields} tableGroups={tableGroups} />}
         {tab === 'colors'     && <ColorsTab widget={widget} dataset={dataset} columns={columns} onUpdate={onUpdate} dispatch={dispatch} dimensionColors={state.dashboard.dimensionColors || {}} />}
         {tab === 'aesthetics' && <AestheticsTab widget={widget} onUpdate={onUpdate} />}
-        {tab === 'options'    && <OptionsTab widget={widget} columns={columns} onUpdate={onUpdate} />}
+        {tab === 'options'    && <OptionsTab widget={widget} columns={columns} onUpdate={onUpdate} tableGroups={tableGroups} customFields={customFields} />}
       </div>
     </div>
   );

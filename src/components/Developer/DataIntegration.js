@@ -228,6 +228,66 @@ function DataPreview({ dataset }) {
   );
 }
 
+// ── Dataset item with inline rename ──────────────────────────────────────────
+function DatasetItem({ ds, isActive, dispatch }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(ds.name);
+  const inputRef = useRef(null);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setDraft(ds.name);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== ds.name) {
+      dispatch({ type: 'RENAME_DATASET', payload: { id: ds.id, name: trimmed } });
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div
+      className={`di-dataset-item ${isActive ? 'di-dataset-item--active' : ''}`}
+      onClick={() => dispatch({ type: 'SET_ACTIVE_DATASET', payload: ds.id })}
+    >
+      <span style={{ fontSize: 16 }}>🗄</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="input input-sm"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            onClick={e => e.stopPropagation()}
+            style={{ padding: '1px 4px', fontSize: 12, width: '100%' }}
+            autoFocus
+          />
+        ) : (
+          <div className="di-dataset-item-name truncate" onDoubleClick={startEdit}>{ds.name}</div>
+        )}
+        <div className="di-dataset-item-meta">
+          {ds.data.length.toLocaleString()} rows · {ds.columns.length} cols
+        </div>
+      </div>
+      {!editing && (
+        <button
+          className="btn btn-ghost btn-icon"
+          onClick={e => { e.stopPropagation(); dispatch({ type: 'DELETE_DATASET', payload: ds.id }); }}
+          title="Remove dataset"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Main DataIntegration component ────────────────────────────────────────────
 export default function DataIntegration() {
   const { state, dispatch } = useApp();
@@ -259,26 +319,12 @@ export default function DataIntegration() {
             </div>
           )}
           {state.datasets.map(ds => (
-            <div
+            <DatasetItem
               key={ds.id}
-              className={`di-dataset-item ${ds.id === state.activeDatasetId ? 'di-dataset-item--active' : ''}`}
-              onClick={() => dispatch({ type: 'SET_ACTIVE_DATASET', payload: ds.id })}
-            >
-              <span style={{ fontSize: 16 }}>🗄</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="di-dataset-item-name truncate">{ds.name}</div>
-                <div className="di-dataset-item-meta">
-                  {ds.data.length.toLocaleString()} rows · {ds.columns.length} cols
-                </div>
-              </div>
-              <button
-                className="btn btn-ghost btn-icon"
-                onClick={e => { e.stopPropagation(); dispatch({ type: 'DELETE_DATASET', payload: ds.id }); }}
-                title="Remove dataset"
-              >
-                ✕
-              </button>
-            </div>
+              ds={ds}
+              isActive={ds.id === state.activeDatasetId}
+              dispatch={dispatch}
+            />
           ))}
         </div>
       </div>

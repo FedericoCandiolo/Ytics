@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo } from '../../utils/dataUtils';
 
-// ── Relationship detection ────────────────────────────────────────────────────
+// ── Relationship detection (associative: shared field names, no cardinality) ──
 function detectRelationships(datasets) {
   const rels = [];
   if (datasets.length < 2) return rels;
@@ -20,20 +20,10 @@ function detectRelationships(datasets) {
       for (const colA of a.columns) {
         for (const colB of b.columns) {
           if (colA.name === colB.name) {
-            const setA = new Set(datasets[i].data.map(r => r[colA.name]));
-            const setB = new Set(datasets[j].data.map(r => r[colB.name]));
-            const isPkA = setA.size === datasets[i].data.length;
-            const isPkB = setB.size === datasets[j].data.length;
-
-            let cardinality = 'M:N';
-            if (isPkA && isPkB) cardinality = '1:1';
-            else if (isPkA) cardinality = '1:N';
-            else if (isPkB) cardinality = 'N:1';
-
             rels.push({
               from: { datasetId: a.id, column: colA.name },
               to: { datasetId: b.id, column: colB.name },
-              cardinality,
+              fieldName: colA.name,
             });
           }
         }
@@ -154,17 +144,11 @@ function RelationshipLine({ rel, positions, datasets, highlighted }) {
       <path d={path} fill="none" stroke={lineColor} strokeWidth={highlighted ? 2.5 : 1.5} opacity={lineOpacity} />
       <circle cx={fromX} cy={fromY} r={4} fill={lineColor} opacity={lineOpacity} />
       <circle cx={toX} cy={toY} r={4} fill={lineColor} opacity={lineOpacity} />
-      <rect x={labelX - 20} y={labelY - 8} width={40} height={16}
+      <rect x={labelX - 40} y={labelY - 8} width={80} height={16}
         rx={4} fill="var(--card)" stroke={highlighted ? '#3b82f6' : 'var(--border)'} strokeWidth={1} />
       <text x={labelX} y={labelY + 3} textAnchor="middle"
         fontSize={10} fontWeight={600} fill={highlighted ? '#3b82f6' : 'var(--text-muted)'}>
-        {rel.cardinality}
-      </text>
-      <rect x={labelX - 30} y={labelY + 10} width={60} height={14}
-        rx={3} fill="var(--bg)" stroke="none" />
-      <text x={labelX} y={labelY + 20} textAnchor="middle"
-        fontSize={9} fill="var(--text-muted)">
-        {rel.from.column}
+        {rel.fieldName || rel.from.column}
       </text>
     </g>
   );
@@ -402,7 +386,7 @@ export default function DataModel({ positions: extPositions, onPositionsChange }
         </span>
         <span className="dm-legend-sep">|</span>
         <span className="dm-legend-item">
-          {relationships.length} relationship{relationships.length !== 1 ? 's' : ''} detected
+          {relationships.length} shared field{relationships.length !== 1 ? 's' : ''}
         </span>
       </div>
 

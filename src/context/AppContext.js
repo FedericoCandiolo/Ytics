@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo } from 'react';
 import { applyTransforms, detectColumnTypes } from '../utils/dataUtils';
 import { buildTable, cloneDicts } from '../utils/columnStore';
+import { computeAssociativeState } from '../utils/associativeEngine';
 import { v4 as uuid } from 'uuid';
 
 const AppContext = createContext(null);
@@ -155,6 +156,7 @@ const initialState = {
     cyclicDimensions: [],     // [{ id, name, fields: [field,...], activeIndex: 0 }]
   },
   filters: {},
+  selections: {},  // { fieldName: string[] } — associative selections
   editingWidgetId: null,
   colStore: { dicts: {}, tables: {} },
 };
@@ -357,6 +359,14 @@ function reducer(state, action) {
       const tables = { ...state.colStore.tables };
       delete tables[action.payload];
       return { ...state, datasets, activeDatasetId, colStore: { ...state.colStore, tables } };
+    }
+
+    case 'RENAME_DATASET': {
+      const { id: renId, name: renName } = action.payload;
+      const datasets = state.datasets.map(d => d.id === renId ? { ...d, name: renName } : d);
+      const tables = { ...state.colStore.tables };
+      if (tables[renId]) tables[renId] = { ...tables[renId], name: renName };
+      return { ...state, datasets, colStore: { ...state.colStore, tables } };
     }
 
     case 'SET_ACTIVE_DATASET':
@@ -582,7 +592,7 @@ function reducer(state, action) {
     case 'SET_EDITING_WIDGET':
       return { ...state, editingWidgetId: action.payload };
 
-    // ── Filters ───────────────────────────────────────────────
+    // ── Filters (legacy, kept for backward compat) ─────────────
     case 'SET_FILTER':
       return { ...state, filters: { ...state.filters, [action.payload.id]: action.payload } };
 
@@ -594,6 +604,44 @@ function reducer(state, action) {
 
     case 'CLEAR_FILTERS':
       return { ...state, filters: {} };
+
+    // ── Associative selections ────────────────────────────────
+    case 'SET_SELECTION': {
+      const { field, values } = action.payload;
+      if (!values || values.length === 0) {
+        const sel = { ...state.selections };
+        delete sel[field];
+        return { ...state, selections: sel };
+      }
+      return { ...state, selections: { ...state.selections, [field]: values } };
+    }
+
+    case 'TOGGLE_SELECTION': {
+      const { field, value } = action.payload;
+      const strVal = String(value);
+      const current = state.selections[field] || [];
+      const next = current.includes(strVal)
+        ? current.filter(v => v !== strVal)
+        : [...current, strVal];
+      if (next.length === 0) {
+        const sel = { ...state.selections };
+        delete sel[field];
+        return { ...state, selections: sel };
+      }
+      return { ...state, selections: { ...state.selections, [field]: next } };
+    }
+
+    case 'CLEAR_SELECTION': {
+      const sel = { ...state.selections };
+      delete sel[action.payload];
+      return { ...state, selections: sel };
+    }
+
+    case 'CLEAR_ALL_SELECTIONS':
+      return { ...state, selections: {} };
+
+    case 'RESTORE_SELECTIONS':
+      return { ...state, selections: action.payload };
 
     // ── Dimension colors ───────────────────────────────────────
     case 'SET_MODEL_POSITIONS':
@@ -683,6 +731,17 @@ function reducer(state, action) {
         tables[d.id] = updated.table;
         return updated;
       });
+      // Convert old filters to selections if present
+      let selections = {};
+      if (action.payload.selections) {
+        selections = action.payload.selections;
+      } else if (action.payload.filters) {
+        for (const f of Object.values(action.payload.filters)) {
+          if (f.filterType === 'categorical' && f.values?.length > 0) {
+            selections[f.field] = f.values;
+          }
+        }
+      }
       return {
         ...initialState,
         mode: 'viewer',
@@ -690,6 +749,7 @@ function reducer(state, action) {
         activeDatasetId: processed[0]?.id ?? null,
         dashboard: { ...dashboard, pages, currentPageId, theme },
         colStore: { dicts, tables },
+        selections,
       };
     }
 
@@ -723,12 +783,13 @@ const UNDOABLE_ACTIONS = new Set([
   'MOVE_WIDGET_TO_PAGE', 'UPDATE_LAYOUT',
   'ADD_PAGE', 'REMOVE_PAGE', 'RENAME_PAGE',
   'SET_THEME', 'SET_DASHBOARD_TITLE',
-  'LOAD_DATASET', 'DELETE_DATASET',
+  'LOAD_DATASET', 'DELETE_DATASET', 'RENAME_DATASET',
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
   'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR',
 ]);
 
 const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);
+const SELECTION_ACTIONS = new Set(['SET_SELECTION', 'TOGGLE_SELECTION', 'CLEAR_SELECTION', 'CLEAR_ALL_SELECTIONS']);
 
 const STORAGE_KEY = 'ytics_dashboard';
 
@@ -739,6 +800,7 @@ export function saveDashboard(state) {
         id: d.id, name: d.name, data: d.originalData, transforms: d.transforms,
       })),
       dashboard: state.dashboard,
+      selections: state.selections,
     };
     const json = JSON.stringify(payload);
     localStorage.setItem(STORAGE_KEY, json);
@@ -762,7 +824,7 @@ export function AppProvider({ children }) {
     const saved = loadSaved();
     if (!saved) return initialState;
     try {
-      const { datasets, dashboard } = saved;
+      const { datasets, dashboard, selections } = saved;
       const dicts = {};
       const tables = {};
       const processed = datasets.map(d => {
@@ -778,6 +840,7 @@ export function AppProvider({ children }) {
         activeDatasetId: processed[0]?.id ?? null,
         dashboard: { ...initialState.dashboard, ...dashboard, pages, currentPageId },
         colStore: { dicts, tables },
+        selections: selections || {},
       };
     } catch { return initialState; }
   });
@@ -802,17 +865,17 @@ export function AppProvider({ children }) {
       rawDispatch({ type: 'RESTORE_STATE', payload: redoStackRef.current.pop() });
       return;
     }
-    // ── Viewer filter undo/redo ──
-    if (action.type === 'FILTER_UNDO') {
+    // ── Viewer filter/selection undo/redo ──
+    if (action.type === 'FILTER_UNDO' || action.type === 'SELECTION_UNDO') {
       if (filterUndoRef.current.length === 0) return;
-      filterRedoRef.current = [...filterRedoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
-      rawDispatch({ type: 'RESTORE_FILTERS', payload: filterUndoRef.current.pop() });
+      filterRedoRef.current = [...filterRedoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.selections];
+      rawDispatch({ type: 'RESTORE_SELECTIONS', payload: filterUndoRef.current.pop() });
       return;
     }
-    if (action.type === 'FILTER_REDO') {
+    if (action.type === 'FILTER_REDO' || action.type === 'SELECTION_REDO') {
       if (filterRedoRef.current.length === 0) return;
-      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
-      rawDispatch({ type: 'RESTORE_FILTERS', payload: filterRedoRef.current.pop() });
+      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.selections];
+      rawDispatch({ type: 'RESTORE_SELECTIONS', payload: filterRedoRef.current.pop() });
       return;
     }
     // ── Track undoable actions ──
@@ -820,8 +883,8 @@ export function AppProvider({ children }) {
       undoStackRef.current = [...undoStackRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current];
       redoStackRef.current = [];
     }
-    if (FILTER_ACTIONS.has(action.type)) {
-      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.filters];
+    if (FILTER_ACTIONS.has(action.type) || SELECTION_ACTIONS.has(action.type)) {
+      filterUndoRef.current = [...filterUndoRef.current.slice(-(UNDO_LIMIT - 1)), stateRef.current.selections];
       filterRedoRef.current = [];
     }
     rawDispatch(action);
@@ -842,14 +905,20 @@ export function AppProvider({ children }) {
       e.preventDefault();
 
       const inViewer = stateRef.current.mode === 'viewer';
-      if (isUndo) dispatch({ type: inViewer ? 'FILTER_UNDO' : 'UNDO' });
-      else        dispatch({ type: inViewer ? 'FILTER_REDO' : 'REDO' });
+      if (isUndo) dispatch({ type: inViewer ? 'SELECTION_UNDO' : 'UNDO' });
+      else        dispatch({ type: inViewer ? 'SELECTION_REDO' : 'REDO' });
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [dispatch]);
 
-  return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>;
+  // Compute associative state (memoized)
+  const associativeState = useMemo(
+    () => computeAssociativeState(state.colStore, state.selections),
+    [state.colStore, state.selections]
+  );
+
+  return <AppContext.Provider value={{ state, dispatch, associativeState }}>{children}</AppContext.Provider>;
 }
 
 export function useApp() {

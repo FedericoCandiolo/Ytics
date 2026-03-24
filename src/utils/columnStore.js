@@ -115,7 +115,7 @@ export function materializeRows(table, dicts, colNames) {
       decoded[c] = col.buf;
     } else {
       const dict = dicts[col.dictKey] || [];
-      decoded[c] = col.buf.map(i => dict[i]);
+      decoded[c] = Array.from(col.buf, i => dict[i]);
     }
   }
   const valid = cols.filter(c => decoded[c]);

@@ -20,7 +20,8 @@ export default function BarChart({ widget, data, onCrossFilter }) {
 
     const extraMeasures = widget.barChartMeasures?.filter(m => m.field) || [];
     const hasGroup = !!widget.groupField;
-    const hasMultiMeasure = extraMeasures.length > 0 && !hasGroup;
+    const seriesMode = widget.seriesMode || (extraMeasures.length > 0 ? 'measures' : 'dimensions');
+    const hasMultiMeasure = seriesMode === 'measures' && extraMeasures.length > 0;
     const isH = widget.orientation === 'horizontal';
     const barMode = widget.barMode || 'stacked';
     const opacity = widget.opacity ?? 1;
