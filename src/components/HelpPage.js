@@ -8,6 +8,8 @@ const TOC = [
   { id: 'data-transforms', label: 'Data Transforms' },
   { id: 'building', label: 'Building a Dashboard' },
   { id: 'chart-types', label: 'Chart Types Reference' },
+  { id: 'graph-chart', label: 'Graph Chart' },
+  { id: 'network-chart', label: 'Network Chart' },
   { id: 'configuring', label: 'Configuring Widgets' },
   { id: 'number-format', label: 'Number Formatting' },
   { id: 'multi-measure', label: 'Multi-Measure Mode' },
@@ -316,6 +318,11 @@ export default function HelpPage({ onClose }) {
                 fields="Label (category), Value (numeric)."
                 options="Sort by, opacity."
                 gradient="Stage value" />
+              <ChartCard icon="🕸️" name="Graph Chart"
+                desc="Force-directed node-link diagram. Supports directed (arrows) and undirected edges, node sizing, grouping, and multiple edge color modes."
+                fields="Source node, Target node. Optional: Node label, Node group (color), Node size (numeric), Edge measure (numeric)."
+                options="Directed/undirected, show labels, node size range, edge width (constant or by measure), edge color (source/target/constant/gradient), repulsion, link strength."
+                gradient="Edge measure value" />
               <ChartCard icon="🌍" name="Geo Map"
                 desc="Choropleth world map colored by a numeric value per country."
                 fields="Geography (country name), Value (numeric)."
@@ -346,6 +353,11 @@ export default function HelpPage({ onClose }) {
                 fields="X (category), Y (numeric), Color (series)."
                 options="Aggregation, legend, opacity."
                 gradient="Segment value" />
+              <ChartCard icon="🌳" name="Network Chart"
+                desc="Hierarchical tree layout for organigrams and parent-child structures. Supports multiple layout directions and node styles."
+                fields="Parent node, Child node. Optional: Node label, Node group (color), Node size (numeric)."
+                options="Layout (top-down, bottom-up, left-right, right-left, radial), node style (circles or cards), card size, node size range, show labels, link width and color."
+                gradient="Node group" />
               <ChartCard icon="🥧" name="Pie / Donut"
                 desc="Proportional slices of a whole."
                 fields="Label (category), Value (numeric)."
@@ -407,6 +419,129 @@ export default function HelpPage({ onClose }) {
                 options="Aggregation, opacity."
                 gradient="Word value" />
             </div>
+          </Section>
+
+          {/* ── Graph Chart ─────────────────────────────────────────────── */}
+          <Section id="graph-chart" title="Graph Chart">
+            <p>
+              A force-directed node-link diagram for visualizing relationships and connections.
+              Nodes are positioned automatically using a physics simulation — drag any node to reposition it.
+            </p>
+            <Sub title="Fields">
+              <Table
+                headers={['Field', 'Required', 'Description']}
+                rows={[
+                  ['Source node', 'Yes', 'The originating entity of each connection (e.g. person, city, account).'],
+                  ['Target node', 'Yes', 'The destination entity of each connection.'],
+                  ['Node label', 'No', 'A separate field to display as the label on each node instead of the source/target ID. Useful when the ID is numeric and you want a name shown.'],
+                  ['Node group', 'No', 'Categorical field that colors nodes by group (e.g. department, type). Uses the widget color palette.'],
+                  ['Node size', 'No', 'Numeric field that scales node radius proportionally (via the selected aggregation).'],
+                  ['Edge measure', 'No', 'Numeric field that represents the weight or value of each connection. Used for edge width and/or color when enabled.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Directed vs. Undirected">
+              <p>
+                Toggle <strong>Directed graph (arrows)</strong> in the Options tab.
+                When enabled, edges are drawn as arrows from source to target.
+                When disabled, edges are simple lines and duplicate source/target pairs are merged.
+              </p>
+            </Sub>
+            <Sub title="Edge Styling">
+              <Table
+                headers={['Option', 'Description']}
+                rows={[
+                  ['Edge width mode', 'Constant (same width for all edges) or By edge measure (width proportional to the edge value).'],
+                  ['Edge color mode', 'Same as source node — inherits the source node\'s group color. Same as target node — inherits target\'s color. Constant color — pick a fixed color. By edge measure — sequential gradient based on edge value.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Physics Controls">
+              <Table
+                headers={['Slider', 'Effect']}
+                rows={[
+                  ['Repulsion strength', 'How strongly nodes push each other apart. More negative = more spread. Range: -600 to -20.'],
+                  ['Link strength', 'How tightly connected nodes are pulled together. Range: 0 (loose) to 1 (tight).'],
+                ]}
+              />
+              <Tip>Drag any node to manually reposition it. Release to let the simulation settle.</Tip>
+            </Sub>
+            <Sub title="Interaction">
+              <ul className="help-ul">
+                <li><strong>Hover</strong> a node — tooltip shows label, group, size, and connection count.</li>
+                <li><strong>Hover</strong> an edge — tooltip shows source, target, and edge value.</li>
+                <li><strong>Click</strong> a node — triggers cross-filter on the source field.</li>
+                <li><strong>Drag</strong> a node — repositions it within the simulation.</li>
+              </ul>
+            </Sub>
+          </Section>
+
+          {/* ── Network Chart ────────────────────────────────────────────── */}
+          <Section id="network-chart" title="Network Chart">
+            <p>
+              A hierarchical tree layout for organigrams, reporting structures, and any parent-child data.
+              Each row in your data represents one parent-child link. The chart automatically detects root nodes
+              (entities that are parents but never appear as children) and builds the tree structure.
+            </p>
+            <Sub title="Fields">
+              <Table
+                headers={['Field', 'Required', 'Description']}
+                rows={[
+                  ['Parent node', 'Yes', 'The parent entity (e.g. manager, parent category). Rows where this is empty or null are treated as roots.'],
+                  ['Child node', 'Yes', 'The child entity (e.g. employee, sub-category).'],
+                  ['Node label', 'No', 'A separate field to display as the label instead of the child node ID.'],
+                  ['Node group', 'No', 'Categorical field for coloring nodes by group (e.g. department, region).'],
+                  ['Node size', 'No', 'Numeric field that scales node radius proportionally.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Layout Direction">
+              <Table
+                headers={['Layout', 'Description']}
+                rows={[
+                  ['Top → Down', 'Root at the top, children below — classic organigram.'],
+                  ['Bottom → Up', 'Root at the bottom, children above.'],
+                  ['Left → Right', 'Root on the left, children to the right — good for wide hierarchies.'],
+                  ['Right → Left', 'Root on the right, children to the left.'],
+                  ['Radial', 'Root at the center, children radiate outward in a circular layout.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Node Style">
+              <p>Choose between two visual styles in the Options tab:</p>
+              <Table
+                headers={['Style', 'Description']}
+                rows={[
+                  ['Circles', 'Round nodes with labels positioned outside. Node size can vary by measure. Labels shown above (vertical) or beside (horizontal) nodes.'],
+                  ['Cards', 'Rounded rectangles with the label text inside. Adjustable card width and height. Ideal for organigrams where readability matters.'],
+                ]}
+              />
+            </Sub>
+            <Sub title="Data Format">
+              <p>Each row should represent one relationship. Example for an employee hierarchy:</p>
+              <Table
+                headers={['ReportsTo', 'EmployeeID', 'FullName', 'Title']}
+                rows={[
+                  ['', '1', 'Andrew Fuller', 'Vice President'],
+                  ['1', '2', 'Nancy Davolio', 'Sales Representative'],
+                  ['1', '3', 'Janet Leverling', 'Sales Representative'],
+                  ['1', '4', 'Margaret Peacock', 'Sales Representative'],
+                  ['2', '5', 'Steven Buchanan', 'Sales Manager'],
+                ]}
+              />
+              <p>
+                Set <strong>Parent node</strong> = ReportsTo, <strong>Child node</strong> = EmployeeID,
+                and <strong>Node label</strong> = FullName. Use Title as <strong>Node group</strong> for color coding.
+              </p>
+              <Tip>If your data has multiple root nodes (e.g. multiple top-level managers), the chart creates branches for each automatically.</Tip>
+            </Sub>
+            <Sub title="Interaction">
+              <ul className="help-ul">
+                <li><strong>Hover</strong> a node — tooltip shows label, group, size, depth, and number of children.</li>
+                <li><strong>Hover</strong> a link — tooltip shows parent-child connection and value.</li>
+                <li><strong>Click</strong> a node — triggers cross-filter on the child field.</li>
+              </ul>
+            </Sub>
           </Section>
 
           {/* ── 7. Configuring Widgets ──────────────────────────────────── */}
