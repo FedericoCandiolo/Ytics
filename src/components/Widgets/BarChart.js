@@ -620,7 +620,7 @@ function BarTip({ d, widget, color, total }) {
       </div>
       <div className="chart-tooltip-row"><span className="tt-label">{widget.yField}</span><span className="tt-value">{formatValue(d.value, widget.numberFormat)}</span></div>
       <div className="chart-tooltip-row"><span className="tt-label">Share</span><span className="tt-value">{pct}%</span></div>
-      <div className="chart-tooltip-row"><span className="tt-label">Records</span><span className="tt-value">{d.count.toLocaleString()}</span></div>
+      {d.count != null && <div className="chart-tooltip-row"><span className="tt-label">Records</span><span className="tt-value">{d.count.toLocaleString()}</span></div>}
     </>
   );
 }

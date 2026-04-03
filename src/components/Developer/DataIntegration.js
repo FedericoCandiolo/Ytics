@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getColumnInfo, readCSVFile } from '../../utils/dataUtils';
+import { useBreakpoint } from '../../hooks/useMediaQuery';
 import DataModel from './DataModel';
 
 // ── File Uploader ─────────────────────────────────────────────────────────────
-function FileUploader({ onLoad }) {
+function FileUploader({ onLoad, compact }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
 
@@ -34,10 +35,13 @@ function FileUploader({ onLoad }) {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
       onClick={() => inputRef.current?.click()}
+      style={compact ? { padding: '14px 12px' } : undefined}
     >
-      <div className="drop-zone-icon">📂</div>
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop CSV here or click to browse</div>
-      <div className="text-sm text-muted">Supported: .csv files</div>
+      {!compact && <div className="drop-zone-icon">📂</div>}
+      <div style={{ fontWeight: 600, marginBottom: compact ? 0 : 4, fontSize: compact ? 12 : undefined }}>
+        {compact ? '📂 Drop CSV or click to browse' : 'Drop CSV here or click to browse'}
+      </div>
+      {!compact && <div className="text-sm text-muted">Supported: .csv files</div>}
       <input
         ref={inputRef} type="file" accept=".csv" hidden
         onChange={e => parseFile(e.target.files[0])}
@@ -288,11 +292,104 @@ function DatasetItem({ ds, isActive, dispatch }) {
   );
 }
 
+// ── Transforms content (shared between desktop right panel & tablet tab) ─────
+function TransformsContent({ activeDataset, dispatch, showForm, setShowForm }) {
+  return (
+    <>
+      <div className="di-right-header">
+        <span style={{ fontWeight: 600, fontSize: 13 }}>Transforms</span>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!activeDataset}
+          onClick={() => setShowForm(true)}
+        >
+          + Add
+        </button>
+      </div>
+
+      <div className="di-transforms">
+        {!activeDataset && (
+          <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
+            Select a dataset to add transforms
+          </div>
+        )}
+        {activeDataset?.transforms.length === 0 && activeDataset && (
+          <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
+            No transforms yet.<br />Transforms are applied in order.
+          </div>
+        )}
+        {activeDataset?.transforms.map((t, idx) => (
+          <div key={t.id} className="di-transform-item">
+            <div className="di-transform-header">
+              <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 16 }}>{idx + 1}</span>
+              <span className="di-transform-type">{t.type}</span>
+              <span className="di-transform-desc truncate">{describeTransform(t)}</span>
+              <button
+                className="btn btn-ghost btn-icon"
+                style={{ fontSize: 11, padding: '2px 4px' }}
+                onClick={() => dispatch({ type: 'REMOVE_TRANSFORM', payload: { datasetId: activeDataset.id, transformId: t.id } })}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && activeDataset && (
+        <TransformForm
+          columns={getColumnInfo(activeDataset.data)}
+          onAdd={(t) => dispatch({ type: 'ADD_TRANSFORM', payload: { datasetId: activeDataset.id, transform: t } })}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Center area (shared between desktop & tablet) ────────────────────────────
+function CenterPanel({ view, setView, activeDataset, modelPositions, setModelPositions }) {
+  return (
+    <div className="di-center">
+      <div className="di-view-tabs">
+        <button
+          className={`di-view-tab ${view === 'data' ? 'di-view-tab--active' : ''}`}
+          onClick={() => setView('data')}
+        >
+          📋 Data Preview
+        </button>
+        <button
+          className={`di-view-tab ${view === 'model' ? 'di-view-tab--active' : ''}`}
+          onClick={() => setView('model')}
+        >
+          🔗 Data Model
+        </button>
+      </div>
+      {view === 'data' ? (
+        <div className="di-preview">
+          {activeDataset
+            ? <DataPreview dataset={activeDataset} />
+            : <div className="empty-state" style={{ height: '100%' }}>
+                <div className="empty-state-icon">📊</div>
+                <h3>No dataset selected</h3>
+                <p>Load a CSV file to preview and transform your data.</p>
+              </div>
+          }
+        </div>
+      ) : (
+        <DataModel positions={modelPositions} onPositionsChange={setModelPositions} />
+      )}
+    </div>
+  );
+}
+
 // ── Main DataIntegration component ────────────────────────────────────────────
 export default function DataIntegration() {
   const { state, dispatch } = useApp();
+  const { isTablet } = useBreakpoint();
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState('data'); // 'data' | 'model'
+  const [leftTab, setLeftTab] = useState('datasets'); // tablet: 'datasets' | 'transforms'
   const modelPositions = state.dashboard.modelPositions;
   const setModelPositions = useCallback((pos) => {
     dispatch({ type: 'SET_MODEL_POSITIONS', payload: typeof pos === 'function' ? pos(state.dashboard.modelPositions) : pos });
@@ -304,6 +401,71 @@ export default function DataIntegration() {
     dispatch({ type: 'LOAD_DATASET', payload: { name, data } });
   }, [dispatch]);
 
+  // ── Tablet: merge left + right into a single tabbed panel ──
+  if (isTablet) {
+    const txCount = activeDataset?.transforms.length || 0;
+    return (
+      <div className="di-layout">
+        <div className="di-left di-left--tablet">
+          {/* Sub-tabs: Datasets | Transforms */}
+          <div className="di-panel-tabs">
+            <button
+              className={`di-panel-tab ${leftTab === 'datasets' ? 'di-panel-tab--active' : ''}`}
+              onClick={() => setLeftTab('datasets')}
+            >
+              🗄 Datasets
+              {state.datasets.length > 0 && (
+                <span className="badge badge-blue" style={{ marginLeft: 4 }}>{state.datasets.length}</span>
+              )}
+            </button>
+            <button
+              className={`di-panel-tab ${leftTab === 'transforms' ? 'di-panel-tab--active' : ''}`}
+              onClick={() => setLeftTab('transforms')}
+            >
+              ⚙ Transforms
+              {txCount > 0 && (
+                <span className="badge badge-purple" style={{ marginLeft: 4 }}>{txCount}</span>
+              )}
+            </button>
+          </div>
+
+          {leftTab === 'datasets' ? (
+            <>
+              <div style={{ padding: '8px 10px' }}>
+                <FileUploader onLoad={handleLoad} compact />
+              </div>
+              <div className="di-datasets">
+                {state.datasets.length === 0 && (
+                  <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
+                    Load a CSV to get started
+                  </div>
+                )}
+                {state.datasets.map(ds => (
+                  <DatasetItem key={ds.id} ds={ds} isActive={ds.id === state.activeDatasetId} dispatch={dispatch} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <TransformsContent
+              activeDataset={activeDataset}
+              dispatch={dispatch}
+              showForm={showForm}
+              setShowForm={setShowForm}
+            />
+          )}
+        </div>
+
+        <CenterPanel
+          view={view} setView={setView}
+          activeDataset={activeDataset}
+          modelPositions={modelPositions}
+          setModelPositions={setModelPositions}
+        />
+      </div>
+    );
+  }
+
+  // ── Desktop: original three-panel layout ──
   return (
     <div className="di-layout">
       {/* ── Left: dataset list ── */}
@@ -329,87 +491,21 @@ export default function DataIntegration() {
         </div>
       </div>
 
-      {/* ── Center: data preview or model ── */}
-      <div className="di-center">
-        <div className="di-view-tabs">
-          <button
-            className={`di-view-tab ${view === 'data' ? 'di-view-tab--active' : ''}`}
-            onClick={() => setView('data')}
-          >
-            📋 Data Preview
-          </button>
-          <button
-            className={`di-view-tab ${view === 'model' ? 'di-view-tab--active' : ''}`}
-            onClick={() => setView('model')}
-          >
-            🔗 Data Model
-          </button>
-        </div>
-        {view === 'data' ? (
-          <div className="di-preview">
-            {activeDataset
-              ? <DataPreview dataset={activeDataset} />
-              : <div className="empty-state" style={{ height: '100%' }}>
-                  <div className="empty-state-icon">📊</div>
-                  <h3>No dataset selected</h3>
-                  <p>Load a CSV file from the left panel to preview and transform your data.</p>
-                </div>
-            }
-          </div>
-        ) : (
-          <DataModel positions={modelPositions} onPositionsChange={setModelPositions} />
-        )}
-      </div>
+      <CenterPanel
+        view={view} setView={setView}
+        activeDataset={activeDataset}
+        modelPositions={modelPositions}
+        setModelPositions={setModelPositions}
+      />
 
       {/* ── Right: transforms ── */}
       <div className="di-right">
-        <div className="di-right-header">
-          <span style={{ fontWeight: 600, fontSize: 13 }}>Transforms</span>
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={!activeDataset}
-            onClick={() => setShowForm(true)}
-          >
-            + Add
-          </button>
-        </div>
-
-        <div className="di-transforms">
-          {!activeDataset && (
-            <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
-              Select a dataset to add transforms
-            </div>
-          )}
-          {activeDataset?.transforms.length === 0 && activeDataset && (
-            <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
-              No transforms yet.<br />Transforms are applied in order.
-            </div>
-          )}
-          {activeDataset?.transforms.map((t, idx) => (
-            <div key={t.id} className="di-transform-item">
-              <div className="di-transform-header">
-                <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 16 }}>{idx + 1}</span>
-                <span className="di-transform-type">{t.type}</span>
-                <span className="di-transform-desc truncate">{describeTransform(t)}</span>
-                <button
-                  className="btn btn-ghost btn-icon"
-                  style={{ fontSize: 11, padding: '2px 4px' }}
-                  onClick={() => dispatch({ type: 'REMOVE_TRANSFORM', payload: { datasetId: activeDataset.id, transformId: t.id } })}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {showForm && activeDataset && (
-          <TransformForm
-            columns={getColumnInfo(activeDataset.data)}
-            onAdd={(t) => dispatch({ type: 'ADD_TRANSFORM', payload: { datasetId: activeDataset.id, transform: t } })}
-            onClose={() => setShowForm(false)}
-          />
-        )}
+        <TransformsContent
+          activeDataset={activeDataset}
+          dispatch={dispatch}
+          showForm={showForm}
+          setShowForm={setShowForm}
+        />
       </div>
     </div>
   );

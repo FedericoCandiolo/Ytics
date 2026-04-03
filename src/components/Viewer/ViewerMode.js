@@ -1,13 +1,14 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import FilterPanel from './FilterPanel';
 import { exportDashboard } from '../../utils/exportUtils';
+import { computeResponsiveLayouts, BREAKPOINTS, COLS } from '../../utils/layoutUtils';
 
 const ResponsiveGrid = WidthProvider(Responsive);
 
-export default function ViewerMode() {
+export default function ViewerMode({ isMobile }) {
   const { state, dispatch } = useApp();
   const { dashboard } = state;
   const theme = dashboard.theme || {};
@@ -45,7 +46,10 @@ export default function ViewerMode() {
   }, []);
 
   const currentPage = pages[Math.min(pageIdx, pages.length - 1)] || pages[0] || { widgets: [], layout: [] };
-  const layouts = { lg: currentPage.layout };
+  const layouts = useMemo(
+    () => computeResponsiveLayouts(currentPage.layout),
+    [currentPage.layout]
+  );
   const activeSelections = Object.entries(state.selections || {}).filter(([, v]) => v?.length > 0);
   const totalWidgets = pages.reduce((sum, p) => sum + p.widgets.length, 0);
 
@@ -55,20 +59,22 @@ export default function ViewerMode() {
       <div className="viewer-topbar">
         <FilterPanel />
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
-          {activeSelections.length > 0 && (
+          {activeSelections.length > 0 && !isMobile && (
             <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
               {activeSelections.length} selection{activeSelections.length > 1 ? 's' : ''} active
             </span>
           )}
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => dispatch({ type: 'SET_MODE', payload: 'developer' })}
-          >✏️ Edit</button>
+          {!isMobile && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => dispatch({ type: 'SET_MODE', payload: 'developer' })}
+            >✏️ Edit</button>
+          )}
           <button
             className="btn btn-primary btn-sm"
             disabled={totalWidgets === 0}
             onClick={() => exportDashboard(state.datasets, dashboard)}
-          >⬇ Export</button>
+          >{isMobile ? '⬇' : '⬇ Export'}</button>
         </div>
       </div>
 
@@ -94,12 +100,12 @@ export default function ViewerMode() {
             key={currentPage.id}
             className="layout"
             layouts={layouts}
-            breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-            cols={{ lg: 24, md: 16, sm: 8 }}
+            breakpoints={BREAKPOINTS}
+            cols={COLS}
             rowHeight={rowHeight}
             isDraggable={false}
             isResizable={false}
-            margin={[margin, margin]}
+            margin={isMobile ? [4, 4] : [margin, margin]}
           >
             {currentPage.widgets.map(widget => (
               <div key={widget.id}>

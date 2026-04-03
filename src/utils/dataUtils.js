@@ -651,7 +651,8 @@ export function applyParetoGrouping(pts, options = {}) {
   const kept = pts.slice(0, splitIndex);
   const tail = pts.slice(splitIndex);
   const othersValue = tail.reduce((s, p) => s + p.value, 0);
-  return [...kept, { key: othersLabel, value: othersValue }];
+  const othersCount = tail.reduce((s, p) => s + (p.count || 0), 0);
+  return [...kept, { key: othersLabel, value: othersValue, count: othersCount }];
 }
 
 // ── Linear Regression ────────────────────────────────────────────────────────

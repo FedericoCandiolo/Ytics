@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState, useCallback, useMemo, forwardRef } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp, GRID_COLS, canReplaceType, mapFieldsForTypeChange } from '../../context/AppContext';
+import { useBreakpoint } from '../../hooks/useMediaQuery';
+import { computeResponsiveLayouts, BREAKPOINTS, COLS } from '../../utils/layoutUtils';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import WidgetEditor from './WidgetEditor';
 import { ALL_SCHEMES, getSwatchColors } from '../../utils/colorUtils';
@@ -195,6 +197,15 @@ export default function DashboardBuilder() {
   const { state, dispatch } = useApp();
   const { dashboard, editingWidgetId } = state;
   const theme = dashboard.theme || {};
+  const { isTablet } = useBreakpoint();
+
+  // Sidebar collapse state (auto-collapse on tablet)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Auto-collapse sidebar on tablet when editing a widget (editor takes priority)
+  useEffect(() => {
+    if (isTablet && !editingWidgetId) setSidebarCollapsed(true);
+  }, [isTablet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 24×12 grid: compute rowHeight so 12 rows fit the visible canvas height
   const canvasRef = useRef(null);
@@ -216,7 +227,10 @@ export default function DashboardBuilder() {
   }, []);
 
   const currentPage = dashboard.pages.find(p => p.id === dashboard.currentPageId) || dashboard.pages[0];
-  const layouts = { lg: currentPage.layout };
+  const layouts = useMemo(
+    () => computeResponsiveLayouts(currentPage.layout),
+    [currentPage.layout]
+  );
 
   // ── Widget drag-to-page state ──
   const [draggingWidgetId, setDraggingWidgetId] = useState(null);
@@ -274,7 +288,16 @@ export default function DashboardBuilder() {
   return (
     <div className="db-layout">
       {/* ── Left sidebar ── */}
-      <div className="db-sidebar">
+      <div className={`db-sidebar ${isTablet && sidebarCollapsed ? 'db-sidebar--collapsed' : ''}`} style={{ position: 'relative' }}>
+        {isTablet && (
+          <button
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed(c => !c)}
+            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+          >
+            {sidebarCollapsed ? '►' : '◄'}
+          </button>
+        )}
         {editingWidgetId
           ? <WidgetEditor widgetId={editingWidgetId} />
           : (
@@ -501,8 +524,8 @@ export default function DashboardBuilder() {
             <ResponsiveGrid
               className="layout"
               layouts={layouts}
-              breakpoints={{ lg: 1200, md: 996, sm: 768 }}
-              cols={{ lg: cols, md: 16, sm: 8 }}
+              breakpoints={BREAKPOINTS}
+              cols={COLS}
               rowHeight={rowHeight}
               draggableHandle=".widget-header"
               resizeHandles={['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']}
