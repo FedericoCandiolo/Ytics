@@ -170,10 +170,10 @@ const initialState = {
   colStore: { dicts: {}, tables: {} },
 };
 
-function makeDataset(id, name, data, table) {
+function makeDataset(id, name, data, table, source = null) {
   const columns = Object.keys(data[0] || {});
   const columnTypes = detectColumnTypes(data);
-  return { id, name, originalData: data, transforms: [], data, columns, columnTypes, table };
+  return { id, name, originalData: data, transforms: [], data, columns, columnTypes, table, source: source || { type: 'file' } };
 }
 
 function recompute(ds, sharedDicts) {
@@ -372,11 +372,11 @@ function reducer(state, action) {
 
     // ── Datasets ──────────────────────────────────────────────
     case 'LOAD_DATASET': {
-      const { name, data } = action.payload;
+      const { name, data, source } = action.payload;
       const id = uuid();
       const dicts = cloneDicts(state.colStore.dicts);
       const table = buildTable(id, name, data, dicts);
-      const ds = makeDataset(id, name, data, table);
+      const ds = makeDataset(id, name, data, table, source);
       return {
         ...state,
         datasets: [...state.datasets, ds],

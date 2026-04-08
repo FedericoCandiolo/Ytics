@@ -7,6 +7,7 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
   const importRef = useRef(null);
   const [saveFlash, setSaveFlash] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const menuRef = useRef(null);
 
   // Close menu on outside click
@@ -55,8 +56,11 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
   return (
     <header className="header">
       <div className="header-logo">
-        <img src="/logo.png" alt="Ytics" className="header-logo-img" />
-        {!isMobile && <span>ytics</span>}
+        {!logoError ? (
+          <img src="/logo.png" alt="ytics" className="header-logo-img" onError={() => setLogoError(true)} />
+        ) : (
+          !isMobile && <span>ytics</span>
+        )}
       </div>
 
       <div className="header-title-area">

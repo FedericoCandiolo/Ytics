@@ -5,7 +5,10 @@ const TOC = [
   { id: 'getting-started', label: 'Getting Started' },
   { id: 'interface', label: 'The Interface' },
   { id: 'loading-data', label: 'Loading Data' },
+  { id: 'data-model', label: 'Data Model' },
   { id: 'data-transforms', label: 'Data Transforms' },
+  { id: 'data-pipeline', label: 'Interactive Pipeline' },
+  { id: 'table-joins', label: 'Table Joins' },
   { id: 'building', label: 'Building a Dashboard' },
   { id: 'chart-types', label: 'Chart Types Reference' },
   { id: 'graph-chart', label: 'Graph Chart' },
@@ -136,7 +139,7 @@ export default function HelpPage({ onClose }) {
           <Section id="getting-started" title="1. Getting Started">
             <Sub title="Your First Dashboard in 3 Steps">
               <ol className="help-ol">
-                <li><strong>Upload data</strong> — Click the <em>Data</em> tab in the sidebar, then drag a CSV file onto the drop zone.</li>
+                <li><strong>Upload data</strong> — Click the <em>Data</em> tab in the sidebar, then drag a CSV, Excel, or JSON file onto the drop zone (or create an inline table).</li>
                 <li><strong>Add a chart</strong> — Switch to the <em>Dashboard</em> tab, then click or drag a chart type (e.g., Bar Chart) onto the canvas.</li>
                 <li><strong>Map your fields</strong> — Click the widget to open its editor, pick your dataset, and assign columns to the X and Y axes.</li>
               </ol>
@@ -174,47 +177,81 @@ export default function HelpPage({ onClose }) {
 
           {/* ── 3. Loading Data ─────────────────────────────────────────── */}
           <Section id="loading-data" title="3. Loading Data">
-            <Sub title="Uploading CSV Files">
+            <p>Ytics supports multiple data sources. Go to the <strong>Data</strong> tab in the developer sidebar to manage datasets.</p>
+
+            <Sub title="Supported File Formats">
+              <Table
+                headers={['Format', 'Extensions', 'Details']}
+                rows={[
+                  ['CSV', '.csv', 'Drag-and-drop or click to browse. Parsed instantly with auto-detected column types.'],
+                  ['Excel', '.xlsx, .xls, .xlsb, .xlsm, .ods', 'Opens an Import Wizard where you can select sheets, skip header rows, and preview data before importing.'],
+                  ['JSON', '.json', 'Supports arrays of objects or nested objects (one level of flattening). Opens a preview wizard.'],
+                ]}
+              />
+            </Sub>
+
+            <Sub title="Excel Import Wizard">
+              <p>When you upload an Excel file, a multi-step wizard guides you through the import:</p>
               <ol className="help-ol">
-                <li>Click the <strong>Data</strong> tab in the developer sidebar.</li>
-                <li>Drag one or more <code>.csv</code> files onto the upload area — or click to browse.</li>
-                <li>Ytics parses your file and auto-detects column types:</li>
+                <li><strong>Sheet selection</strong> — All sheets are listed with checkboxes. Select which ones to import.</li>
+                <li><strong>Per-sheet configuration</strong> — For each selected sheet, set the dataset name, number of rows to skip from the top, and which row contains headers.</li>
+                <li><strong>Preview</strong> — See the first 5 rows of parsed data to verify the configuration is correct.</li>
+                <li><strong>Import</strong> — Click Import to load all selected sheets as separate datasets.</li>
               </ol>
+            </Sub>
+
+            <Sub title="Inline Tables">
+              <p>Click the <strong>+ Inline Table</strong> button to create a dataset by typing data directly — useful for lookup tables, categories, or manual mappings.</p>
+              <ul className="help-ul">
+                <li>Click column headers to rename them. Use the <strong>+ Column</strong> and <strong>+ Row</strong> buttons to expand the table.</li>
+                <li><strong>Paste support</strong> — Copy cells from Excel or Google Sheets and paste them directly into the grid. The table auto-expands to fit.</li>
+                <li>Use <Kbd>Tab</Kbd> to navigate between cells and <Kbd>Enter</Kbd> to move down (auto-adds a new row at the bottom).</li>
+              </ul>
+            </Sub>
+
+            <Sub title="Column Types">
+              <p>Ytics auto-detects column types on import:</p>
               <Table
                 headers={['Type', 'Description']}
                 rows={[
                   ['number', 'Numeric values (integers and decimals).'],
                   ['date', 'Recognizable date strings.'],
+                  ['boolean', 'True/false values.'],
                   ['string', 'Everything else (text, categories).'],
                 ]}
               />
+              <p>You can change a column's type by clicking the <strong>type badge</strong> in the Data Preview header. Ytics applies smart conversions (e.g., stripping currency symbols when casting to number).</p>
             </Sub>
+
             <Sub title="Dataset Management">
               <ul className="help-ul">
-                <li>Each uploaded file appears as a named dataset in the left panel.</li>
+                <li>Each loaded file or table appears as a named dataset in the left panel, with an icon indicating its source (file, inline, or join).</li>
                 <li>Click a dataset to select it and preview its contents (first 200 rows).</li>
-                <li>Column headers display type badges. A summary line shows total rows and columns.</li>
-                <li>Click <strong>&times;</strong> to delete a dataset.</li>
+                <li>Click the <strong>delete</strong> button on a dataset to remove it (with confirmation).</li>
               </ul>
             </Sub>
+
             <Sub title="Multiple Datasets">
               <p>
                 You can load as many datasets as you need. Each widget independently selects which dataset
                 it visualizes, so a single dashboard can combine data from multiple sources.
               </p>
             </Sub>
-            <Sub title="Data Model View">
-              <p>
-                Switch to the <strong>Data Model</strong> tab (next to Data Preview) to see an interactive ER diagram
-                of all loaded datasets and their relationships.
-              </p>
-              <ul className="help-ul">
-                <li><strong>Auto-detected relationships</strong> — Ytics matches column names across datasets and infers cardinality (1:1, 1:N, N:1, M:N) based on unique value counts.</li>
-                <li><strong>Selection-aware coloring</strong> — Click a table card (or select it from the left panel) to highlight it in dark blue. Directly related tables appear in light blue; others are gray.</li>
-                <li><strong>Draggable layout</strong> — Drag table cards to arrange them. Positions are preserved when switching tabs, saved to localStorage, and included in <code>.ytics</code> exports.</li>
-                <li><strong>Relationship lines</strong> — Curved lines connect related tables, labeled with cardinality. Lines connected to the selected table are highlighted.</li>
-              </ul>
-            </Sub>
+          </Section>
+
+          {/* ── 3b. Data Model ───────────────────────────────────────────── */}
+          <Section id="data-model" title="3b. Data Model">
+            <p>
+              Switch to the <strong>Model</strong> tab in the center panel to see an interactive diagram
+              of all loaded datasets and their relationships.
+            </p>
+            <ul className="help-ul">
+              <li><strong>Auto-detected relationships</strong> — Ytics matches column names across datasets. Tables with shared field names are connected automatically.</li>
+              <li><strong>Selection-aware coloring</strong> — Click a table card to highlight it in dark blue. Directly related tables appear in light blue; others are gray.</li>
+              <li><strong>Draggable layout</strong> — Drag table cards to arrange them. Positions are preserved when switching tabs, saved to localStorage, and included in <code>.ytics</code> exports.</li>
+              <li><strong>Relationship lines</strong> — Curved lines connect related tables, labeled with the shared field name. Lines connected to the selected table are highlighted.</li>
+              <li><strong>Data preview</strong> — Click the preview button (<strong>&#8862;</strong>) on any table card header to see the first rows of that table in a centered popup.</li>
+            </ul>
           </Section>
 
           {/* ── 4. Data Transforms ──────────────────────────────────────── */}
@@ -240,6 +277,63 @@ export default function HelpPage({ onClose }) {
             </Sub>
             <Sub title="Sort">
               <p>Reorder all rows by a column, ascending or descending.</p>
+            </Sub>
+            <Sub title="Cast (Change Type)">
+              <p>Convert a column from one type to another. Available target types: <code>string</code>, <code>number</code>, <code>date</code>, <code>boolean</code>.</p>
+              <ul className="help-ul">
+                <li><strong>To number</strong> — Strips currency symbols ($, EUR, GBP, %), then parses. Non-numeric values become <code>NaN</code>.</li>
+                <li><strong>To date</strong> — Parses values into ISO date strings.</li>
+                <li><strong>To boolean</strong> — Recognizes "true", "yes", "1", "on" (case-insensitive) as true; everything else as false.</li>
+                <li><strong>To string</strong> — Converts any value to its string representation.</li>
+              </ul>
+              <Tip>You can also change column types by clicking the type badge in the Data Preview header — this adds a Cast transform automatically.</Tip>
+            </Sub>
+          </Section>
+
+          {/* ── 4b. Interactive Pipeline ──────────────────────────────────── */}
+          <Section id="data-pipeline" title="4b. Interactive Pipeline">
+            <p>The <strong>Pipeline</strong> tab in the center panel gives you a visual, step-by-step view of all transforms applied to each dataset.</p>
+            <Sub title="Inspecting Steps">
+              <ul className="help-ul">
+                <li>Click any step to <strong>inspect</strong> the data at that point in the pipeline. A preview table shows the intermediate result.</li>
+                <li>Click <strong>Step 0 (source)</strong> to see the original, untransformed data.</li>
+                <li>The preview shows the first rows along with row and column counts.</li>
+              </ul>
+            </Sub>
+            <Sub title="Enable / Disable Steps">
+              <p>Each step has a checkbox toggle. Uncheck it to <strong>disable</strong> the step — it will be skipped during processing without being deleted. This is useful for experimenting with different transform combinations.</p>
+            </Sub>
+            <Sub title="Reorder Steps">
+              <p>Use the <strong>&#9650;</strong> and <strong>&#9660;</strong> arrow buttons to move a step up or down in the pipeline. The order matters — transforms are applied top to bottom.</p>
+            </Sub>
+            <Sub title="Edit Steps Inline">
+              <p>Click the <strong>edit</strong> button on any step to expand an inline form where you can modify the transform's parameters (field, operator, value, expression, etc.) without leaving the pipeline view.</p>
+            </Sub>
+            <Sub title="Delete Steps">
+              <p>Click the <strong>&#10005;</strong> button to remove a step from the pipeline.</p>
+            </Sub>
+          </Section>
+
+          {/* ── 4c. Table Joins ───────────────────────────────────────────── */}
+          <Section id="table-joins" title="4c. Table Joins">
+            <p>The <strong>Join</strong> tab in the center panel lets you combine two tables into a new dataset based on a shared column.</p>
+            <Sub title="How to Join Tables">
+              <ol className="help-ol">
+                <li>Select the <strong>left table</strong> and <strong>right table</strong> from the dropdowns.</li>
+                <li>Pick the <strong>join field</strong> — Ytics auto-detects columns that exist in both tables.</li>
+                <li>Choose a <strong>join type</strong>:</li>
+              </ol>
+              <Table
+                headers={['Type', 'Result']}
+                rows={[
+                  ['Inner', 'Only rows where the join field matches in both tables.'],
+                  ['Left', 'All rows from the left table, plus matching rows from the right (nulls where no match).'],
+                  ['Right', 'All rows from the right table, plus matching rows from the left.'],
+                  ['Full', 'All rows from both tables, with nulls where there is no match on either side.'],
+                ]}
+              />
+              <p>A preview of the joined result is shown before you confirm. The joined table is added as a new dataset with a source indicator showing it came from a join.</p>
+              <Tip>If both tables have columns with the same name (other than the join field), the right table's columns are prefixed with <code>right_</code> to avoid collisions.</Tip>
             </Sub>
           </Section>
 
@@ -944,9 +1038,11 @@ export default function HelpPage({ onClose }) {
           <Section id="tips" title="19. Tips & Best Practices">
             <Sub title="Data Preparation">
               <ul className="help-ul">
-                <li><strong>Clean your CSVs</strong> before uploading — mixed text and numbers in a column may be treated as strings.</li>
+                <li><strong>Clean your data</strong> before uploading — mixed text and numbers in a column may be treated as strings. Use the Cast transform or type badges to fix types after import.</li>
                 <li><strong>Use clear column names</strong> — They appear as axis labels, legend text, and field selectors.</li>
                 <li><strong>Prefer tidy data</strong> — One row per observation, one column per variable. Use the Measure Pipeline for reshaping.</li>
+                <li><strong>Use inline tables</strong> for small lookup/category tables instead of creating separate CSV files.</li>
+                <li><strong>Use the Pipeline view</strong> to inspect data at each transform step and disable/reorder steps to experiment.</li>
               </ul>
             </Sub>
             <Sub title="Dashboard Design">

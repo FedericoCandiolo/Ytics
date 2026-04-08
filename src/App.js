@@ -21,6 +21,12 @@ function AppInner() {
     }
   }, [isMobile, state.mode, dispatch]);
 
+  // Window title: "Ytics" or "Dashboard Title — Ytics"
+  useEffect(() => {
+    const title = state.dashboard.title?.trim();
+    document.title = title ? `${title} — Ytics` : 'Ytics';
+  }, [state.dashboard.title]);
+
   const effectiveMode = isMobile ? 'viewer' : state.mode;
 
   return (

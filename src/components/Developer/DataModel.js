@@ -156,7 +156,7 @@ function RelationshipLine({ rel, positions, datasets, highlighted }) {
 
 // ── Draggable Table Card ──────────────────────────────────────────────────────
 // role: 'selected' | 'related' | 'default'
-function TableCard({ dataset, position, role, onDragStart, onClick }) {
+function TableCard({ dataset, position, role, onDragStart, onPreview }) {
   const cols = getColumnInfo(dataset.data);
   const displayCols = cols.slice(0, 15);
   const moreCount = cols.length - 15;
@@ -216,11 +216,22 @@ function TableCard({ dataset, position, role, onDragStart, onClick }) {
         style={{ pointerEvents: 'none' }}>
         {dataset.name}
       </text>
-      <text x={CARD_W - 12} y={HEADER_H / 2 + 1} dominantBaseline="middle"
+      <text x={CARD_W - 30} y={HEADER_H / 2 + 1} dominantBaseline="middle"
         textAnchor="end" fontSize={10} fill={rowCountColor}
         style={{ pointerEvents: 'none' }}>
         {dataset.data.length.toLocaleString()} rows
       </text>
+      {/* Preview button */}
+      <g className="dm-card-preview-btn" style={{ cursor: 'pointer' }}
+        onClick={(e) => { e.stopPropagation(); onPreview(dataset.id); }}>
+        <rect x={CARD_W - 28} y={6} width={22} height={22} rx={4}
+          fill="rgba(255,255,255,.15)" />
+        <text x={CARD_W - 17} y={HEADER_H / 2 + 1} dominantBaseline="middle"
+          textAnchor="middle" fontSize={13} fill={headerText}
+          style={{ pointerEvents: 'none' }}>
+          ⊞
+        </text>
+      </g>
 
       {/* Column rows */}
       {displayCols.map((col, i) => (
@@ -253,6 +264,43 @@ function TableCard({ dataset, position, role, onDragStart, onClick }) {
   );
 }
 
+// ── Data Preview Popup (centered overlay) ────────────────────────────────────
+function TablePreviewPopup({ dataset, onClose }) {
+  const rows = dataset.data.slice(0, 10);
+  const cols = Object.keys(rows[0] || {});
+  if (cols.length === 0) return null;
+
+  return (
+    <div className="dm-preview-overlay" onClick={onClose}>
+      <div className="dm-preview-popup" onClick={e => e.stopPropagation()}>
+        <div className="dm-preview-header">
+          <span>{dataset.name} — first {rows.length} rows</span>
+          <button className="btn btn-icon dm-preview-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="dm-preview-table-wrap">
+          <table className="dm-preview-table">
+            <thead>
+              <tr>{cols.map(c => <th key={c}>{c}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i}>
+                  {cols.map(c => (
+                    <td key={c}>{row[c] == null ? '' : String(row[c])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="dm-preview-footer">
+          {dataset.data.length.toLocaleString()} total rows · {cols.length} columns
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main DataModel component ──────────────────────────────────────────────────
 export default function DataModel({ positions: extPositions, onPositionsChange }) {
   const { state, dispatch } = useApp();
@@ -260,6 +308,7 @@ export default function DataModel({ positions: extPositions, onPositionsChange }
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [intPositions, setIntPositions] = useState(null);
   const [dragState, setDragState] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
 
   const positions = extPositions ?? intPositions;
   const setPositions = useCallback((val) => {
@@ -422,10 +471,23 @@ export default function DataModel({ positions: extPositions, onPositionsChange }
               position={positions[ds.id] || { x: 0, y: 0 }}
               role={role}
               onDragStart={handleDragStart}
+              onPreview={(id) => setPreviewId(prev => prev === id ? null : id)}
             />
           );
         })}
       </svg>
+
+      {/* Data preview popup */}
+      {previewId && (() => {
+        const ds = datasets.find(d => d.id === previewId);
+        if (!ds) return null;
+        return (
+          <TablePreviewPopup
+            dataset={ds}
+            onClose={() => setPreviewId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

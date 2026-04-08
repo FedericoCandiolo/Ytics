@@ -77,16 +77,35 @@ export function getColumnInfo(data) {
 export function applyTransforms(data, transforms) {
   let result = [...data];
   for (const t of transforms) {
-    switch (t.type) {
-      case 'filter':   result = applyFilter(result, t);   break;
-      case 'rename':   result = applyRename(result, t);   break;
-      case 'compute':  result = applyCompute(result, t);  break;
-      case 'sort':     result = applySort(result, t);     break;
-      case 'select':   result = applySelect(result, t);   break;
-      default: break;
-    }
+    if (t.disabled) continue;
+    result = applyOneTransform(result, t);
   }
   return result;
+}
+
+/**
+ * Apply transforms up to (and including) the given index.
+ * Respects the `disabled` flag. Returns intermediate data.
+ */
+export function applyTransformsUpTo(data, transforms, upToIndex) {
+  let result = [...data];
+  for (let i = 0; i <= upToIndex && i < transforms.length; i++) {
+    if (transforms[i].disabled) continue;
+    result = applyOneTransform(result, transforms[i]);
+  }
+  return result;
+}
+
+function applyOneTransform(data, t) {
+  switch (t.type) {
+    case 'filter':   return applyFilter(data, t);
+    case 'rename':   return applyRename(data, t);
+    case 'compute':  return applyCompute(data, t);
+    case 'sort':     return applySort(data, t);
+    case 'select':   return applySelect(data, t);
+    case 'cast':     return applyCast(data, t);
+    default:         return data;
+  }
 }
 
 function applyFilter(data, { field, operator, value }) {
@@ -162,6 +181,119 @@ function applySelect(data, { columns, mode }) {
       return r;
     }
   });
+}
+
+function applyCast(data, { field, targetType }) {
+  return data.map(row => {
+    const v = row[field];
+    let converted;
+    switch (targetType) {
+      case 'number': {
+        if (v === null || v === undefined || v === '') { converted = null; break; }
+        const n = Number(String(v).replace(/[,%$€£]/g, ''));
+        converted = isNaN(n) ? null : n;
+        break;
+      }
+      case 'string':
+        converted = v === null || v === undefined ? '' : String(v);
+        break;
+      case 'date': {
+        if (v === null || v === undefined || v === '') { converted = null; break; }
+        const d = new Date(v);
+        converted = isNaN(d.getTime()) ? String(v) : d.toISOString().split('T')[0];
+        break;
+      }
+      case 'boolean': {
+        if (v === null || v === undefined || v === '') { converted = null; break; }
+        const s = String(v).toLowerCase().trim();
+        converted = ['true', '1', 'yes', 'y', 'on'].includes(s);
+        break;
+      }
+      default: converted = v;
+    }
+    return { ...row, [field]: converted };
+  });
+}
+
+/**
+ * Join two datasets on shared columns.
+ * @param {object[]} leftData
+ * @param {object[]} rightData
+ * @param {string} leftField - join key in left dataset
+ * @param {string} rightField - join key in right dataset
+ * @param {'inner'|'left'|'right'|'full'} joinType
+ * @param {string} [rightPrefix] - prefix for right-side columns on name collision
+ * @returns {object[]}
+ */
+export function joinDatasets(leftData, rightData, leftField, rightField, joinType = 'inner', rightPrefix = '') {
+  // Build right-side index (group by join key)
+  const rightIndex = new Map();
+  for (const row of rightData) {
+    const key = String(row[rightField] ?? '');
+    if (!rightIndex.has(key)) rightIndex.set(key, []);
+    rightIndex.get(key).push(row);
+  }
+
+  // Determine right columns (excluding the join key to avoid duplication)
+  const rightCols = rightData.length > 0
+    ? Object.keys(rightData[0]).filter(c => c !== rightField)
+    : [];
+
+  // Resolve column name conflicts with prefix
+  const prefix = rightPrefix || '';
+  const rightColMap = {};
+  const leftCols = leftData.length > 0 ? new Set(Object.keys(leftData[0])) : new Set();
+  for (const c of rightCols) {
+    rightColMap[c] = leftCols.has(c) ? `${prefix || 'right_'}${c}` : c;
+  }
+
+  function mergeRow(leftRow, rightRow) {
+    const out = { ...leftRow };
+    if (rightRow) {
+      for (const c of rightCols) {
+        out[rightColMap[c]] = rightRow[c];
+      }
+    } else {
+      for (const c of rightCols) {
+        out[rightColMap[c]] = null;
+      }
+    }
+    return out;
+  }
+
+  const result = [];
+  const matchedRightKeys = new Set();
+
+  for (const leftRow of leftData) {
+    const key = String(leftRow[leftField] ?? '');
+    const matches = rightIndex.get(key);
+
+    if (matches && matches.length > 0) {
+      matchedRightKeys.add(key);
+      for (const rightRow of matches) {
+        result.push(mergeRow(leftRow, rightRow));
+      }
+    } else if (joinType === 'left' || joinType === 'full') {
+      result.push(mergeRow(leftRow, null));
+    }
+    // inner: skip unmatched lefts
+  }
+
+  // For right/full join: add unmatched right rows
+  if (joinType === 'right' || joinType === 'full') {
+    const leftColKeys = leftData.length > 0 ? Object.keys(leftData[0]) : [];
+    for (const rightRow of rightData) {
+      const key = String(rightRow[rightField] ?? '');
+      if (!matchedRightKeys.has(key)) {
+        const out = {};
+        for (const c of leftColKeys) out[c] = c === leftField ? rightRow[rightField] : null;
+        for (const c of rightCols) out[rightColMap[c]] = rightRow[c];
+        result.push(out);
+      }
+    }
+  }
+
+  return result;
 }
 
 export function applyFilters(data, filters) {
