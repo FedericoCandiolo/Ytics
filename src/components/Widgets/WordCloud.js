@@ -94,7 +94,7 @@ export default function WordCloud({ widget, data, onCrossFilter }) {
 
     if (widget.colorMode === 'gradient') {
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient);
+      const seq = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient, widget.logGradient);
       colorFn = d => seq(d.value);
     } else {
       const scale = getColorScaleWithOverrides(

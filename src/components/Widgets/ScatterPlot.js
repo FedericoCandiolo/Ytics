@@ -176,7 +176,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       const gradVals = pts.map(d => gradField === widget.yField ? d.y : (+d.raw[gradField] || 0));
       const ext = d3.extent(gradVals);
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
       gradientFn = (d) => {
         const val = gradField === widget.yField ? d.y : (+d.raw[gradField] || 0);
         return seq(val);

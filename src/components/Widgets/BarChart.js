@@ -170,7 +170,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
     }
     const ext = [Math.min(...colorVals), Math.max(...colorVals)];
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
     colors = d => {
       const idx = pts.findIndex(p => p.key === d);
       return seq(colorVals[idx] ?? 0);

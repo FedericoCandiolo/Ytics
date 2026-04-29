@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { exportDashboard, importDashboard } from '../utils/exportUtils';
+import { TYPE_ICONS } from './Widgets/WidgetContainer';
 
 export default function Header({ onHelpOpen, isMobile, isTablet }) {
   const { state, dispatch } = useApp();
@@ -71,6 +72,9 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
           placeholder="Dashboard title…"
         />
       </div>
+
+      {/* Widget search */}
+      <WidgetSearch />
 
       {/* Mode toggle — hidden on mobile (viewer-only) */}
       {!isMobile && (
@@ -157,5 +161,151 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
         </div>
       )}
     </header>
+  );
+}
+
+/* ── Dashboard-level widget search ────────────────────────────────────────── */
+
+function WidgetSearch() {
+  const { state, dispatch } = useApp();
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Build flat list of all widgets across all pages
+  const allWidgets = useMemo(() => {
+    const items = [];
+    for (const page of state.dashboard.pages) {
+      for (const w of page.widgets) {
+        items.push({
+          id: w.id,
+          title: w.title || 'Untitled',
+          type: w.type,
+          icon: TYPE_ICONS[w.type] || '📊',
+          pageId: page.id,
+          pageName: page.name || 'Page',
+        });
+      }
+    }
+    return items;
+  }, [state.dashboard.pages]);
+
+  const results = useMemo(() => {
+    if (!q.trim()) return [];
+    const lc = q.toLowerCase();
+    return allWidgets.filter(w =>
+      w.title.toLowerCase().includes(lc) ||
+      w.type.toLowerCase().includes(lc) ||
+      w.pageName.toLowerCase().includes(lc)
+    ).slice(0, 12);
+  }, [q, allWidgets]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+        setQ('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Reset selected index when results change
+  useEffect(() => { setSelectedIdx(0); }, [results]);
+
+  const navigate = useCallback((item) => {
+    dispatch({ type: 'NAVIGATE_TO_WIDGET', payload: { pageId: item.pageId, widgetId: item.id } });
+    setOpen(false);
+    setQ('');
+  }, [dispatch]);
+
+  const onKeyDown = useCallback((e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && results[selectedIdx]) {
+      e.preventDefault();
+      navigate(results[selectedIdx]);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      setQ('');
+    }
+  }, [results, selectedIdx, navigate]);
+
+  const totalWidgets = allWidgets.length;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-light)"
+          strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 8, pointerEvents: 'none' }}>
+          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+        </svg>
+        <input
+          ref={inputRef}
+          className="input input-sm"
+          style={{ width: open ? 240 : 160, paddingLeft: 28, transition: 'width 0.2s' }}
+          placeholder={`Search ${totalWidgets} widget${totalWidgets !== 1 ? 's' : ''}...`}
+          value={q}
+          onChange={e => { setQ(e.target.value); if (!open) setOpen(true); }}
+          onFocus={() => { if (q.trim()) setOpen(true); }}
+          onKeyDown={onKeyDown}
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--bg-card, #fff)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)',
+          zIndex: 1000, maxHeight: 320, overflowY: 'auto',
+          padding: '4px 0',
+        }}>
+          {results.map((item, i) => (
+            <div
+              key={item.id}
+              onClick={() => navigate(item)}
+              onMouseEnter={() => setSelectedIdx(i)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                background: i === selectedIdx ? 'var(--bg-hover, #f1f5f9)' : 'transparent',
+              }}
+            >
+              <span style={{ fontSize: 14, flexShrink: 0 }}>{item.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  fontWeight: 500, color: 'var(--text)',
+                }}>
+                  {item.title}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {item.type} · {item.pageName}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && q.trim() && results.length === 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--bg-card, #fff)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)',
+          zIndex: 1000, padding: '12px 16px', fontSize: 12, color: 'var(--text-muted)',
+          textAlign: 'center',
+        }}>
+          No widgets match "{q}"
+        </div>
+      )}
+    </div>
   );
 }

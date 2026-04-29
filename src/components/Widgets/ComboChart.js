@@ -176,7 +176,7 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
       const colorVals = barData.pts.map(d => d.value);
       const ext = [Math.min(...colorVals), Math.max(...colorVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
       barColors = d => seq(barData.pts.find(p => p.key === d)?.value ?? 0);
     } else {
       barColors = getColorScaleWithOverrides(palette, xKeys, widget.dimensionColors);
@@ -337,7 +337,7 @@ function renderBars(g, pts, xScale, yScale, colors, opacity, widget, showTooltip
   if (widget.colorMode === 'gradient') {
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
     const ext = [Math.min(...pts.map(d => d.value)), Math.max(...pts.map(d => d.value))];
-    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+    const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
     g.selectAll('.combo-bar').data(pts).join('rect').attr('class', 'combo-bar')
       .attr('x', d => xScale(d.key)).attr('y', H).attr('width', xScale.bandwidth()).attr('height', 0)
       .attr('fill', d => seq(d.value)).attr('opacity', opacity).attr('rx', 4)

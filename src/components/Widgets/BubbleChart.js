@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { formatValue } from '../../utils/dataUtils';
-import { getColorScaleWithOverrides } from '../../utils/colorUtils';
+import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
 
@@ -50,7 +50,18 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
 
     // --- Color scale ---
     const categories = [...new Set(nodes.map(d => d.color))];
-    const colors = getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors);
+    let colors;
+    if (widget.colorMode === 'gradient') {
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const ext = d3.extent(nodes, d => d.value);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1] || 1, widget.invertGradient, widget.logGradient);
+      colors = d => seq(nodes.find(n => n.color === d)?.value ?? 0);
+      colors._isGradient = true;
+      colors._seq = seq;
+    } else {
+      colors = getColorScaleWithOverrides(widget.colorScheme, categories, widget.dimensionColors);
+    }
+    const isGradient = !!colors._isGradient;
 
     // --- Pack layout ---
     const margin = 2;
@@ -83,11 +94,13 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
       .attr('class', 'bubble-node')
       .attr('transform', d => `translate(${d.x},${d.y})`);
 
+    const bubbleColor = d => isGradient ? colors._seq(d.data.value) : colors(d.data.color);
+
     node.append('circle')
       .attr('r', 0)
-      .attr('fill', d => colors(d.data.color))
+      .attr('fill', d => bubbleColor(d))
       .attr('fill-opacity', opacity)
-      .attr('stroke', d => d3.color(colors(d.data.color))?.darker(0.4)?.toString() || colors(d.data.color))
+      .attr('stroke', d => d3.color(bubbleColor(d))?.darker(0.4)?.toString() || bubbleColor(d))
       .attr('stroke-width', 1)
       .transition().duration(600).delay((_, i) => i * 3).ease(d3.easeCubicOut)
       .attr('r', d => d.r);
@@ -182,7 +195,7 @@ export default function BubbleChart({ widget, data, onCrossFilter }) {
           .transition().duration(80)
           .attr('fill-opacity', 1)
           .attr('stroke-width', 2);
-        showTooltip(ev, <BubbleTip d={d.data} widget={widget} valueField={valueField} color={colors(d.data.color)} />);
+        showTooltip(ev, <BubbleTip d={d.data} widget={widget} valueField={valueField} color={bubbleColor(d)} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev, d) => {

@@ -149,6 +149,13 @@ export default function GraphChart({ widget, data, onCrossFilter }) {
     const nodeSizeMin = widget.graphNodeSizeMin ?? 6;
     const nodeSizeMax = widget.graphNodeSizeMax ?? 24;
     const sizeExtent = d3.extent(nodes, n => n.size);
+
+    let nodeColorScale;
+    const useNodeGradient = widget.colorMode === 'gradient' && sizeExtent[0] != null;
+    if (useNodeGradient) {
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      nodeColorScale = getSequentialScale(gradKey, sizeExtent[0] ?? 0, sizeExtent[1] ?? 1, widget.invertGradient, widget.logGradient);
+    }
     const sizeScale = sizeExtent[0] != null && sizeExtent[0] !== sizeExtent[1]
       ? d3.scaleSqrt().domain(sizeExtent).range([nodeSizeMin, nodeSizeMax])
       : () => (nodeSizeMin + nodeSizeMax) / 2;
@@ -167,8 +174,8 @@ export default function GraphChart({ widget, data, onCrossFilter }) {
     // Gradient scale for edge measure coloring
     let edgeColorScale = null;
     if (edgeColorMode === 'measure' && valueExtent[0] != null) {
-      const gradKey = resolveGradient(widget.colorGradient, widget.colorScheme);
-      edgeColorScale = getSequentialScale(gradKey, valueExtent[0], valueExtent[1], widget.invertGradient);
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      edgeColorScale = getSequentialScale(gradKey, valueExtent[0], valueExtent[1], widget.invertGradient, widget.logGradient);
     }
 
     function edgeColor(e) {
@@ -243,7 +250,7 @@ export default function GraphChart({ widget, data, onCrossFilter }) {
       .data(nodes)
       .join('circle')
       .attr('r', d => sizeScale(d.size) || 8)
-      .attr('fill', d => d.group != null ? colorScale(d.group) : 'var(--accent)')
+      .attr('fill', d => useNodeGradient && d.size != null ? nodeColorScale(d.size) : d.group != null ? colorScale(d.group) : 'var(--accent)')
       .attr('stroke', 'var(--card-bg)')
       .attr('stroke-width', 1.5)
       .attr('cursor', 'pointer')

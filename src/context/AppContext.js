@@ -169,6 +169,7 @@ const initialState = {
   filters: {},
   selections: {},  // { fieldName: string[] } — associative selections
   editingWidgetId: null,
+  maximizedWidgetId: null,
   colStore: { dicts: {}, tables: {} },
 };
 
@@ -626,6 +627,19 @@ function reducer(state, action) {
 
     case 'SET_EDITING_WIDGET':
       return { ...state, editingWidgetId: action.payload };
+
+    case 'MAXIMIZE_WIDGET':
+      return { ...state, maximizedWidgetId: action.payload };
+
+    case 'NAVIGATE_TO_WIDGET': {
+      // Switch page + maximize
+      const { pageId, widgetId } = action.payload;
+      return {
+        ...state,
+        dashboard: { ...state.dashboard, currentPageId: pageId },
+        maximizedWidgetId: widgetId,
+      };
+    }
 
     // ── Filters (legacy, kept for backward compat) ─────────────
     case 'SET_FILTER':

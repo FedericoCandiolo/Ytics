@@ -600,6 +600,19 @@
   color: var(--text);
   letter-spacing: -.01em;
 }
+input.widget-title-edit {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  border-radius: 0;
+  padding: 0 2px;
+  outline: none;
+  cursor: text;
+}
+input.widget-title-edit:focus {
+  border-bottom-color: var(--primary, #3b82f6);
+  background: var(--bg-hover, rgba(0,0,0,.03));
+}
 .widget-actions { display: flex; gap: 2px; flex-shrink: 0; }
 .widget-body { flex: 1; position: relative; overflow: hidden; min-height: 0; }
 

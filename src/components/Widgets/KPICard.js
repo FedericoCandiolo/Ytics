@@ -417,11 +417,11 @@ export default function KPICard({ widget, data, onCrossFilter }) {
     } else if (style === 'gauge') {
       const gaugeMin = widget.kpiGaugeMin ?? 0;
       const gaugeMax = widget.kpiGaugeMax ?? 100;
-      const gradientScale = getSequentialScale(gradKey, gaugeMin, gaugeMax, widget.invertGradient);
+      const gradientScale = getSequentialScale(gradKey, gaugeMin, gaugeMax, widget.invertGradient, widget.logGradient);
       renderGauge(svg, value, target, widget, w, h, gradientScale);
     } else if (style === 'satellite') {
       // For satellite, gradient maps 0..1 for arc coloring
-      const gradientScale = getSequentialScale(gradKey, 0, 1, widget.invertGradient);
+      const gradientScale = getSequentialScale(gradKey, 0, 1, widget.invertGradient, widget.logGradient);
       renderSatellite(svg, value, target, widget, w, h, gradientScale);
     }
   }, [data, widget, dims]);

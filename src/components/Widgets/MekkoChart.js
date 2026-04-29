@@ -75,7 +75,7 @@ export default function MekkoChart({ widget, data, onCrossFilter }) {
     if (widget.colorMode === 'gradient') {
       const ext = d3.extent(subCategories.map((_, i) => i));
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
       colorScale = (cKey) => seq(subCategories.indexOf(cKey));
     } else {
       colorScale = getColorScaleWithOverrides(widget.colorScheme, subCategories, widget.dimensionColors);

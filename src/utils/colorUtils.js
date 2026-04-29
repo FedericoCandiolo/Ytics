@@ -169,8 +169,13 @@ export function getOrdinalWithOverrides(schemeKey, domain, overrides) {
  * Returns a continuous color scale for a numeric [min, max] domain.
  * schemeKey: one of the GRADIENT_SCHEMES keys.
  */
-export function getSequentialScale(schemeKey, min, max, invert) {
+export function getSequentialScale(schemeKey, min, max, invert, log) {
   const interp = INTERPOLATORS[schemeKey] || d3.interpolateBlues;
+  if (log) {
+    // Symmetric log scale: handles zero and negative values via log1p transform
+    const domain = invert ? [max, min] : [min, max];
+    return d3.scaleSequentialSymlog(interp).domain(domain);
+  }
   return d3.scaleSequential(interp).domain(invert ? [max, min] : [min, max]);
 }
 

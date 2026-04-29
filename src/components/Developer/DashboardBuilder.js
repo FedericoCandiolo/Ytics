@@ -47,6 +47,52 @@ const WIDGET_TYPES = [
   { type: 'text',         label: 'Text',           icon: '📝' },
 ];
 
+function WidgetTypePicker({ dispatch }) {
+  const [q, setQ] = useState('');
+  const filtered = useMemo(() => {
+    if (!q.trim()) return WIDGET_TYPES;
+    const lc = q.toLowerCase();
+    return WIDGET_TYPES.filter(wt =>
+      wt.label.toLowerCase().includes(lc) || wt.type.toLowerCase().includes(lc)
+    );
+  }, [q]);
+
+  return (
+    <>
+      <input
+        className="input input-sm"
+        style={{ width: '100%', marginBottom: 8 }}
+        placeholder="Search chart types..."
+        value={q}
+        onChange={e => setQ(e.target.value)}
+      />
+      <div className="widget-type-grid">
+        {filtered.map(wt => (
+          <button
+            key={wt.type}
+            className="widget-type-btn"
+            draggable
+            onDragStart={e => {
+              e.dataTransfer.setData('application/widget-type', wt.type);
+              e.dataTransfer.setData('application/widget-label', wt.label);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            onClick={() => dispatch({ type: 'ADD_WIDGET', payload: { type: wt.type, title: wt.label } })}
+          >
+            <span className="widget-type-btn-icon">{wt.icon}</span>
+            {wt.label}
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: '8px 0', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', gridColumn: '1 / -1' }}>
+            No chart types match
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // Custom resize handles with inline styles — bypasses library CSS specificity issues
 const HANDLE_STYLES = {
   n:  { position: 'absolute', top: 0, left: 0, right: 0, height: 8, cursor: 'ns-resize', zIndex: 20 },
@@ -460,24 +506,7 @@ export default function DashboardBuilder() {
                 <hr className="divider" />
 
                 <div className="section-title">Chart types</div>
-                <div className="widget-type-grid">
-                  {WIDGET_TYPES.map(wt => (
-                    <button
-                      key={wt.type}
-                      className="widget-type-btn"
-                      draggable
-                      onDragStart={e => {
-                        e.dataTransfer.setData('application/widget-type', wt.type);
-                        e.dataTransfer.setData('application/widget-label', wt.label);
-                        e.dataTransfer.effectAllowed = 'copy';
-                      }}
-                      onClick={() => dispatch({ type: 'ADD_WIDGET', payload: { type: wt.type, title: wt.label } })}
-                    >
-                      <span className="widget-type-btn-icon">{wt.icon}</span>
-                      {wt.label}
-                    </button>
-                  ))}
-                </div>
+                <WidgetTypePicker dispatch={dispatch} />
 
                 {currentPage.widgets.length > 0 && (
                   <>

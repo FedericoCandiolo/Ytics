@@ -172,6 +172,15 @@ export default function NetworkChart({ widget, data, onCrossFilter }) {
     // ── Scales ────────────────────────────────────────────────────────────
     const allNodes = root.descendants().filter(d => d.data.id !== '__root__');
     const groups = [...new Set(allNodes.map(d => d.data.group).filter(g => g != null))];
+    let nodeGradientScale;
+    const useNodeGradient = widget.colorMode === 'gradient';
+    if (useNodeGradient) {
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      const ext = d3.extent(allNodes, d => d.data.size);
+      if (ext[0] != null) {
+        nodeGradientScale = getSequentialScale(gradKey, ext[0], ext[1] ?? 1, widget.invertGradient, widget.logGradient);
+      }
+    }
     const colorScale = getColorScaleWithOverrides(
       widget.colorScheme, groups, widget.dimensionColors
     );
@@ -188,6 +197,7 @@ export default function NetworkChart({ widget, data, onCrossFilter }) {
     }
 
     function nodeColor(d) {
+      if (useNodeGradient && nodeGradientScale && d.data.size != null) return nodeGradientScale(d.data.size);
       return d.data.group != null ? colorScale(d.data.group) : 'var(--accent)';
     }
 

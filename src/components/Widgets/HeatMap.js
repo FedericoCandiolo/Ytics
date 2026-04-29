@@ -57,7 +57,7 @@ export default function HeatMap({ widget, data, onCrossFilter }) {
 
     const [vMin, vMax] = d3.extent(flat, d => d.value);
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const colorScale = getSequentialScale(gradKey, vMin, vMax, widget.invertGradient);
+    const colorScale = getSequentialScale(gradKey, vMin, vMax, widget.invertGradient, widget.logGradient);
     const opacity = widget.opacity ?? 1;
 
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.05);

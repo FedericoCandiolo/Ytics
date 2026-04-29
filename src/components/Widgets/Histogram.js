@@ -65,7 +65,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     if (useGradient) {
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
       const ext = [0, d3.max(bins, d => d.length)];
-      binColorFn = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      binColorFn = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
     }
     const opacity = widget.opacity ?? 1;
     const mean = d3.mean(vals), median = d3.median(vals), std = d3.deviation(vals);
@@ -116,7 +116,7 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     });
 
     if (std > 0) {
-      const binW = bins[0] ? xScale(bins[0].x1) - xScale(bins[0].x0) : 1;
+      const binW = bins[0] ? bins[0].x1 - bins[0].x0 : 1;
       g.append('path').datum(xScale.ticks(80))
         .attr('fill', 'none').attr('stroke', useGradient ? 'var(--text-muted)' : fillColor).attr('stroke-width', 2)
         .attr('stroke-dasharray', '5,3').attr('opacity', 0.45)

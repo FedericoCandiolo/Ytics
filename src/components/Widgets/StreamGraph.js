@@ -65,7 +65,7 @@ export default function StreamGraph({ widget, data, onCrossFilter }) {
       });
       const ext = [Math.min(...totals), Math.max(...totals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
       const totalMap = new Map(series.map((s, i) => [s, totals[i]]));
       colors = d => seq(totalMap.get(d) ?? 0);
     } else {

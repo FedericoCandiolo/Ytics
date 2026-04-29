@@ -146,7 +146,13 @@ function DimensionControls({ boundHierarchies, boundCyclics, dispatch }) {
 
 export default function WidgetContainer({ widget, isEditing, isSelected, onSelect, onRemove, onDuplicate, onDragToPage, onTypeReplace }) {
   const { state, dispatch, associativeState } = useApp();
-  const [maximized, setMaximized] = useState(false);
+  const [localMaximized, setLocalMaximized] = useState(false);
+  const globalMaximized = state.maximizedWidgetId === widget.id;
+  const maximized = localMaximized || globalMaximized;
+  const setMaximized = useCallback((v) => {
+    setLocalMaximized(v);
+    if (!v && globalMaximized) dispatch({ type: 'MAXIMIZE_WIDGET', payload: null });
+  }, [globalMaximized, dispatch]);
   const [dropHover, setDropHover] = useState(false);
   const theme = state.dashboard.theme || {};
 
@@ -253,7 +259,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   }, [resolvedData, drillFilters]);
 
   const Chart = CHART_MAP[widget.type] || BarChart;
-  const closeMaximize = useCallback(() => setMaximized(false), []);
+  const closeMaximize = useCallback(() => setMaximized(false), [setMaximized]);
 
   const crossFilter = isEditing ? undefined : onCrossFilter;
   const hasData = data.length > 0 || state.datasets.length > 0;
@@ -319,7 +325,18 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
       >
         <div className="widget-header">
           <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICONS[widget.type] || '📊'}</span>
-          <span className="widget-title">{widget.title || 'Untitled'}</span>
+          {isEditing ? (
+            <input
+              className="widget-title widget-title-edit"
+              value={widget.title || ''}
+              placeholder="Untitled"
+              onClick={e => e.stopPropagation()}
+              onChange={e => dispatch({ type: 'UPDATE_WIDGET', payload: { id: widget.id, updates: { title: e.target.value } } })}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+            />
+          ) : (
+            <span className="widget-title">{widget.title || 'Untitled'}</span>
+          )}
           {dimControls}
           <div className="widget-actions">
             <button

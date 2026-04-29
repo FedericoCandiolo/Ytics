@@ -379,7 +379,7 @@ function renderShading(densG, svg, g, pts, seriesKeys, isSingle, seriesColors,
     if (!contours.length) return;
 
     const maxVal = d3.max(contours, c => c.value);
-    const colorFn = getSequentialScale(gradKey, 0, maxVal, widget.invertGradient);
+    const colorFn = getSequentialScale(gradKey, 0, maxVal, widget.invertGradient, widget.logGradient);
 
     if (filled) {
       densG.selectAll('path.density-fill')
@@ -482,7 +482,7 @@ function renderHexbin(densG, pts, seriesKeys, isSingle, seriesColors,
     const bins = hexBin(pts, hexRadius, W, H);
     if (!bins.length) return;
     const maxCount = d3.max(bins, b => b.points.length);
-    const colorFn = getSequentialScale(gradKey, 0, maxCount, widget.invertGradient);
+    const colorFn = getSequentialScale(gradKey, 0, maxCount, widget.invertGradient, widget.logGradient);
 
     densG.selectAll('path.hex')
       .data(bins).join('path')
@@ -564,7 +564,7 @@ function renderHistogram(densG, pts, seriesKeys, isSingle, seriesColors,
     const bins = rectBin(pts, binsX, binsY, W, H);
     if (!bins.length) return;
     const maxCount = d3.max(bins, b => b.points.length);
-    const colorFn = getSequentialScale(gradKey, 0, maxCount, widget.invertGradient);
+    const colorFn = getSequentialScale(gradKey, 0, maxCount, widget.invertGradient, widget.logGradient);
 
     densG.selectAll('rect.histbin')
       .data(bins).join('rect')

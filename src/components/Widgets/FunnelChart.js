@@ -69,7 +69,7 @@ export default function FunnelChart({ widget, data, onCrossFilter }) {
       const colorVals = displayValues;
       const ext = [Math.min(...colorVals), Math.max(...colorVals)];
       const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+      const seq = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
       colors = (_, i) => seq(colorVals[i] ?? 0);
     } else {
       const scale = getColorScaleWithOverrides(widget.colorScheme, domain, widget.dimensionColors);

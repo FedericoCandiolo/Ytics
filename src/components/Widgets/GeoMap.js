@@ -220,7 +220,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
 
     // ── Color scale for choropleth ──
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const colorScale = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient);
+    const colorScale = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient, widget.logGradient);
 
     // ── Projection ──
     const ProjFn = PROJECTIONS[widget.mapProjection] || PROJECTIONS.naturalEarth;

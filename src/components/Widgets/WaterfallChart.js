@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
-import { getColorArray, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
+import { getColorArray, getSequentialScale, resolveGradient, getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
 
@@ -113,17 +113,26 @@ function renderWaterfall(svg, data, widget, dims, showTooltip, moveTooltip, hide
   let negativeColor = palette[1] || '#ef4444';
   let totalColor = palette[2] || '#6366f1';
 
+  // Per-category color scale (for dimensionColors overrides)
+  const catScale = widget.dimensionColors
+    ? getColorScaleWithOverrides(widget.colorScheme, bars.map(b => b.key), widget.dimensionColors)
+    : null;
+
   // Gradient color mode
   let gradientScale = null;
   if (widget.colorMode === 'gradient') {
     const allChanges = bars.map(b => b.change);
     const ext = [Math.min(...allChanges), Math.max(...allChanges)];
     const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    gradientScale = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient);
+    gradientScale = getSequentialScale(gradKey, ext[0], ext[1], widget.invertGradient, widget.logGradient);
   }
+
+  // Check if any dimensionColors are set for this chart's categories
+  const hasDimOverrides = widget.dimensionColors && bars.some(b => widget.dimensionColors[b.key]);
 
   function barColor(bar) {
     if (gradientScale) return gradientScale(bar.change);
+    if (hasDimOverrides && catScale) return catScale(bar.key);
     if (bar.isFirst || bar.isLast) return totalColor;
     return bar.change >= 0 ? positiveColor : negativeColor;
   }

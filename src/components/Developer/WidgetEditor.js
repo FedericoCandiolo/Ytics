@@ -384,6 +384,8 @@ const COLOR_DIMENSION_FIELD = {
   mekko: w => w.colorField,
   graph: w => w.colorField,
   network: w => w.colorField,
+  density: w => w.colorField,
+  histogram: w => w.colorField,
 };
 
 // ── Fields tab content ────────────────────────────────────────────────────────
@@ -1442,6 +1444,12 @@ function GradientColorSection({ widget, columns, onUpdate }) {
             <input type="checkbox" checked={!!widget.invertGradient}
               onChange={e => onUpdate({ invertGradient: e.target.checked || undefined })} />
             Invert gradient
+          </label>
+
+          <label className="checkbox-row" style={{ fontSize: 12, marginTop: 4 }}>
+            <input type="checkbox" checked={!!widget.logGradient}
+              onChange={e => onUpdate({ logGradient: e.target.checked || undefined })} />
+            Logarithmic scale
           </label>
 
           {/* Gradient measure field */}
