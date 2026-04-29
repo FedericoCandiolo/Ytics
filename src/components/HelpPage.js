@@ -392,6 +392,16 @@ export default function HelpPage({ onClose }) {
                 fields="X (time), Series (color), Value (numeric)."
                 options="Top N (fades lines entering/leaving top ranks), grid, legend, opacity."
                 gradient="Series total value" />
+              <ChartCard icon="🔲" name="Correlogram"
+                desc="Mixed-type correlation matrix for numeric and categorical variables. Auto-detects field types and computes Pearson r (numeric vs numeric), Eta η (numeric vs categorical), or Cramér's V (categorical vs categorical). Diagonal shows histograms (numeric) or bar charts (categorical)."
+                fields="Multiple fields, numeric or categorical (at least 2)."
+                options="Cell mode: circles (sized by strength), mini plots (scatter/strip/heatmap adapted per pair type), or text values. Dual legends: diverging RdBu for Pearson r (-1 to +1), sequential Oranges for η/V (0 to 1)."
+                gradient="N/A — uses built-in diverging and sequential color scales" />
+              <ChartCard icon="🌫" name="Density Chart"
+                desc="2D density visualization with four modes: contour plot, density with shading, hexbin, and 2D histogram. Shows data distribution across two numeric axes. Supports multi-series with CMYK-like subtractive color blending for overlapping regions."
+                fields="X (numeric), Y (numeric). Optional: Series/Dimension for multi-series."
+                options="Visualization type (shading/contour/hexbin/histogram), filled toggle (contour lines always visible), color mode (auto/palette/complementary/CMY), bandwidth, contour levels, show data points."
+                gradient="Density intensity or bin count" />
               <ChartCard icon="📊📈" name="Combo Chart"
                 desc="Overlays bars and lines on the same axes for dual-measure comparison."
                 fields="X (category), Y1 (bars), Y2 (line). Optional: Color field. Independent number format per axis."
@@ -478,9 +488,9 @@ export default function HelpPage({ onClose }) {
                 options="Conditional formatting (gradient or rules). Per-measure number format, totals row."
                 gradient="N/A — uses conditional formatting" />
               <ChartCard icon="⬤" name="Scatter Plot"
-                desc="Individual data points on X/Y coordinates with optional size encoding."
-                fields="X (numeric), Y (numeric). Optional: Color, Size fields."
-                options="Dot size min/max (4–20px)."
+                desc="Individual data points on X/Y coordinates with optional size encoding. Supports connected scatterplot mode to draw lines between points using different ordering strategies."
+                fields="X (numeric), Y (numeric). Optional: Color/Series, Size, Label fields."
+                options="Dot size min/max, regression line (linear/polynomial), connected scatterplot with ordering: by X value, by Y value, by distance to trend-line, minimum angle path, or by a custom field (e.g. date). Line width and opacity controls."
                 gradient="Y value or custom field" />
               <ChartCard icon="〰" name="Stream Graph"
                 desc="Flowing stacked areas showing composition over time."
@@ -677,12 +687,14 @@ export default function HelpPage({ onClose }) {
                 <li><strong>Bar Chart</strong>: Orientation, bar mode, sort by, sort order.</li>
                 <li><strong>Bump Chart</strong>: Top N (limits visible ranks; lines entering/leaving fade out).</li>
                 <li><strong>Combo Chart</strong>: Bar mode, line type, dual-axis configuration.</li>
+                <li><strong>Correlogram</strong>: Cell mode (circles, scatter, text). Mixed-type support: Pearson r for numeric pairs, Eta η for numeric-categorical, Cramér's V for categorical pairs. Diagonal: histograms (numeric) or bar charts (categorical). Dual color legends.</li>
+                <li><strong>Density Chart</strong>: Four modes (shading, contour, hexbin, 2D histogram). Filled toggle (contours always visible). Multi-series color modes: auto, palette, complementary, CMY. CMYK-like subtractive blending for overlaps. Bandwidth, contour levels, data point overlay.</li>
                 <li><strong>Geo Map</strong>: Map projection (Natural Earth, Mercator, Equal Earth, Orthographic).</li>
                 <li><strong>Histogram</strong>: Number of bins.</li>
                 <li><strong>KPI Card</strong>: Style (card/gauge/satellite), format, gauge min/max, gauge segments with auto-palette colors, invert gradient.</li>
                 <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode, X-axis spacing.</li>
                 <li><strong>Pie Chart</strong>: Inner radius (donut hole size).</li>
-                <li><strong>Scatter / Bubble</strong>: Dot size min/max.</li>
+                <li><strong>Scatter / Bubble</strong>: Dot size min/max. Connected scatterplot: connect points with lines using ordering strategies (X value, Y value, trend-line distance, minimum angle, or custom field like date). Adjustable line width and opacity.</li>
                 <li><strong>Carousel</strong>: Auto-play toggle, interval.</li>
               </ul>
             </Sub>

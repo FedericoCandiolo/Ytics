@@ -36,6 +36,8 @@ export const CHART_REQUIRED_FIELDS = {
   combo:     ['xField', 'yField', 'y2Field'],
   straighttable: ['valueField'],
   mekko:     ['xField', 'yField', 'colorField'],
+  correlogram: [],
+  density:     ['xField', 'yField'],
   graph:     ['sourceField', 'targetField'],
   network:   ['sourceField', 'targetField'],
   text:      [],
@@ -641,7 +643,8 @@ function reducer(state, action) {
     // ── Associative selections ────────────────────────────────
     case 'SET_SELECTION': {
       const { field, values } = action.payload;
-      if (!values || values.length === 0) {
+      // Allow empty arrays (creates the pill); null/undefined removes the field
+      if (values == null) {
         const sel = { ...state.selections };
         delete sel[field];
         return { ...state, selections: sel };

@@ -358,7 +358,7 @@ const AGG_VALUE_KEY = {
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'text', 'image', 'embed'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -407,6 +407,11 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
       { key: 'sizeField', label: 'Size (numeric, optional)',  filter: ['number'], optional: true },
       { key: 'labelField',label: 'Point label (optional)',    filter: null, optional: true },
       { key: '_scatterOverlayFields', label: 'Mini chart fields', multi: true },
+    ],
+    density: [
+      { key: 'xField',    label: 'X Axis (numeric)',         filter: ['number'] },
+      { key: 'yField',    label: 'Y Axis (numeric)',         filter: ['number'] },
+      { key: 'colorField',label: 'Series / Dimension (optional)', filter: null, optional: true },
     ],
     pie: [
       { key: 'labelField',label: 'Dimension (label)',         filter: null },
@@ -536,6 +541,9 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
       { key: 'xField',      label: 'Dimension (X axis)',      filter: null },
       { key: 'yField',      label: 'Measure',                 filter: ['number'] },
       { key: 'colorField',  label: 'Segments (color)',        filter: null },
+    ],
+    correlogram: [
+      { key: '_correlogramFields', label: 'Variables (numeric or categorical)', multi: true },
     ],
     text: [],
     image: [],
@@ -914,6 +922,33 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
                 <button className="btn btn-ghost btn-sm" onClick={() => {
                   onUpdate({ straightTableMeasures: [...current, { field: '', aggregation: 'sum', representation: 'text' }] });
                 }}>+ Add measure</button>
+              </div>
+            </div>
+          );
+        }
+        // Special: multi-select for Correlogram fields (any type)
+        if (f.key === '_correlogramFields') {
+          const current = widget.correlogramFields || [];
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {current.map((fld, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
+                        onUpdate({ correlogramFields: next });
+                      }} />
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                      onUpdate({ correlogramFields: current.filter((_, j) => j !== i) });
+                    }}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ correlogramFields: [...current, ''] });
+                }}>+ Add variable</button>
               </div>
             </div>
           );
@@ -1987,6 +2022,41 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           </select>
         </div>
       )}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.connectPoints} onChange={e => onUpdate({ connectPoints: e.target.checked })} />
+        Connect points (connected scatterplot)
+      </label>
+      {widget.connectPoints && (<>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Connection order</label>
+          <select className="select select-sm" value={widget.connectionStrategy || 'x'} onChange={e => onUpdate({ connectionStrategy: e.target.value })}>
+            <option value="x">By X axis value</option>
+            <option value="y">By Y axis value</option>
+            <option value="trendline">By distance to trend-line</option>
+            <option value="angle">Minimum angle (smoothest path)</option>
+            <option value="field">By a specific field (e.g. date)</option>
+          </select>
+        </div>
+        {widget.connectionStrategy === 'field' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Order field</label>
+            <SearchableFieldPicker
+              tableGroups={tableGroups} customFields={customFields}
+              value={widget.connectionOrderField || ''} placeholder="Select field…"
+              onChange={v => onUpdate({ connectionOrderField: v || '' })} />
+          </div>
+        )}
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Line width — {widget.connectionWidth ?? 1.5}px</label>
+          <input type="range" min={0.5} max={5} step={0.5} value={widget.connectionWidth ?? 1.5}
+            onChange={e => onUpdate({ connectionWidth: parseFloat(e.target.value) })} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Line opacity — {Math.round((widget.connectionOpacity ?? 0.5) * 100)}%</label>
+          <input type="range" min={0.1} max={1} step={0.05} value={widget.connectionOpacity ?? 0.5}
+            onChange={e => onUpdate({ connectionOpacity: parseFloat(e.target.value) })} />
+        </div>
+      </>)}
     </div>
   );
 
@@ -2662,6 +2732,78 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           columns={columns}
           placeholder="https://example.com/embed or {{url_field}}"
         />
+      </div>
+    </div>
+  );
+
+  if (widget.type === 'density') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Visualization type</label>
+        <select className="select select-sm" value={widget.densityMode || 'shading'} onChange={e => onUpdate({ densityMode: e.target.value })}>
+          <option value="shading">Density with shading</option>
+          <option value="hexbin">Hexbin</option>
+          <option value="histogram">2D Histogram</option>
+        </select>
+      </div>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={widget.densityFilled !== false} onChange={e => onUpdate({ densityFilled: e.target.checked })} />
+        Filled
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6 }}>
+          {(widget.densityMode || 'shading') === 'shading'
+            ? '(contour lines always show)'
+            : '(color-fill bins)'}
+        </span>
+      </label>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Color mode (multi-series)</label>
+        <select className="select select-sm" value={widget.densityColorMode || 'auto'} onChange={e => onUpdate({ densityColorMode: e.target.value })}>
+          <option value="auto">Auto (best for series count)</option>
+          <option value="palette">Palette colors</option>
+          <option value="analog">Analog (nearby hues)</option>
+          <option value="complementary">Complementary (opposite hues)</option>
+          <option value="cmy">CMY triad (3 series)</option>
+        </select>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+          Overlapping fills blend subtractively (CMYK). Auto: 2 → complementary, 3 → CMY.
+        </div>
+      </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Legend</label>
+        <select className="select select-sm" value={widget.densityLegendPosition || 'bottom'} onChange={e => onUpdate({ densityLegendPosition: e.target.value })}>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="hidden">Hidden</option>
+        </select>
+      </div>
+      {(widget.densityMode || 'shading') === 'shading' && (<>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Bandwidth (smoothing) — {widget.densityBandwidth ?? 30}</label>
+          <input type="range" min={5} max={80} value={widget.densityBandwidth ?? 30}
+            onChange={e => onUpdate({ densityBandwidth: parseInt(e.target.value) })} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Contour levels — {widget.densityThresholds ?? 10}</label>
+          <input type="range" min={3} max={30} value={widget.densityThresholds ?? 10}
+            onChange={e => onUpdate({ densityThresholds: parseInt(e.target.value) })} />
+        </div>
+      </>)}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.densityShowPoints} onChange={e => onUpdate({ densityShowPoints: e.target.checked })} />
+        Show data points
+      </label>
+    </div>
+  );
+
+  if (widget.type === 'correlogram') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Cell mode</label>
+        <select className="select select-sm" value={widget.correlogramMode || 'circles'} onChange={e => onUpdate({ correlogramMode: e.target.value })}>
+          <option value="circles">Circles + values</option>
+          <option value="scatter">Mini scatterplots</option>
+          <option value="text">Text only</option>
+        </select>
       </div>
     </div>
   );

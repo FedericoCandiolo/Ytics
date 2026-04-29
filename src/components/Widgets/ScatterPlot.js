@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useId } from 'react';
 import * as d3 from 'd3';
 import { formatValue, linearRegression, aggregate } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient, getColorArray } from '../../utils/colorUtils';
@@ -55,7 +55,7 @@ function polynomialRegression2(points) {
 }
 
 /* ── Draw a single regression line/curve into the provided d3 group ──────── */
-function drawRegression(g, pts, xScale, yScale, W, H, regressionType, strokeColor, showLabel) {
+function drawRegression(g, pts, xScale, yScale, W, H, regressionType, strokeColor, showLabel, clipId) {
   if (pts.length < 2) return;
   const points = pts.map(d => ({ x: d.x, y: d.y }));
   const [x0, x1] = xScale.domain();
@@ -80,7 +80,7 @@ function drawRegression(g, pts, xScale, yScale, W, H, regressionType, strokeColo
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', '6,4')
       .attr('opacity', 0.55)
-      .attr('clip-path', 'url(#scatter-clip)');
+      .attr('clip-path', `url(#${clipId})`);
 
     if (showLabel) {
       // Place R² label at the midpoint of the curve
@@ -108,7 +108,7 @@ function drawRegression(g, pts, xScale, yScale, W, H, regressionType, strokeColo
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', '6,4')
       .attr('opacity', 0.55)
-      .attr('clip-path', 'url(#scatter-clip)');
+      .attr('clip-path', `url(#${clipId})`);
 
     if (showLabel) {
       // Place R² near the right end of the line
@@ -131,6 +131,8 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
   const svgRef = useRef(null);
   const dims = useChartDims(containerRef);
   const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
+  const reactId = useId();
+  const clipId = `scatter-clip-${reactId.replace(/:/g, '')}`;
 
   const render = useCallback(() => {
     const { w, h } = dims;
@@ -246,7 +248,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
     svg.attr('width', w).attr('height', h);
     const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
 
-    svg.append('defs').append('clipPath').attr('id', 'scatter-clip')
+    svg.append('defs').append('clipPath').attr('id', clipId)
       .append('rect').attr('width', W).attr('height', H);
     g.attr('clip-path', null);
 
@@ -269,13 +271,125 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           const groupPts = pts.filter(d => d.color === cat);
           if (groupPts.length >= 2) {
             const color = colors(cat);
-            drawRegression(g, groupPts, xScale, yScale, W, H, regressionType, color, true);
+            drawRegression(g, groupPts, xScale, yScale, W, H, regressionType, color, true, clipId);
           }
         }
       } else {
         const color = gradientFn ? '#888' : 'var(--chart-axis-color)';
-        drawRegression(g, pts, xScale, yScale, W, H, regressionType, color, true);
+        drawRegression(g, pts, xScale, yScale, W, H, regressionType, color, true, clipId);
       }
+    }
+
+    // ── Connected scatterplot: draw lines between points ──
+    // Build a map: point → { prev, next } neighbors in sorted connection order
+    const connNeighbors = new Map();
+    let connHighG;
+    if (widget.connectPoints && !useMiniCharts) {
+      const strategy = widget.connectionStrategy || 'x';
+      const orderField = widget.connectionOrderField;
+
+      const sortGroup = (group) => {
+        const sorted = [...group];
+        if (strategy === 'x') {
+          sorted.sort((a, b) => a.x - b.x);
+        } else if (strategy === 'y') {
+          sorted.sort((a, b) => a.y - b.y);
+        } else if (strategy === 'field' && orderField) {
+          sorted.sort((a, b) => {
+            const va = a.raw[orderField], vb = b.raw[orderField];
+            if (va instanceof Date || !isNaN(Date.parse(va))) return new Date(va) - new Date(vb);
+            if (!isNaN(+va)) return +va - +vb;
+            return String(va).localeCompare(String(vb));
+          });
+        } else if (strategy === 'trendline') {
+          const reg = linearRegression(sorted.map(d => ({ x: d.x, y: d.y })));
+          const dx = 1, dy = reg.slope;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          sorted.sort((a, b) => {
+            const projA = (a.x * dx + a.y * dy) / len;
+            const projB = (b.x * dx + b.y * dy) / len;
+            return projA - projB;
+          });
+        } else if (strategy === 'angle') {
+          if (sorted.length > 2) {
+            const used = new Set();
+            const result = [sorted[0]];
+            used.add(0);
+            for (let step = 1; step < sorted.length; step++) {
+              const prev = result[result.length - 1];
+              const prev2 = result.length > 1 ? result[result.length - 2] : null;
+              let bestIdx = -1, bestScore = Infinity;
+              for (let j = 0; j < sorted.length; j++) {
+                if (used.has(j)) continue;
+                const cand = sorted[j];
+                if (prev2) {
+                  const ax = prev.x - prev2.x, ay = prev.y - prev2.y;
+                  const bx = cand.x - prev.x, by = cand.y - prev.y;
+                  const dot = ax * bx + ay * by;
+                  const cross = ax * by - ay * bx;
+                  const angle = Math.abs(Math.atan2(cross, dot));
+                  if (angle < bestScore) { bestScore = angle; bestIdx = j; }
+                } else {
+                  const dist = (cand.x - prev.x) ** 2 + (cand.y - prev.y) ** 2;
+                  if (dist < bestScore) { bestScore = dist; bestIdx = j; }
+                }
+              }
+              if (bestIdx >= 0) { result.push(sorted[bestIdx]); used.add(bestIdx); }
+            }
+            sorted.length = 0;
+            sorted.push(...result);
+          }
+        }
+        return sorted;
+      };
+
+      const lineGen = d3.line()
+        .x(d => xScale(d.x))
+        .y(d => yScale(d.y))
+        .curve(d3.curveMonotoneX);
+
+      const connG = g.append('g').attr('class', 'scatter-connections').attr('clip-path', `url(#${clipId})`);
+      const connWidth = widget.connectionWidth ?? 1.5;
+      const connOpacity = widget.connectionOpacity ?? 0.5;
+
+      const registerNeighbors = (sorted) => {
+        for (let i = 0; i < sorted.length; i++) {
+          connNeighbors.set(sorted[i], {
+            prev: i > 0 ? sorted[i - 1] : null,
+            next: i < sorted.length - 1 ? sorted[i + 1] : null,
+          });
+        }
+      };
+
+      if (widget.colorField && categories.length > 0) {
+        for (const cat of categories) {
+          const groupPts = sortGroup(pts.filter(d => d.color === cat));
+          if (groupPts.length < 2) continue;
+          registerNeighbors(groupPts);
+          connG.append('path')
+            .datum(groupPts)
+            .attr('d', lineGen)
+            .attr('fill', 'none')
+            .attr('stroke', colors(cat))
+            .attr('stroke-width', connWidth)
+            .attr('stroke-opacity', connOpacity);
+        }
+      } else {
+        const sorted = sortGroup(pts);
+        if (sorted.length >= 2) {
+          registerNeighbors(sorted);
+          connG.append('path')
+            .datum(sorted)
+            .attr('d', lineGen)
+            .attr('fill', 'none')
+            .attr('stroke', gradientFn ? '#888' : primaryColor)
+            .attr('stroke-width', connWidth)
+            .attr('stroke-opacity', connOpacity);
+        }
+      }
+
+      // Highlight overlay group (drawn above dots later)
+      connHighG = g.append('g').attr('class', 'scatter-conn-highlight').attr('clip-path', `url(#${clipId})`);
     }
 
     // ── Draw points ──
@@ -341,6 +455,37 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           d3.select(ev.currentTarget).raise().transition().duration(80)
             .attr('r', (widget.sizeField ? sizeScale(d.size) : sMin + 2) * 1.5)
             .attr('opacity', 1).attr('stroke-width', 2.5);
+          // Highlight connected neighbors
+          const nb = connNeighbors.get(d);
+          if (nb && connHighG) {
+            connHighG.selectAll('*').remove();
+            const baseR = widget.sizeField ? sizeScale(d.size) : sMin + 2;
+            const highlightColor = gradientFn ? '#333' : widget.colorField ? colors(d.color) : primaryColor;
+            const neighbors = [nb.prev, nb.next].filter(Boolean);
+            for (const n of neighbors) {
+              connHighG.append('line')
+                .attr('x1', xScale(d.x)).attr('y1', yScale(d.y))
+                .attr('x2', xScale(n.x)).attr('y2', yScale(n.y))
+                .attr('stroke', highlightColor)
+                .attr('stroke-width', (widget.connectionWidth ?? 1.5) + 2)
+                .attr('stroke-opacity', 0.85)
+                .attr('stroke-linecap', 'round');
+              const nr = widget.sizeField ? sizeScale(n.size) : sMin + 2;
+              connHighG.append('circle')
+                .attr('cx', xScale(n.x)).attr('cy', yScale(n.y))
+                .attr('r', nr * 1.3)
+                .attr('fill', gradientFn ? gradientFn(n) : widget.colorField ? colors(n.color) : primaryColor)
+                .attr('opacity', 1)
+                .attr('stroke', '#fff').attr('stroke-width', 2);
+            }
+            // Highlight hovered dot on top
+            connHighG.append('circle')
+              .attr('cx', xScale(d.x)).attr('cy', yScale(d.y))
+              .attr('r', baseR * 1.5)
+              .attr('fill', gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor)
+              .attr('opacity', 1)
+              .attr('stroke', '#fff').attr('stroke-width', 2.5);
+          }
           showTooltip(ev, <ScatterTip d={d} widget={widget} color={gradientFn ? gradientFn(d) : widget.colorField ? colors(d.color) : primaryColor} />);
         })
         .on('mousemove', moveTooltip)
@@ -348,6 +493,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           d3.select(ev.currentTarget).transition().duration(120)
             .attr('r', widget.sizeField ? sizeScale(d.size) : sMin + 2)
             .attr('opacity', opacity).attr('stroke-width', 1);
+          if (connHighG) connHighG.selectAll('*').remove();
           hideTooltip();
         })
         .on('click', onCrossFilter ? (ev, d) => { ev.stopPropagation(); onCrossFilter({ field: widget.colorField || widget.xField, value: d[widget.colorField || widget.xField] }); } : null)
@@ -379,7 +525,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           .attr('fill', 'var(--text-muted)').text(cat.length > 13 ? cat.slice(0, 13) + '…' : cat);
       });
     }
-  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
+  }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter, clipId]);
 
   useEffect(render, [render]);
 

@@ -422,7 +422,7 @@ function collectWidgetFields(widget) {
     if (widget[key]) for (const m of widget[key]) if (m?.field) fields.add(m.field);
   }
   // Overlay field arrays (scatter mini charts, geo overlays, point layers)
-  for (const key of ['scatterOverlayFields', 'overlayFields', 'pointOverlayFields']) {
+  for (const key of ['scatterOverlayFields', 'overlayFields', 'pointOverlayFields', 'correlogramFields']) {
     if (widget[key]) for (const f of widget[key]) if (f) fields.add(f);
   }
   // DataTable visible columns — these determine which table(s) to resolve from

@@ -34,6 +34,8 @@ import NetworkChart from './NetworkChart';
 import TextContent from './TextContent';
 import ImageWidget from './ImageWidget';
 import EmbedWidget from './EmbedWidget';
+import Correlogram from './Correlogram';
+import DensityChart from './DensityChart';
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
@@ -44,7 +46,7 @@ const CHART_MAP = {
   pivot: PivotTable,
   waterfall: WaterfallChart, wordcloud: WordCloud, funnel: FunnelChart,
   kpi: KPICard, bubble: BubbleChart, combo: ComboChart,
-  straighttable: StraightTable, mekko: MekkoChart, graph: GraphChart, network: NetworkChart,
+  straighttable: StraightTable, mekko: MekkoChart, graph: GraphChart, network: NetworkChart, correlogram: Correlogram, density: DensityChart,
   text: TextContent, image: ImageWidget, embed: EmbedWidget,
 };
 
@@ -56,7 +58,7 @@ const TYPE_ICONS = {
   pivot: '⊞',
   waterfall: '📉', wordcloud: '☁', funnel: '🔻', kpi: '🎯',
   bubble: '🫧', combo: '📊📈', straighttable: '▦', mekko: '▥',
-  graph: '🕸️', network: '🌳',
+  correlogram: '🔲', density: '🌫', graph: '🕸️', network: '🌳',
   text: '📝', image: '🖼', embed: '🔗',
 };
 
