@@ -102,7 +102,8 @@ function SelectionPill({ field, values, colStore, associativeState, dispatch }) 
         <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>{summary}</span>
         <button
           style={{ marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-light)', padding: 0 }}
-          onClick={e => { e.stopPropagation(); dispatch({ type: 'CLEAR_SELECTION', payload: field }); }}
+          onClick={e => { e.stopPropagation(); dispatch({ type: 'REMOVE_SELECTION', payload: field }); }}
+          title="Remove selection pane"
         >✕</button>
       </div>
       {open && (

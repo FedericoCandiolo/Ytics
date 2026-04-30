@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { formatValue, aggregateData } from '../../utils/dataUtils';
 import { getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale } from './chartHelpers';
 
 export default function Histogram({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -57,7 +57,9 @@ export default function Histogram({ widget, data, onCrossFilter }) {
     } else {
       bins = d3.bin().domain(xScale.domain()).thresholds(xScale.ticks(nBins))(vals);
     }
-    const yScale = d3.scaleLinear().domain([0, d3.max(bins, d => d.length) * 1.08]).range([H, 0]).nice();
+    const useLog = !!widget.useLogScale;
+    const yMax = d3.max(bins, d => d.length) * 1.08;
+    const yScale = makeValueScale(useLog, [useLog ? 1 : 0, yMax], [H, 0]);
 
     const useGradient = widget.colorMode === 'gradient';
     const fillColor = getPrimaryColor(widget.colorScheme);

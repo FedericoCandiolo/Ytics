@@ -5,6 +5,7 @@ import { useBreakpoint } from '../../hooks/useMediaQuery';
 import DataModel from './DataModel';
 import ImportWizard from './ImportWizard';
 import InlineTableEditor from './InlineTableEditor';
+import ClusteringPanel from './ClusteringPanel';
 
 const ACCEPTED_EXTENSIONS = ['.csv', '.xlsx', '.xls', '.xlsb', '.xlsm', '.ods', '.json'];
 const ACCEPTED_MIME = '.csv,.xlsx,.xls,.xlsb,.xlsm,.ods,.json,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel';
@@ -1053,6 +1054,12 @@ function CenterPanel({ view, setView, activeDataset, modelPositions, setModelPos
         >
           🔗 Model
         </button>
+        <button
+          className={`di-view-tab ${view === 'analytics' ? 'di-view-tab--active' : ''}`}
+          onClick={() => setView('analytics')}
+        >
+          🧠 Analytics
+        </button>
       </div>
       {view === 'data' ? (
         <div className="di-preview">
@@ -1072,6 +1079,10 @@ function CenterPanel({ view, setView, activeDataset, modelPositions, setModelPos
       ) : view === 'join' ? (
         <div className="di-preview">
           <JoinPanel datasets={datasets} dispatch={dispatch} />
+        </div>
+      ) : view === 'analytics' ? (
+        <div className="di-preview">
+          <ClusteringPanel datasets={datasets} activeDataset={activeDataset} dispatch={dispatch} />
         </div>
       ) : (
         <DataModel positions={modelPositions} onPositionsChange={setModelPositions} />

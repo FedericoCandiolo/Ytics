@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorArray, getSequentialScale, resolveGradient, getColorScaleWithOverrides } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale } from './chartHelpers';
 
 export default function WaterfallChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -144,7 +144,8 @@ function renderWaterfall(svg, data, widget, dims, showTooltip, moveTooltip, hide
   const padding = (maxVal - minVal) * 0.08 || 1;
 
   const xScale = d3.scaleBand().domain(bars.map(b => b.key)).range([0, W]).padding(0.22);
-  const yScale = d3.scaleLinear().domain([minVal - padding, maxVal + padding]).range([H, 0]).nice();
+  const useLog = !!widget.useLogScale;
+  const yScale = makeValueScale(useLog, [useLog ? Math.max(1, minVal - padding) : minVal - padding, maxVal + padding], [H, 0]);
 
   svg.attr('width', w).attr('height', h);
   const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
@@ -260,10 +261,12 @@ function renderCandlestick(svg, data, widget, dims, showTooltip, moveTooltip, hi
   const pricePad = (maxPrice - minPrice) * 0.05 || 1;
 
   const xScale = d3.scaleBand().domain(candles.map(c => c.key)).range([0, W]).padding(0.3);
-  const yScale = d3.scaleLinear().domain([minPrice - pricePad, maxPrice + pricePad]).range([H, 0]).nice();
+  const useLog2 = !!widget.useLogScale;
+  const yScale = makeValueScale(useLog2, [useLog2 ? Math.max(1, minPrice - pricePad) : minPrice - pricePad, maxPrice + pricePad], [H, 0]);
 
   svg.attr('width', w).attr('height', h);
   const g = svg.append('g').attr('transform', `translate(${m.left},${m.top})`);
+
 
   // Grid
   if (widget.showGrid) {

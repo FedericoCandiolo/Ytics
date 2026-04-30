@@ -73,7 +73,7 @@ export default function ViewerMode({ isMobile }) {
           <button
             className="btn btn-primary btn-sm"
             disabled={totalWidgets === 0}
-            onClick={() => exportDashboard(state.datasets, dashboard)}
+            onClick={() => exportDashboard(state.datasets, dashboard, state.selections)}
           >{isMobile ? '⬇' : '⬇ Export'}</button>
         </div>
       </div>
@@ -105,6 +105,8 @@ export default function ViewerMode({ isMobile }) {
             rowHeight={rowHeight}
             isDraggable={false}
             isResizable={false}
+            compactType={null}
+            preventCollision={true}
             margin={isMobile ? [4, 4] : [margin, margin]}
           >
             {currentPage.widgets.map(widget => (

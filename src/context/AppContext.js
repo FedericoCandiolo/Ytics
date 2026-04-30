@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect, u
 import { applyTransforms, detectColumnTypes } from '../utils/dataUtils';
 import { buildTable, cloneDicts } from '../utils/columnStore';
 import { computeAssociativeState } from '../utils/associativeEngine';
+import { runClustering } from '../utils/mlUtils';
 import { v4 as uuid } from 'uuid';
 
 const AppContext = createContext(null);
@@ -26,7 +27,7 @@ export const CHART_REQUIRED_FIELDS = {
   radar:     ['axisField', 'valueField'],
   waffle:    ['labelField', 'valueField'],
   sankey:    ['sourceField', 'targetField', 'valueField'],
-  geo:       ['geoField', 'valueField'],
+  geo:       ['geoField'],
   pivot:     ['valueField'],
   waterfall: ['xField', 'valueField'],
   wordcloud: ['xField', 'valueField'],
@@ -673,22 +674,28 @@ function reducer(state, action) {
       const next = current.includes(strVal)
         ? current.filter(v => v !== strVal)
         : [...current, strVal];
-      if (next.length === 0) {
-        const sel = { ...state.selections };
-        delete sel[field];
-        return { ...state, selections: sel };
-      }
+      // Keep the pane with empty array (= "all") instead of removing it
       return { ...state, selections: { ...state.selections, [field]: next } };
     }
 
     case 'CLEAR_SELECTION': {
+      // Reset to "all" (empty array) — keeps the pane visible
+      return { ...state, selections: { ...state.selections, [action.payload]: [] } };
+    }
+
+    case 'REMOVE_SELECTION': {
+      // Completely remove the selection pane
       const sel = { ...state.selections };
       delete sel[action.payload];
       return { ...state, selections: sel };
     }
 
-    case 'CLEAR_ALL_SELECTIONS':
-      return { ...state, selections: {} };
+    case 'CLEAR_ALL_SELECTIONS': {
+      // Reset all panes to "all" (empty arrays) — keep panes visible
+      const cleared = {};
+      for (const field of Object.keys(state.selections)) cleared[field] = [];
+      return { ...state, selections: cleared };
+    }
 
     case 'RESTORE_SELECTIONS':
       return { ...state, selections: action.payload };
@@ -757,6 +764,46 @@ function reducer(state, action) {
         return { ...cd, activeIndex: next };
       });
       return { ...state, dashboard: { ...state.dashboard, cyclicDimensions: cds } };
+    }
+
+    // ── Clustering ─────────────────────────────────────────────
+    case 'RUN_CLUSTERING': {
+      const { datasetId, fields, config } = action.payload;
+      const dicts = cloneDicts(state.colStore.dicts);
+      const tables = { ...state.colStore.tables };
+      let clusterStats = null;
+      const datasets = state.datasets.map(d => {
+        if (d.id !== datasetId) return d;
+        const { data: clustered, stats } = runClustering(d.data, fields, config);
+        clusterStats = stats;
+        // Write cluster column back to originalData too, so transforms don't erase it
+        const colName = config.columnName || '_cluster';
+        const labelMap = new Map(clustered.map((r, i) => [i, r[colName]]));
+        const newOriginal = d.originalData.map((row, i) => ({ ...row, [colName]: labelMap.get(i) ?? null }));
+        const updated = recompute({ ...d, originalData: newOriginal }, dicts);
+        tables[d.id] = updated.table;
+        return updated;
+      });
+      // Store stats on the action for the UI to read via callback
+      if (action.onComplete) action.onComplete(clusterStats);
+      return { ...state, datasets, colStore: { dicts, tables } };
+    }
+
+    case 'REMOVE_COLUMN': {
+      const { datasetId, column } = action.payload;
+      const dicts = cloneDicts(state.colStore.dicts);
+      const tables = { ...state.colStore.tables };
+      const datasets = state.datasets.map(d => {
+        if (d.id !== datasetId) return d;
+        const newOriginal = d.originalData.map(row => {
+          const { [column]: _, ...rest } = row;
+          return rest;
+        });
+        const updated = recompute({ ...d, originalData: newOriginal }, dicts);
+        tables[d.id] = updated.table;
+        return updated;
+      });
+      return { ...state, datasets, colStore: { dicts, tables } };
     }
 
     // ── Import ────────────────────────────────────────────────
@@ -836,10 +883,11 @@ const UNDOABLE_ACTIONS = new Set([
   'LOAD_DATASET', 'DELETE_DATASET', 'RENAME_DATASET',
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
   'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR',
+  'RUN_CLUSTERING', 'REMOVE_COLUMN',
 ]);
 
 const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);
-const SELECTION_ACTIONS = new Set(['SET_SELECTION', 'TOGGLE_SELECTION', 'CLEAR_SELECTION', 'CLEAR_ALL_SELECTIONS']);
+const SELECTION_ACTIONS = new Set(['SET_SELECTION', 'TOGGLE_SELECTION', 'CLEAR_SELECTION', 'REMOVE_SELECTION', 'CLEAR_ALL_SELECTIONS']);
 
 const STORAGE_KEY = 'ytics_dashboard';
 

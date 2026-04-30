@@ -25,6 +25,7 @@ const TOC = [
   { id: 'filtering', label: 'Filtering & Cross-Filtering' },
   { id: 'export-import', label: 'Export & Import' },
   { id: 'shortcuts', label: 'Keyboard Shortcuts' },
+  { id: 'ml-analytics', label: 'ML Analytics & Clustering' },
   { id: 'tips', label: 'Tips & Best Practices' },
 ];
 
@@ -490,7 +491,7 @@ export default function HelpPage({ onClose }) {
               <ChartCard icon="⬤" name="Scatter Plot"
                 desc="Individual data points on X/Y coordinates with optional size encoding. Supports connected scatterplot mode to draw lines between points using different ordering strategies."
                 fields="X (numeric), Y (numeric). Optional: Color/Series, Size, Label fields."
-                options="Dot size min/max, regression line (linear/polynomial), connected scatterplot with ordering: by X value, by Y value, by distance to trend-line, minimum angle path, or by a custom field (e.g. date). Line width and opacity controls."
+                options="Dot size min/max, trend line (linear/polynomial/logarithmic/exponential), connected scatterplot with ordering: by X value, by Y value, by distance to trend-line, minimum angle path, or by a custom field (e.g. date). Line width and opacity controls."
                 gradient="Y value or custom field" />
               <ChartCard icon="〰" name="Stream Graph"
                 desc="Flowing stacked areas showing composition over time."
@@ -975,9 +976,9 @@ export default function HelpPage({ onClose }) {
           <Section id="viewer-mode" title="15. Viewer Mode">
             <p>Switch by clicking <strong>Viewer</strong> in the header. This is the presentation mode.</p>
             <ul className="help-ul">
-              <li><strong>Read-only canvas</strong> — Widgets display but cannot be moved or edited.</li>
+              <li><strong>Read-only canvas</strong> — Widgets display but cannot be moved or edited. Layout is preserved exactly as designed in Developer mode, including intentional gaps.</li>
               <li><strong>Interactive charts</strong> — Hover for tooltips, click for cross-filtering.</li>
-              <li><strong>Filter panel</strong> — Add, modify, and remove data filters.</li>
+              <li><strong>Selection panel</strong> — Add selection panes for any field, then pick values to filter across all charts. Panes persist when cleared (showing "all") — use the ✕ button to remove a pane entirely.</li>
               <li><strong>Page navigation</strong> — Arrow buttons and tab bar for multi-page dashboards.</li>
               <li><strong>Maximize</strong> — Click {'\u2922'} on any widget for a full-screen view.</li>
             </ul>
@@ -985,26 +986,27 @@ export default function HelpPage({ onClose }) {
 
           {/* ── 16. Filtering ──────────────────────────────────────────── */}
           <Section id="filtering" title="16. Filtering & Cross-Filtering">
-            <Sub title="Adding Filters">
+            <Sub title="Selection Panes">
               <ol className="help-ol">
-                <li>Click <strong>+ Filter</strong> in the viewer top bar.</li>
-                <li>If there are multiple datasets, select one.</li>
-                <li>Choose a field to filter on.</li>
+                <li>Click <strong>+ Selection</strong> in the viewer top bar.</li>
+                <li>Choose a field from any dataset to create a selection pane.</li>
+                <li>Click the pane to open it and select values to filter by.</li>
               </ol>
-              <p><strong>Categorical filter</strong> (string fields): Multi-select checkboxes with search, "All visible", "All", and "None" buttons.</p>
-              <p><strong>Range filter</strong> (numeric fields): Min/Max inputs with a "Reset to full range" button.</p>
+              <p>Selection panes use the <strong>associative model</strong>: selecting values in one field highlights possible/excluded values in other fields across all related datasets.</p>
+              <p><strong>Clearing a selection</strong> (via "None" or unchecking all values) resets the pane to "all" — it stays visible so you can re-select later. Use the <strong>✕</strong> button to remove a pane entirely.</p>
+              <p><strong>"Clear all"</strong> resets all panes to "all" without removing them.</p>
             </Sub>
             <Sub title="Cross-Filtering">
               <p>
-                Click on any chart element (bar, slice, dot, region...) to create or toggle a filter.
-                Cross-filters work across all widgets sharing the same dataset.
+                Click on any chart element (bar, slice, dot, region...) to create or toggle a selection.
+                Cross-filters work across all widgets sharing the same dataset or related datasets.
               </p>
-              <Tip>Click "Argentina" on a bar chart — all other charts using the same dataset instantly filter to Argentina. Click again to remove.</Tip>
+              <Tip>Click "Argentina" on a bar chart — all other charts using the same or related datasets instantly filter to Argentina. Click again to remove.</Tip>
             </Sub>
-            <Sub title="Filter Undo / Redo">
+            <Sub title="Selection Undo / Redo">
               <p>
-                <Kbd>Ctrl+Z</Kbd> undoes the last filter change. <Kbd>Ctrl+Y</Kbd> redoes it.
-                Filter history is separate from developer-mode undo history.
+                <Kbd>Ctrl+Z</Kbd> undoes the last selection change. <Kbd>Ctrl+Y</Kbd> redoes it.
+                Selection history is separate from developer-mode undo history.
               </p>
             </Sub>
           </Section>
@@ -1016,15 +1018,16 @@ export default function HelpPage({ onClose }) {
               <Table
                 headers={['File', 'Contents']}
                 rows={[
-                  ['dashboard.json', 'Full configuration: pages, widgets, layouts, theme, dimension colors, data model positions.'],
+                  ['dashboard.json', 'Full configuration: pages, widgets, layouts, theme, dimension colors, data model positions, and selection pane fields.'],
                   ['data/*.csv', 'A CSV export of each dataset.'],
                   ['README.md', 'A human-readable summary.'],
                 ]}
               />
+              <p>Selection pane fields are saved so that on import, the same panes appear in the viewer (reset to "all").</p>
               <Tip>You can export at any point — even with no visualizations. As long as you have at least one dataset loaded, the Export button is enabled.</Tip>
             </Sub>
             <Sub title="Importing">
-              <p>Click <strong>Import</strong> in the header and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs datasets, restores the dashboard state, and switches to Viewer mode.</p>
+              <p>Click <strong>Import</strong> in the header and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs datasets, restores the dashboard state including selection panes, and switches to Viewer mode.</p>
             </Sub>
           </Section>
 
@@ -1046,8 +1049,88 @@ export default function HelpPage({ onClose }) {
             </p>
           </Section>
 
-          {/* ── 19. Tips & Best Practices ──────────────────────────────── */}
-          <Section id="tips" title="19. Tips & Best Practices">
+          {/* ── 19. ML Analytics & Clustering ─────────────────────────── */}
+          <Section id="ml-analytics" title="19. ML Analytics & Clustering">
+            <p>Ytics includes built-in machine learning tools for clustering and regression analysis, with no external dependencies required.</p>
+
+            <Sub title="Clustering Overview">
+              <p>Clustering groups rows of your dataset into clusters based on numeric fields. Two algorithms are available:</p>
+              <ul className="help-ul">
+                <li><strong>K-Means</strong> — Partitions data into exactly <em>k</em> clusters. Best when you know (or can estimate) the number of groups. Fast and reliable for most datasets.</li>
+                <li><strong>DBSCAN</strong> — Discovers clusters automatically based on density. Identifies outliers as "Noise". Best when clusters have irregular shapes or you don't know how many groups exist.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="How to Run Clustering">
+              <ol className="help-ul">
+                <li>Go to the <strong>Data</strong> tab and select a dataset.</li>
+                <li>Click the <strong>Analytics</strong> tab in the center panel.</li>
+                <li>Choose an algorithm (K-Means or DBSCAN).</li>
+                <li>Select the numeric fields (features) to cluster on. Data is automatically z-score normalized, so fields with different scales work correctly.</li>
+                <li>Configure parameters:
+                  <ul>
+                    <li><strong>K-Means:</strong> Set <em>k</em> (number of clusters) or enable "Auto-detect k" to use the elbow method.</li>
+                    <li><strong>DBSCAN:</strong> Set <em>epsilon</em> (neighborhood size) or enable "Auto-detect epsilon". Adjust <em>min points</em> (default 5) — the minimum neighbors for a point to be a "core" point.</li>
+                  </ul>
+                </li>
+                <li>Set the output column name (default: <code>_cluster</code>).</li>
+                <li>Click <strong>Run Clustering</strong>.</li>
+              </ol>
+              <p>The result is a new column added to your dataset. Each row gets a label like "Cluster 1", "Cluster 2", etc. (DBSCAN also produces "Noise" for outliers).</p>
+            </Sub>
+
+            <Sub title="Using Cluster Results">
+              <p>Once clustering is complete, use the cluster column in your visualizations:</p>
+              <ul className="help-ul">
+                <li><strong>Scatter Plot:</strong> Set the cluster column as <em>Color Field</em> to color points by cluster.</li>
+                <li><strong>Bar/Pie/Treemap:</strong> Use the cluster column as the category dimension to see distribution across clusters.</li>
+                <li><strong>Any chart with Color Field:</strong> The cluster column works as a dimension field in any chart type.</li>
+                <li><strong>Removing clusters:</strong> Existing cluster columns are listed at the top of the Analytics panel with a <strong>Remove</strong> button to delete them from the dataset.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="K-Means Details">
+              <ul className="help-ul">
+                <li>Uses <strong>K-Means++</strong> initialization for faster convergence and better results.</li>
+                <li><strong>Auto-detect k:</strong> Tests k=1 through k=10 and uses the "elbow method" (maximum second derivative of inertia) to find the optimal number of clusters.</li>
+                <li>Best for: roughly spherical clusters of similar size.</li>
+                <li>Limitations: requires specifying k; sensitive to outliers; always assigns every point to a cluster.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="DBSCAN Details">
+              <ul className="help-ul">
+                <li><strong>Epsilon:</strong> The maximum distance between two points for them to be considered neighbors. Smaller values create tighter clusters.</li>
+                <li><strong>Min Points:</strong> Minimum number of neighbors a point needs to be a "core" point. Higher values require denser clusters.</li>
+                <li><strong>Auto-detect epsilon:</strong> Uses the k-distance graph knee detection method to estimate a good epsilon value. If the initial estimate produces only one cluster, the algorithm adaptively reduces epsilon until multiple clusters are found.</li>
+                <li>Best for: irregular cluster shapes, datasets with outliers, unknown number of clusters.</li>
+                <li>Limitations: sensitive to epsilon/minPoints; may struggle with clusters of very different densities.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="Trend Lines">
+              <p>Trend lines help visualize patterns and relationships in your data.</p>
+              <ul className="help-ul">
+                <li><strong>Scatter Plot:</strong> Enable "Show trend line" in chart options. Per-category trend lines are drawn when a Color Field is set.</li>
+                <li><strong>Line Chart:</strong> Enable "Show trend line" in chart options. Works with any X axis type.</li>
+                <li><strong>Types:</strong> Linear (y = ax + b), Polynomial of degree N (y = a₀ + a₁x + ... + aₙxⁿ), Logarithmic (y = a + b·ln(x)), Exponential (y = a·eᵇˣ).</li>
+                <li><strong>R² (coefficient of determination):</strong> Ranges from 0 to 1. Higher values indicate a better fit. R²=1 means the model perfectly predicts the data.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="Tips for ML Features">
+              <ul className="help-ul">
+                <li><strong>Normalization is automatic:</strong> All features are z-score normalized before clustering. You don't need to pre-scale your data.</li>
+                <li><strong>Start simple:</strong> Try K-Means with k=3 first, then adjust based on results.</li>
+                <li><strong>Use multiple features:</strong> Clustering works in N-dimensional space. Use 2+ numeric fields for meaningful groupings.</li>
+                <li><strong>Re-run freely:</strong> Clustering overwrites the output column, so you can experiment with different settings. Use Ctrl+Z to undo.</li>
+                <li><strong>Combine with charts:</strong> After clustering, create a scatter plot with X and Y as two of your features, and the cluster column as Color Field — this is the classic way to visualize clusters.</li>
+              </ul>
+            </Sub>
+          </Section>
+
+          {/* ── 20. Tips & Best Practices ──────────────────────────────── */}
+          <Section id="tips" title="20. Tips & Best Practices">
             <Sub title="Data Preparation">
               <ul className="help-ul">
                 <li><strong>Clean your data</strong> before uploading — mixed text and numbers in a column may be treated as strings. Use the Cast transform or type badges to fix types after import.</li>

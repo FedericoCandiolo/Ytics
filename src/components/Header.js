@@ -120,7 +120,7 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
               <button
                 className="header-dropdown-item header-dropdown-item--primary"
                 disabled={!canExport}
-                onClick={() => { exportDashboard(state.datasets, state.dashboard); setMenuOpen(false); }}
+                onClick={() => { exportDashboard(state.datasets, state.dashboard, state.selections); setMenuOpen(false); }}
               >
                 ⬇ Export
               </button>
@@ -153,7 +153,7 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
           <button
             className="btn btn-primary btn-sm"
             disabled={!canExport}
-            onClick={() => exportDashboard(state.datasets, state.dashboard)}
+            onClick={() => exportDashboard(state.datasets, state.dashboard, state.selections)}
             title="Export as .ytics"
           >
             ⬇ Export

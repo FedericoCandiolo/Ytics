@@ -818,3 +818,120 @@ export function linearRegression(points) {
 
   return { slope, intercept, r2 };
 }
+
+// ── Polynomial Regression (degree N) ─────────────────────────────────────────
+// Solves via normal equations with Gaussian elimination.
+// Returns { coeffs: [a0, a1, ..., aN], r2 }  where y = a0 + a1*x + a2*x² + ...
+export function polynomialRegression(points, degree = 2) {
+  const n = points.length;
+  if (n <= degree) return null;
+
+  const d = degree + 1;
+  // Build Vandermonde-style normal equations: (X^T X) a = X^T y
+  const M = Array.from({ length: d }, () => new Array(d + 1).fill(0));
+
+  // Precompute sums of x^k and x^k * y
+  const xPow = new Array(2 * degree + 1).fill(0);
+  const xyPow = new Array(d).fill(0);
+  for (const { x, y } of points) {
+    let xk = 1;
+    for (let k = 0; k <= 2 * degree; k++) {
+      xPow[k] += xk;
+      if (k < d) xyPow[k] += xk * y;
+      xk *= x;
+    }
+  }
+
+  for (let i = 0; i < d; i++) {
+    for (let j = 0; j < d; j++) M[i][j] = xPow[i + j];
+    M[i][d] = xyPow[i];
+  }
+
+  // Gaussian elimination with partial pivoting
+  for (let col = 0; col < d; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < d; row++) {
+      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
+    }
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+    if (Math.abs(M[col][col]) < 1e-12) return null;
+    for (let row = col + 1; row < d; row++) {
+      const f = M[row][col] / M[col][col];
+      for (let j = col; j <= d; j++) M[row][j] -= f * M[col][j];
+    }
+  }
+
+  // Back substitution
+  const coeffs = new Array(d).fill(0);
+  for (let i = d - 1; i >= 0; i--) {
+    coeffs[i] = M[i][d];
+    for (let j = i + 1; j < d; j++) coeffs[i] -= M[i][j] * coeffs[j];
+    coeffs[i] /= M[i][i];
+  }
+
+  // R²
+  const meanY = points.reduce((s, p) => s + p.y, 0) / n;
+  let ssTot = 0, ssRes = 0;
+  for (const { x, y } of points) {
+    let yHat = 0, xk = 1;
+    for (let k = 0; k < d; k++) { yHat += coeffs[k] * xk; xk *= x; }
+    ssTot += (y - meanY) ** 2;
+    ssRes += (y - yHat) ** 2;
+  }
+
+  return { coeffs, r2: ssTot === 0 ? 1 : 1 - ssRes / ssTot };
+}
+
+// Evaluate polynomial: coeffs = [a0, a1, ..., aN]
+export function polyEval(coeffs, x) {
+  let y = 0, xk = 1;
+  for (const c of coeffs) { y += c * xk; xk *= x; }
+  return y;
+}
+
+// ── Logarithmic Regression ───────────────────────────────────────────────────
+// y = a + b * ln(x).  Only uses points with x > 0.
+export function logarithmicRegression(points) {
+  const valid = points.filter(p => p.x > 0);
+  if (valid.length < 2) return null;
+  const transformed = valid.map(p => ({ x: Math.log(p.x), y: p.y }));
+  const lr = linearRegression(transformed);
+  if (!lr) return null;
+
+  // R² against original data
+  const n = valid.length;
+  const meanY = valid.reduce((s, p) => s + p.y, 0) / n;
+  let ssTot = 0, ssRes = 0;
+  for (const { x, y } of valid) {
+    const yHat = lr.intercept + lr.slope * Math.log(x);
+    ssTot += (y - meanY) ** 2;
+    ssRes += (y - yHat) ** 2;
+  }
+
+  return { a: lr.intercept, b: lr.slope, r2: ssTot === 0 ? 1 : 1 - ssRes / ssTot };
+}
+
+// ── Exponential Regression ───────────────────────────────────────────────────
+// y = a * e^(b*x).  Only uses points with y > 0.
+export function exponentialRegression(points) {
+  const valid = points.filter(p => p.y > 0);
+  if (valid.length < 2) return null;
+  const transformed = valid.map(p => ({ x: p.x, y: Math.log(p.y) }));
+  const lr = linearRegression(transformed);
+  if (!lr) return null;
+
+  const a = Math.exp(lr.intercept);
+  const b = lr.slope;
+
+  // R² against original data
+  const n = valid.length;
+  const meanY = valid.reduce((s, p) => s + p.y, 0) / n;
+  let ssTot = 0, ssRes = 0;
+  for (const { x, y } of valid) {
+    const yHat = a * Math.exp(b * x);
+    ssTot += (y - meanY) ** 2;
+    ssRes += (y - yHat) ** 2;
+  }
+
+  return { a, b, r2: ssTot === 0 ? 1 : 1 - ssRes / ssTot };
+}

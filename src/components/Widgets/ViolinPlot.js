@@ -8,7 +8,7 @@ import * as d3 from 'd3';
 import { formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale } from './chartHelpers';
 
 export default function ViolinPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -96,7 +96,9 @@ export default function ViolinPlot({ widget, data, onCrossFilter }) {
 
     const yPad = (yExtent[1] - yExtent[0]) * 0.08 || 1;
     const xScale = d3.scaleBand().domain(xDomain).range([0, W]).padding(0.3);
-    const yScale = d3.scaleLinear().domain([yExtent[0] - yPad, yExtent[1] + yPad]).range([H, 0]).nice();
+    const useLog = !!widget.useLogScale;
+    const yLo = useLog ? Math.max(1, yExtent[0] - yPad) : yExtent[0] - yPad;
+    const yScale = makeValueScale(useLog, [yLo, yExtent[1] + yPad], [H, 0]);
 
     // Sub-group scale within each category band
     const bw = xScale.bandwidth();

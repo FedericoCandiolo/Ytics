@@ -358,7 +358,7 @@ const AGG_VALUE_KEY = {
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'text', 'image', 'embed'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'geo', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -375,7 +375,7 @@ const COLOR_DIMENSION_FIELD = {
   radar: w => w.colorField || w.axisField,
   waffle: w => w.labelField,
   sankey: w => w.sourceField,
-  geo: w => w.geoField,
+  geo: w => w.colorField || w.geoField,
   waterfall: w => w.xField,
   wordcloud: w => w.xField,
   funnel: w => w.xField,
@@ -491,7 +491,8 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
     ],
     geo: [
       { key: 'geoField',    label: 'Geography dimension',     filter: null },
-      { key: 'valueField',  label: 'Measure',                 filter: ['number'] },
+      { key: '_geoColorMode', label: 'Color mode', virtual: true },
+      { key: '_geoTooltipMeasures', label: 'Tooltip measures', multi: true, filter: ['number'] },
       { key: 'overlayBreakdownField', label: 'Overlay breakdown dim.', filter: null, optional: true },
       { key: '_geoOverlayFields', label: 'Overlay chart fields', multi: true },
       { key: 'overlaySizeField', label: 'Overlay size field (opt.)', filter: ['number'], optional: true },
@@ -978,6 +979,77 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
                 <button className="btn btn-ghost btn-sm" onClick={() => {
                   onUpdate({ scatterOverlayFields: [...current, ''] });
                 }}>+ Add field</button>
+              </div>
+            </div>
+          );
+        }
+        // Special: Geo color mode toggle + field picker
+        if (f.key === '_geoColorMode') {
+          const mode = widget.geoColorMode || (widget.colorField ? 'categorical' : 'gradient');
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">Color mode</label>
+              <select className="select select-sm" value={mode} onChange={e => {
+                const next = e.target.value;
+                if (next === 'categorical') {
+                  onUpdate({ geoColorMode: 'categorical', valueField: '' });
+                } else {
+                  onUpdate({ geoColorMode: 'gradient', colorField: '' });
+                }
+              }} style={{ marginBottom: 6 }}>
+                <option value="gradient">Gradient (numeric measure)</option>
+                <option value="categorical">Palette (category field)</option>
+              </select>
+              {mode === 'gradient' ? (
+                <FieldSelect
+                  label="Measure"
+                  value={widget.valueField}
+                  columns={cols}
+                  typeFilter={['number']}
+                  optional={false}
+                  onChange={v => handleFieldChange('valueField', v)}
+                  customFields={customFields}
+                />
+              ) : (
+                <FieldSelect
+                  label="Category field"
+                  value={widget.colorField}
+                  columns={cols}
+                  typeFilter={null}
+                  optional={false}
+                  onChange={v => handleFieldChange('colorField', v)}
+                  customFields={customFields}
+                />
+              )}
+            </div>
+          );
+        }
+        // Special: multi-select for Geo tooltip measures
+        if (f.key === '_geoTooltipMeasures') {
+          const current = widget.tooltipMeasures || [];
+          return (
+            <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
+              <label className="form-label">{f.label}</label>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+                Numeric fields shown in tooltip on hover (don't affect map colors)
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {current.map((fld, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <SearchableFieldPicker style={{ flex: 1 }}
+                      tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
+                      value={fld || ''} onChange={v => {
+                        const next = [...current]; next[i] = v || '';
+                        onUpdate({ tooltipMeasures: next });
+                      }} />
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
+                      onUpdate({ tooltipMeasures: current.filter((_, j) => j !== i) });
+                    }}>✕</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  onUpdate({ tooltipMeasures: [...current, ''] });
+                }}>+ Add measure</button>
               </div>
             </div>
           );
@@ -1977,8 +2049,30 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
         </div>
       )}
       <label className="checkbox-row" style={{ marginTop: 8 }}>
-        <input type="checkbox" checked={!!widget.showTrendLine} onChange={e => onUpdate({ showTrendLine: e.target.checked })} />
-        Show trend line (linear regression)
+        <input type="checkbox" checked={!!(widget.showRegression || widget.showTrendLine)} onChange={e => onUpdate({ showRegression: e.target.checked, showTrendLine: undefined })} />
+        Show trend line
+      </label>
+      {(widget.showRegression || widget.showTrendLine) && (<>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Trend line type</label>
+          <select className="select select-sm" value={widget.regressionType || 'linear'} onChange={e => onUpdate({ regressionType: e.target.value })}>
+            <option value="linear">Linear</option>
+            <option value="polynomial">Polynomial</option>
+            <option value="logarithmic">Logarithmic</option>
+            <option value="exponential">Exponential</option>
+          </select>
+        </div>
+        {widget.regressionType === 'polynomial' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Polynomial degree — {widget.polynomialDegree || 2}</label>
+            <input type="range" min={2} max={6} value={widget.polynomialDegree || 2}
+              onChange={e => onUpdate({ polynomialDegree: parseInt(e.target.value) })} />
+          </div>
+        )}
+      </>)}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic Y scale
       </label>
     </div>
   );
@@ -2019,17 +2113,26 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
       </div>
       <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={!!widget.showRegression} onChange={e => onUpdate({ showRegression: e.target.checked })} />
-        Show regression line
+        Show trend line
       </label>
-      {widget.showRegression && (
+      {widget.showRegression && (<>
         <div className="form-group" style={{ marginBottom: 10 }}>
-          <label className="form-label">Regression type</label>
+          <label className="form-label">Trend line type</label>
           <select className="select select-sm" value={widget.regressionType || 'linear'} onChange={e => onUpdate({ regressionType: e.target.value })}>
             <option value="linear">Linear</option>
-            <option value="polynomial">Polynomial (quadratic)</option>
+            <option value="polynomial">Polynomial</option>
+            <option value="logarithmic">Logarithmic</option>
+            <option value="exponential">Exponential</option>
           </select>
         </div>
-      )}
+        {widget.regressionType === 'polynomial' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Polynomial degree — {widget.polynomialDegree || 2}</label>
+            <input type="range" min={2} max={6} value={widget.polynomialDegree || 2}
+              onChange={e => onUpdate({ polynomialDegree: parseInt(e.target.value) })} />
+          </div>
+        )}
+      </>)}
       <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={!!widget.connectPoints} onChange={e => onUpdate({ connectPoints: e.target.checked })} />
         Connect points (connected scatterplot)
@@ -2065,6 +2168,10 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
             onChange={e => onUpdate({ connectionOpacity: parseFloat(e.target.value) })} />
         </div>
       </>)}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic axes
+      </label>
     </div>
   );
 
@@ -2117,6 +2224,10 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
             onChange={e => onUpdate({ bins: parseInt(e.target.value) })} />
         </div>
       )}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic Y scale
+      </label>
     </div>
   );
 
@@ -2159,6 +2270,10 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
       <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={widget.showDataPoints !== false} onChange={e => onUpdate({ showDataPoints: e.target.checked })} />
         Show individual data points
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic Y scale
       </label>
     </div>
   );
@@ -2403,6 +2518,10 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           <option value="absolute">Absolute values</option>
         </select>
       </div>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic Y scale
+      </label>
     </div>
   );
 
@@ -2560,9 +2679,13 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           advancedStats={state.dashboard.advancedStats}
         />
       </div>
-      <label className="checkbox-row">
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={widget.dualAxis !== false} onChange={e => onUpdate({ dualAxis: e.target.checked })} />
         Dual Y-axis
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
+        Logarithmic Y scale
       </label>
     </div>
   );

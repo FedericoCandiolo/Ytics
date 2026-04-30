@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale } from './chartHelpers';
 
 export default function ComboChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -145,7 +145,8 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
   } else {
     yMax = d3.max(barData.pts, d => d.value) * 1.05 || 1;
   }
-  const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]).nice();
+  const useLog = !!widget.useLogScale;
+  const yScale = makeValueScale(useLog, [useLog ? 1 : 0, yMax], [H, 0]);
 
   // Y2 scale (secondary)
   let y2Scale;
@@ -157,7 +158,7 @@ function renderCombo(svgRef, data, widget, dims, showTooltip, moveTooltip, hideT
       y2Max = d3.max(linePts, d => d.value) * 1.08 || 1;
     }
     if (dualAxis) {
-      y2Scale = d3.scaleLinear().domain([0, y2Max]).range([H, 0]).nice();
+      y2Scale = makeValueScale(useLog, [useLog ? 1 : 0, y2Max], [H, 0]);
     } else {
       // Shared axis — extend yScale to cover both
       const combinedMax = Math.max(yMax, y2Max * 1.05);

@@ -1,9 +1,9 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { aggregate, formatValue, linearRegression, sortAggregated } from '../../utils/dataUtils';
+import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale, safeLog, drawTrendLine } from './chartHelpers';
 
 const CURVES = {
   linear: d3.curveLinear,
@@ -228,7 +228,9 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
   }
 
   // Y scale
-  const yScale = d3.scaleLinear().domain([Math.min(0, d3.min(allY)), d3.max(allY) * 1.08]).range([H, 0]).nice();
+  const useLog = !!widget.useLogScale;
+  const yDomain = [useLog ? Math.max(1, d3.min(allY)) : Math.min(0, d3.min(allY)), d3.max(allY) * 1.08];
+  const yScale = makeValueScale(useLog, yDomain, [H, 0]);
 
   // Curve and generators
   const curve = CURVES[widget.curveType] || CURVES[widget.lineType] || d3.curveLinear;
@@ -289,27 +291,45 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
     }
   });
 
-  // Trend lines (linear regression)
-  if (widget.showTrendLine && isNum) {
+  // Trend lines (linear, polynomial, logarithmic, exponential)
+  const showReg = widget.showRegression || widget.showTrendLine;
+  if (showReg) {
+    const trendType = widget.regressionType || 'linear';
+    const trendDegree = widget.polynomialDegree || 2;
+
+    // Clip rect so trend lines don't overflow the chart area
+    const clipId = `line-trend-clip-${Math.random().toString(36).slice(2, 8)}`;
+    defs.append('clipPath').attr('id', clipId)
+      .append('rect').attr('width', W).attr('height', H);
+
     seriesNames.forEach((name) => {
       const color = colors(name);
-      const pts = seriesMap.get(name).filter(d => !isNaN(d.y) && !isNaN(+d.x));
-      if (pts.length < 2) return;
-      const regPts = pts.map(d => ({ x: +d.x, y: d.y }));
-      const reg = linearRegression(regPts);
-      if (!reg) return;
+      const raw = seriesMap.get(name).filter(d => !isNaN(d.y));
+      if (raw.length < 2) return;
+
+      // Build numeric points: use actual x if numeric, else sequential index
+      let regPts;
+      if (isNum) {
+        regPts = raw.filter(d => !isNaN(+d.x)).map(d => ({ x: +d.x, y: d.y }));
+      } else {
+        regPts = raw.map((d, i) => ({ x: i, y: d.y }));
+      }
+      if (regPts.length < 2) return;
+
       const xExt = d3.extent(regPts, d => d.x);
-      const x1 = xScale(xExt[0]), y1 = yScale(reg.slope * xExt[0] + reg.intercept);
-      const x2 = xScale(xExt[1]), y2 = yScale(reg.slope * xExt[1] + reg.intercept);
-      g.append('line')
-        .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
-        .attr('stroke', color).attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', '6,4').attr('opacity', 0.5);
-      g.append('text')
-        .attr('x', x2 + 4).attr('y', y2 + 3)
-        .attr('font-size', 9).attr('fill', color).attr('opacity', 0.7)
-        .attr('font-family', 'var(--font)')
-        .text(`R\u00B2=${reg.r2.toFixed(2)}`);
+
+      // Map regression x back to pixel position
+      const regXToPixel = (rx) => {
+        if (isNum) return xScale(rx);
+        const idx = rx;
+        const floor = Math.max(0, Math.min(Math.floor(idx), raw.length - 1));
+        const ceil = Math.min(floor + 1, raw.length - 1);
+        const frac = idx - floor;
+        const ptXPos = d => isDate ? xScale(new Date(d.x)) : isLinearScale ? xScale(+d.x) : xScale(String(d.x));
+        return ptXPos(raw[floor]) * (1 - frac) + ptXPos(raw[ceil]) * frac;
+      };
+
+      drawTrendLine(g, regPts, regXToPixel, yScale, xExt, trendType, trendDegree, color, clipId);
     });
   }
 
@@ -395,7 +415,8 @@ function renderStacked(svgRef, data, widget, yField, dims, stackMode, showToolti
   else xScale = d3.scalePoint().domain(xVals).range([0, W]).padding(0.1);
 
   const yMax = stackMode === 'percent' ? 1 : d3.max(stacked, layer => d3.max(layer, d => d[1])) * 1.05 || 1;
-  const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]).nice();
+  const useLog = !!widget.useLogScale;
+  const yScale = makeValueScale(useLog, [useLog ? 1 : 0, yMax], [H, 0]);
 
   // Colors
   let colorScale;

@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 
-export async function exportDashboard(datasets, dashboard) {
+export async function exportDashboard(datasets, dashboard, selections) {
   const zip = new JSZip();
   const dataFolder = zip.folder('data');
 
@@ -12,6 +12,7 @@ export async function exportDashboard(datasets, dashboard) {
     version: '3.0',
     dashboard,
     datasetMeta: datasets.map(d => ({ id: d.id, name: d.name })),
+    selectionFields: Object.keys(selections || {}),
   }, null, 2));
 
   zip.file('README.md', generateMarkdown(dashboard));
@@ -45,7 +46,12 @@ export async function importDashboard(file) {
     }
   }
 
-  return { datasets, dashboard: cfg.dashboard };
+  // Restore selection pane fields (with empty values = "all")
+  const selectionFields = cfg.selectionFields || [];
+  const selections = {};
+  for (const f of selectionFields) selections[f] = [];
+
+  return { datasets, dashboard: cfg.dashboard, selections };
 }
 
 function toCSV(data) {

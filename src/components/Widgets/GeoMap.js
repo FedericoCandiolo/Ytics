@@ -4,7 +4,7 @@ import * as topojson from 'topojson-client';
 import { aggregate, formatValue } from '../../utils/dataUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, Placeholder } from './chartHelpers';
-import { resolveGradient, getColorArray, getSequentialScale } from '../../utils/colorUtils';
+import { resolveGradient, getColorArray, getSequentialScale, getColorScaleWithOverrides } from '../../utils/colorUtils';
 
 const WORLD_TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -157,7 +157,9 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
 
   const render = useCallback(() => {
     const { w, h } = dims;
-    if (!worldData || !data?.length || !widget.geoField || !widget.valueField || w < 20 || h < 20) {
+    const hasCategorical = !!widget.colorField;
+    const hasValue = !!widget.valueField;
+    if (!worldData || !data?.length || !widget.geoField || (!hasValue && !hasCategorical) || w < 20 || h < 20) {
       d3.select(svgRef.current).selectAll('*').remove();
       return;
     }
@@ -193,34 +195,64 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     }
 
     // ── Aggregate data for choropleth ──
-    const valueMap = new Map();
+    const tooltipMeasures = (widget.tooltipMeasures || []).filter(Boolean);
+    const regionData = new Map(); // lower -> { name, values:[], category, tooltipVals: { field: [] } }
     for (const row of data) {
       const key = String(row[widget.geoField] ?? '').trim();
       if (!key) continue;
-      if (!valueMap.has(key)) valueMap.set(key, []);
-      valueMap.get(key).push(+row[widget.valueField] || 0);
+      const lower = key.toLowerCase();
+      if (!regionData.has(lower)) regionData.set(lower, { name: key, values: [], category: null, tooltipVals: {} });
+      const entry = regionData.get(lower);
+      if (hasValue) entry.values.push(+row[widget.valueField] || 0);
+      if (hasCategorical) {
+        const catVal = String(row[widget.colorField] ?? '').trim();
+        if (catVal) entry.category = catVal;
+      }
+      for (const tm of tooltipMeasures) {
+        if (!entry.tooltipVals[tm]) entry.tooltipVals[tm] = [];
+        entry.tooltipVals[tm].push(+row[tm] || 0);
+      }
     }
-    const aggMap = new Map();
-    for (const [key, vals] of valueMap) {
-      aggMap.set(key.toLowerCase(), { name: key, value: aggregate(vals, widget.aggregation || 'sum') });
+
+    // Build unified region map
+    const regionMap = new Map();
+    for (const [lower, entry] of regionData) {
+      const obj = { name: entry.name };
+      if (hasValue) obj.value = aggregate(entry.values, widget.aggregation || 'sum');
+      if (hasCategorical && entry.category) obj.category = entry.category;
+      obj.tooltipAgg = {};
+      for (const tm of tooltipMeasures) {
+        obj.tooltipAgg[tm] = aggregate(entry.tooltipVals[tm] || [], widget.aggregation || 'sum');
+      }
+      regionMap.set(lower, obj);
     }
 
     const matchRegion = (name) => {
       const lower = (name || '').toLowerCase();
-      if (aggMap.has(lower)) return aggMap.get(lower);
-      if (ALIASES[lower] && aggMap.has(ALIASES[lower].toLowerCase())) return aggMap.get(ALIASES[lower].toLowerCase());
-      for (const [key, entry] of aggMap) {
+      if (regionMap.has(lower)) return regionMap.get(lower);
+      if (ALIASES[lower] && regionMap.has(ALIASES[lower].toLowerCase())) return regionMap.get(ALIASES[lower].toLowerCase());
+      for (const [key, entry] of regionMap) {
         if (lower.includes(key) || key.includes(lower)) return entry;
       }
       return null;
     };
 
-    const values = [...aggMap.values()].map(v => v.value);
-    const [minVal, maxVal] = [d3.min(values) || 0, d3.max(values) || 1];
-
     // ── Color scale for choropleth ──
-    const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
-    const colorScale = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient, widget.logGradient);
+    let colorScale, minVal = 0, maxVal = 1;
+    const isCategorical = hasCategorical;
+    const allCategories = isCategorical
+      ? [...new Set([...regionMap.values()].map(v => v.category).filter(Boolean))]
+      : [];
+
+    if (isCategorical) {
+      colorScale = getColorScaleWithOverrides(widget.colorScheme, allCategories, widget.dimensionColors);
+    } else {
+      const values = [...regionMap.values()].map(v => v.value).filter(v => v != null);
+      minVal = d3.min(values) || 0;
+      maxVal = d3.max(values) || 1;
+      const gradKey = resolveGradient(widget.colorScheme, widget.colorGradient);
+      colorScale = getSequentialScale(gradKey, minVal, maxVal, widget.invertGradient, widget.logGradient);
+    }
 
     // ── Projection ──
     const ProjFn = PROJECTIONS[widget.mapProjection] || PROJECTIONS.naturalEarth;
@@ -247,7 +279,8 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
       .attr('d', pathGen)
       .attr('fill', d => {
         const match = matchRegion(d.properties.name);
-        return match ? colorScale(match.value) : '#e5e7eb';
+        if (!match) return '#e5e7eb';
+        return isCategorical ? colorScale(match.category) : colorScale(match.value);
       })
       .attr('stroke', '#fff')
       .attr('stroke-width', 0.5)
@@ -259,7 +292,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
       .on('mouseover', (ev, d) => {
         d3.select(ev.currentTarget).attr('stroke', '#333').attr('stroke-width', 1.5);
         const match = matchRegion(d.properties.name);
-        showTooltip(ev, <GeoTip name={d.properties.name} match={match} widget={widget} />);
+        showTooltip(ev, <GeoTip name={d.properties.name} match={match} widget={widget} isCategorical={isCategorical} />);
       })
       .on('mousemove', moveTooltip)
       .on('mouseleave', (ev) => {
@@ -529,7 +562,11 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     }
 
     // ── Legend ──
-    renderLegend(svg, colorScale, minVal, maxVal, w, h, widget);
+    if (isCategorical) {
+      renderCategoricalLegend(svg, allCategories, colorScale, w, h);
+    } else {
+      renderLegend(svg, colorScale, minVal, maxVal, w, h, widget);
+    }
 
     // ── Zoom ──
     const zoom = d3.zoom()
@@ -559,7 +596,7 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <svg ref={svgRef} style={{ overflow: 'hidden' }} />
 
-      {worldData && widget.geoField && widget.valueField && (
+      {worldData && widget.geoField && (widget.valueField || widget.colorField) && (
         <button
           onClick={handleReset}
           title="Reset zoom"
@@ -583,9 +620,29 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
       {tooltipEl}
       {loadError && <Placeholder text="Failed to load map data" />}
       {!worldData && !loadError && <Placeholder text="Loading map..." />}
-      {worldData && (!widget.geoField || !widget.valueField) && <Placeholder text="Select Geography and Value fields" />}
+      {worldData && (!widget.geoField || (!widget.valueField && !widget.colorField)) && <Placeholder text="Select Geography and Value or Color fields" />}
     </div>
   );
+}
+
+function renderCategoricalLegend(svg, categories, colorScale, w, h) {
+  const maxItems = Math.min(categories.length, 12);
+  const itemH = 14;
+  const lx = w - 140;
+  const ly = h - maxItems * itemH - 10;
+  const lg = svg.append('g').attr('class', 'geo-legend');
+  categories.slice(0, maxItems).forEach((cat, i) => {
+    lg.append('rect').attr('x', lx).attr('y', ly + i * itemH).attr('width', 10).attr('height', 10)
+      .attr('fill', colorScale(cat)).attr('rx', 2);
+    lg.append('text').attr('x', lx + 14).attr('y', ly + i * itemH + 9)
+      .attr('font-size', 9).attr('fill', 'var(--text-muted)')
+      .text(String(cat).length > 18 ? String(cat).slice(0, 18) + '…' : String(cat));
+  });
+  if (categories.length > maxItems) {
+    lg.append('text').attr('x', lx + 14).attr('y', ly + maxItems * itemH + 9)
+      .attr('font-size', 9).attr('fill', 'var(--text-muted)')
+      .text(`+${categories.length - maxItems} more`);
+  }
 }
 
 function renderLegend(svg, colorScale, minVal, maxVal, w, h, widget) {
@@ -612,12 +669,25 @@ function renderLegend(svg, colorScale, minVal, maxVal, w, h, widget) {
 
 // ── Tooltip components ──
 
-function GeoTip({ name, match, widget }) {
+function GeoTip({ name, match, widget, isCategorical }) {
+  const tooltipMeasures = (widget.tooltipMeasures || []).filter(Boolean);
   return (
     <>
       <div className="chart-tooltip-title">{name}</div>
       {match ? (
-        <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(match.value, widget.numberFormat)}</span></div>
+        <>
+          {isCategorical ? (
+            <div className="chart-tooltip-row"><span className="tt-label">{widget.colorField}</span><span className="tt-value">{match.category}</span></div>
+          ) : (
+            <div className="chart-tooltip-row"><span className="tt-label">{widget.valueField}</span><span className="tt-value">{formatValue(match.value, widget.numberFormat)}</span></div>
+          )}
+          {tooltipMeasures.length > 0 && match.tooltipAgg && tooltipMeasures.map(tm => (
+            <div key={tm} className="chart-tooltip-row">
+              <span className="tt-label">{tm}</span>
+              <span className="tt-value">{formatValue(match.tooltipAgg[tm], widget.numberFormat)}</span>
+            </div>
+          ))}
+        </>
       ) : (
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No data</div>
       )}

@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, makeValueScale } from './chartHelpers';
 
 export default function BoxPlot({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -104,7 +104,8 @@ export default function BoxPlot({ widget, data, onCrossFilter }) {
     const pad = (yMax - yMin) * 0.05 || 1;
 
     const xScale = d3.scaleBand().domain(categories).range([0, W]).padding(0.3);
-    const yScale = d3.scaleLinear().domain([yMin - pad, yMax + pad]).range([H, 0]).nice();
+    const useLog = !!widget.useLogScale;
+    const yScale = makeValueScale(useLog, [useLog ? Math.max(1, yMin - pad) : yMin - pad, yMax + pad], [H, 0]);
 
     // Sub-group scale within each category band
     const subScale = hasColorField

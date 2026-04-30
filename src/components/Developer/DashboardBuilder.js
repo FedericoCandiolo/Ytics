@@ -544,7 +544,25 @@ export default function DashboardBuilder() {
 
       {/* ── Canvas + page tabs ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="db-canvas" ref={canvasRef} style={gridBgStyle}>
+        <div
+          className="db-canvas"
+          ref={canvasRef}
+          style={gridBgStyle}
+          onDragOver={e => {
+            if (e.dataTransfer.types.includes('application/widget-type')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={e => {
+            const wType = e.dataTransfer.getData('application/widget-type');
+            if (wType) {
+              e.preventDefault();
+              const wLabel = e.dataTransfer.getData('application/widget-label') || wType;
+              dispatch({ type: 'ADD_WIDGET', payload: { type: wType, title: wLabel } });
+            }
+          }}
+        >
           {currentPage.widgets.length === 0 ? (
             <div className="empty-state" style={{ height: '100%' }}>
               <div className="empty-state-icon">🎨</div>
