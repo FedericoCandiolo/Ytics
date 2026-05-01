@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User Guide — ytics</title>
+<style>
+  :root { --primary: #3b82f6; --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #1e293b; --muted: #64748b; --accent: #eff6ff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--text); background: var(--bg); line-height: 1.65; }
+
+  /* Layout */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 240px; height: 100vh; background: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; overflow: hidden; }
+  .sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .sidebar-header h1 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .sidebar-header h1 span { color: var(--primary); }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--primary); text-decoration: none; margin-bottom: 12px; font-weight: 500; }
+  .back-link:hover { text-decoration: underline; }
+  .toc { list-style: none; padding: 12px 0; overflow-y: auto; flex: 1; }
+  .toc li a { display: block; padding: 6px 20px; font-size: 13px; color: var(--muted); text-decoration: none; border-left: 3px solid transparent; transition: all 0.15s; }
+  .toc li a:hover { color: var(--text); background: var(--accent); border-left-color: var(--primary); }
+  .main { margin-left: 240px; flex: 1; padding: 40px 48px 80px; max-width: 900px; }
+
+  /* Typography */
+  h2 { font-size: 20px; font-weight: 650; margin: 40px 0 12px; padding-top: 24px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+  p, li { font-size: 14.5px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 20px; }
+  li { margin-bottom: 6px; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+  /* Hero */
+  .hero { margin-bottom: 36px; }
+  .hero h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .hero h1 span { color: var(--primary); }
+  .hero p { color: var(--muted); font-size: 15px; }
+
+  /* Section */
+  .section { margin-bottom: 8px; scroll-margin-top: 24px; }
+  .sub { margin-bottom: 16px; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 12px 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #f8fafc; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+
+  /* Tips */
+  .tip { background: var(--accent); border-left: 4px solid var(--primary); border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0 16px; font-size: 13.5px; color: var(--text); }
+
+  /* Kbd */
+  kbd { display: inline-block; background: #f1f5f9; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 12px; font-family: 'Inter', system-ui, sans-serif; font-weight: 600; box-shadow: 0 1px 0 var(--border); margin: 0 1px; }
+
+  /* Chart grid */
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .chart-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .chart-card-icon { font-size: 20px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .chart-card-header strong { font-size: 14px; }
+  .chart-card-desc { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .chart-card-detail { font-size: 12px; margin-bottom: 4px; line-height: 1.5; }
+  .chart-card-detail span { font-weight: 600; color: var(--muted); }
+
+  /* Footer */
+  .footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); text-align: center; font-size: 13px; color: var(--muted); }
+
+  /* Mobile sidebar toggle */
+  .sidebar-toggle { display: none; position: fixed; bottom: 20px; right: 20px; z-index: 20; width: 48px; height: 48px; border-radius: 50%; background: var(--primary); color: #fff; border: none; font-size: 22px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); box-shadow: 4px 0 16px rgba(0,0,0,0.1); }
+    .main { margin-left: 0; padding: 24px 16px 60px; }
+    .sidebar-toggle { display: flex; align-items: center; justify-content: center; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <a href="/" class="back-link">&larr; Back to Ytics</a>
+      <h1>User <span>Guide</span></h1>
+    </div>
+    <ul class="toc">
+      <li><a href="#getting-started">1. Getting Started</a></li>
+      <li><a href="#interface">2. The Interface</a></li>
+      <li><a href="#loading-data">3. Loading Data</a></li>
+      <li><a href="#data-transforms">4. Data Transforms</a></li>
+      <li><a href="#building">5. Building a Dashboard</a></li>
+      <li><a href="#chart-types">6. Chart Types Reference</a></li>
+      <li><a href="#configuring">7. Configuring Widgets</a></li>
+      <li><a href="#measure-pipeline">8. Measure Pipeline</a></li>
+      <li><a href="#colors">9. Colors &amp; Styling</a></li>
+      <li><a href="#conditional-fmt">10. Conditional Formatting</a></li>
+      <li><a href="#themes">11. Dashboard Themes</a></li>
+      <li><a href="#multi-page">12. Multi-Page Dashboards</a></li>
+      <li><a href="#viewer-mode">13. Viewer Mode</a></li>
+      <li><a href="#filtering">14. Filtering &amp; Cross-Filtering</a></li>
+      <li><a href="#export-import">15. Export &amp; Import</a></li>
+      <li><a href="#shortcuts">16. Keyboard Shortcuts</a></li>
+      <li><a href="#tips">17. Tips &amp; Best Practices</a></li>
+    </ul>
+  </nav>
+
+  <!-- Toggle button for mobile -->
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">&#9776;</button>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <div class="hero">
+      <h1>Ytics <span>User Guide</span></h1>
+      <p>Everything you need to build interactive dashboards, transform your data, and create compelling visualizations — all in the browser.</p>
+    </div>
+
+    <!-- 1. Getting Started -->
+    <section id="getting-started" class="section">
+      <h2>1. Getting Started</h2>
+      <div class="sub">
+        <h3>Your First Dashboard in 3 Steps</h3>
+        <ol>
+          <li><strong>Upload data</strong> — Click the <em>Data</em> tab in the sidebar, then drag a CSV file onto the drop zone.</li>
+          <li><strong>Add a chart</strong> — Switch to the <em>Dashboard</em> tab, then click or drag a chart type (e.g., Bar Chart) onto the canvas.</li>
+          <li><strong>Map your fields</strong> — Click the widget to open its editor, pick your dataset, and assign columns to the X and Y axes.</li>
+        </ol>
+        <div class="tip">That's it — your first visualization is live. Everything else is refinement.</div>
+      </div>
+    </section>
+
+    <!-- 2. The Interface -->
+    <section id="interface" class="section">
+      <h2>2. The Interface</h2>
+      <div class="sub">
+        <h3>Header Bar</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Element</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Dashboard title</td><td>Click the title text to rename your dashboard.</td></tr>
+              <tr><td>Developer / Viewer</td><td>Toggle between build mode and presentation mode.</td></tr>
+              <tr><td>Import</td><td>Load a .ytics file (restores dashboard + data).</td></tr>
+              <tr><td>Export</td><td>Save your dashboard as a .ytics file.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Developer Mode Layout</h3>
+        <ul>
+          <li><strong>Left sidebar</strong> — Dashboard styles, chart type picker, and widget list (Dashboard tab) or dataset management (Data tab).</li>
+          <li><strong>Center canvas</strong> — Your dashboard grid. Drag, resize, and arrange widgets freely.</li>
+          <li><strong>Right panel</strong> — Widget editor (appears when a widget is selected).</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Viewer Mode Layout</h3>
+        <ul>
+          <li><strong>Top bar</strong> — Filter controls, edit button, and export button.</li>
+          <li><strong>Full canvas</strong> — Read-only presentation of your dashboard with interactive filtering.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 3. Loading Data -->
+    <section id="loading-data" class="section">
+      <h2>3. Loading Data</h2>
+      <div class="sub">
+        <h3>Uploading CSV Files</h3>
+        <ol>
+          <li>Click the <strong>Data</strong> tab in the developer sidebar.</li>
+          <li>Drag one or more <code>.csv</code> files onto the upload area — or click to browse.</li>
+          <li>Ytics parses your file and auto-detects column types:</li>
+        </ol>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Type</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>number</td><td>Numeric values (integers and decimals).</td></tr>
+              <tr><td>date</td><td>Recognizable date strings.</td></tr>
+              <tr><td>string</td><td>Everything else (text, categories).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Dataset Management</h3>
+        <ul>
+          <li>Each uploaded file appears as a named dataset in the left panel.</li>
+          <li>Click a dataset to select it and preview its contents (first 200 rows).</li>
+          <li>Column headers display type badges. A summary line shows total rows and columns.</li>
+          <li>Click <strong>&times;</strong> to delete a dataset.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Multiple Datasets</h3>
+        <p>You can load as many datasets as you need. Each widget independently selects which dataset it visualizes, so a single dashboard can combine data from multiple sources.</p>
+      </div>
+    </section>
+
+    <!-- 4. Data Transforms -->
+    <section id="data-transforms" class="section">
+      <h2>4. Data Transforms</h2>
+      <p>Transforms modify a dataset in place before any widget uses it. They are applied in order, top to bottom.</p>
+      <div class="sub">
+        <h3>Filter Rows</h3>
+        <p>Remove rows that don't match a condition.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Setting</th><th>Options</th></tr></thead>
+            <tbody>
+              <tr><td>Field</td><td>The column to check.</td></tr>
+              <tr><td>Operator</td><td>=, !=, &gt;, &lt;, &gt;=, &lt;=, contains, not contains, is null, is not null</td></tr>
+              <tr><td>Value</td><td>The comparison value (omitted for null checks).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Rename Column</h3>
+        <p>Change a column's name without altering its data. Select the column and type the new name.</p>
+      </div>
+      <div class="sub">
+        <h3>Computed Column</h3>
+        <p>Create a new column using a JavaScript expression. All existing column names are available as variables.</p>
+        <div class="tip">Example: Name: <code>gdp_per_capita</code>, Expression: <code>gdp / population</code></div>
+      </div>
+      <div class="sub">
+        <h3>Sort</h3>
+        <p>Reorder all rows by a column, ascending or descending.</p>
+      </div>
+    </section>
+
+    <!-- 5. Building a Dashboard -->
+    <section id="building" class="section">
+      <h2>5. Building a Dashboard</h2>
+      <div class="sub">
+        <h3>Adding Widgets</h3>
+        <p>In the <strong>Dashboard</strong> tab of the sidebar, you'll find the <strong>Chart types</strong> grid with 18 visualization types sorted alphabetically.</p>
+        <ul>
+          <li><strong>Click</strong> a chart type button to add it to the canvas.</li>
+          <li><strong>Drag</strong> a chart type onto the canvas to place it precisely.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Moving &amp; Resizing</h3>
+        <ul>
+          <li><strong>Drag</strong> the widget header bar to move it.</li>
+          <li><strong>Resize</strong> by dragging any of the 8 handles (corners and edges).</li>
+          <li>The canvas uses a <strong>24-column grid</strong> with free placement — widgets can be positioned anywhere.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Widget Actions</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Button</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>&#x2922;</td><td>Maximize — Full-screen view of the widget.</td></tr>
+              <tr><td>&#x29C9;</td><td>Duplicate — Create a copy of the widget and its configuration.</td></tr>
+              <tr><td>&#x21F1;</td><td>Move to Page — Move the widget to a different page.</td></tr>
+              <tr><td>&#x2715;</td><td>Remove — Delete the widget.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Changing Chart Type</h3>
+        <p>Drag a chart type from the sidebar onto an existing widget to replace its type. Ytics preserves your field mappings where possible.</p>
+      </div>
+    </section>
+
+    <!-- 6. Chart Types Reference -->
+    <section id="chart-types" class="section">
+      <h2>6. Chart Types Reference</h2>
+      <div class="chart-grid">
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F4CA;</span><strong>Bar Chart</strong></div>
+          <p class="chart-card-desc">Compares categorical values with vertical or horizontal bars.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Category (X), Numeric (Y). Optional: Group field for stacked/grouped.</div>
+          <div class="chart-card-detail"><span>Options:</span> Orientation, bar mode, sort by/order.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Bar value</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F4E6;</span><strong>Box Plot</strong></div>
+          <p class="chart-card-desc">Statistical distribution: quartiles, median, mean, whiskers, outliers.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Category (X), Numeric (Y).</div>
+          <div class="chart-card-detail"><span>Options:</span> Grid, legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Median per category</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F3C5;</span><strong>Bump Chart</strong></div>
+          <p class="chart-card-desc">Tracks rank changes across time or ordered categories.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X (time), Series (color), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Grid, legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Series total value</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F3A0;</span><strong>Carousel</strong></div>
+          <p class="chart-card-desc">Cycles through multiple chart slides on the same dataset.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Configure each slide independently.</div>
+          <div class="chart-card-detail"><span>Options:</span> Auto-play toggle, interval (1-30s).</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Per-slide (inherited)</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F522;</span><strong>Data Table</strong></div>
+          <p class="chart-card-desc">Tabular display with conditional formatting.</p>
+          <div class="chart-card-detail"><span>Fields:</span> All columns shown by default.</div>
+          <div class="chart-card-detail"><span>Options:</span> Conditional formatting (gradient or rules).</div>
+          <div class="chart-card-detail"><span>Gradient:</span> N/A — uses conditional formatting</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F30D;</span><strong>Geo Map</strong></div>
+          <p class="chart-card-desc">Choropleth world map colored by a numeric value per country.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Geography (country name), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Projection: Natural Earth, Mercator, Equal Earth, Orthographic.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Country value (always sequential)</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F321;</span><strong>Heat Map</strong></div>
+          <p class="chart-card-desc">Color matrix showing intensity across two categorical dimensions.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X (row), Y (column), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Aggregation, legend.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Cell value (always sequential)</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x25AC;</span><strong>Histogram</strong></div>
+          <p class="chart-card-desc">Distribution of a single numeric variable with statistical annotations.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Number of bins (1-100).</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Bin count</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F4C8;</span><strong>Line Chart</strong></div>
+          <p class="chart-card-desc">Plots trends over a continuous or categorical X-axis.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X, Y (numeric). Optional: Color field for multi-series.</div>
+          <div class="chart-card-detail"><span>Options:</span> Line type (6 curves), points, area, stack mode.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Series total</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F967;</span><strong>Pie / Donut</strong></div>
+          <p class="chart-card-desc">Proportional slices of a whole.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Label (category), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Inner radius (0%=pie, 1-100%=donut), sort by value.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Slice value</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x229E;</span><strong>Pivot Table</strong></div>
+          <p class="chart-card-desc">Cross-tabulation with row and column dimensions.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Value (numeric). Optional: Row fields, Column fields.</div>
+          <div class="chart-card-detail"><span>Options:</span> Aggregation, conditional formatting.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> N/A — uses conditional formatting</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F578;</span><strong>Radar Chart</strong></div>
+          <p class="chart-card-desc">Multi-axis spider/web chart comparing entities across dimensions.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Axis (3+ categories), Value (numeric). Optional: Color field.</div>
+          <div class="chart-card-detail"><span>Options:</span> Grid, legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Series total value</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F500;</span><strong>Sankey Diagram</strong></div>
+          <p class="chart-card-desc">Flow diagram showing connections between source and target nodes.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Source, Target, Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Max flow per node</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x2B24;</span><strong>Scatter Plot</strong></div>
+          <p class="chart-card-desc">Individual data points on X/Y coordinates with optional size encoding.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X (numeric), Y (numeric). Optional: Color, Size fields.</div>
+          <div class="chart-card-detail"><span>Options:</span> Dot size min/max (4-20px).</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Y value or custom field</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x3030;</span><strong>Stream Graph</strong></div>
+          <p class="chart-card-desc">Flowing stacked areas showing composition over time.</p>
+          <div class="chart-card-detail"><span>Fields:</span> X (time), Series (color), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Series total</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x2B1B;</span><strong>Treemap</strong></div>
+          <p class="chart-card-desc">Hierarchical rectangles sized by value.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Label (category), Value (numeric). Optional: Group field.</div>
+          <div class="chart-card-detail"><span>Options:</span> Aggregation, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Leaf node value</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F3BB;</span><strong>Violin Plot</strong></div>
+          <p class="chart-card-desc">Distribution shape (KDE) with embedded box plot per category.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Category (X), Numeric (Y).</div>
+          <div class="chart-card-detail"><span>Options:</span> Grid, legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Median per category</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header"><span class="chart-card-icon">&#x1F9C7;</span><strong>Waffle Chart</strong></div>
+          <p class="chart-card-desc">Proportional 10x10 grid showing category shares.</p>
+          <div class="chart-card-detail"><span>Fields:</span> Label (category), Value (numeric).</div>
+          <div class="chart-card-detail"><span>Options:</span> Legend, opacity.</div>
+          <div class="chart-card-detail"><span>Gradient:</span> Category value</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 7. Configuring Widgets -->
+    <section id="configuring" class="section">
+      <h2>7. Configuring Widgets</h2>
+      <p>Click any widget on the canvas to open its editor panel. The editor is organized into tabs.</p>
+      <div class="sub">
+        <h3>Fields Tab</h3>
+        <p>Map your data columns to the chart's visual channels. Fields marked with <span style="color:#ef4444;">*</span> are required.</p>
+        <p><strong>Aggregation</strong> determines how multiple values for the same category are combined:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Aggregation</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>sum</td><td>Total of all values (default).</td></tr>
+              <tr><td>count</td><td>Number of records.</td></tr>
+              <tr><td>mean</td><td>Average value.</td></tr>
+              <tr><td>min / max</td><td>Smallest / largest value.</td></tr>
+              <tr><td>median</td><td>Middle value (50th percentile).</td></tr>
+              <tr><td>std</td><td>Standard deviation.</td></tr>
+              <tr><td>p25 / p75 / p90 / p95</td><td>Percentiles.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Aesthetics Tab</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Title</td><td>The widget's display name.</td></tr>
+              <tr><td>Color scheme</td><td>Override the dashboard palette or inherit from theme.</td></tr>
+              <tr><td>Show grid lines</td><td>Toggle background grid.</td></tr>
+              <tr><td>Show legend</td><td>Toggle the color legend.</td></tr>
+              <tr><td>Opacity</td><td>Transparency slider from 20% to 100%.</td></tr>
+              <tr><td>Background color</td><td>Use theme default or pick a custom card background.</td></tr>
+              <tr><td>Corner radius</td><td>Inherit from theme or set custom (0-20px).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Options Tab</h3>
+        <p>Chart-specific settings vary by type. Examples:</p>
+        <ul>
+          <li><strong>Bar Chart</strong>: Orientation, bar mode, sort by, sort order.</li>
+          <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode.</li>
+          <li><strong>Pie Chart</strong>: Inner radius (donut hole size).</li>
+          <li><strong>Histogram</strong>: Number of bins.</li>
+          <li><strong>Scatter Plot</strong>: Dot size min/max.</li>
+          <li><strong>Geo Map</strong>: Map projection.</li>
+          <li><strong>Carousel</strong>: Auto-play toggle, interval.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 8. Measure Pipeline -->
+    <section id="measure-pipeline" class="section">
+      <h2>8. Measure Pipeline</h2>
+      <p>The measure pipeline transforms data <em>before</em> it reaches the chart, without modifying the original dataset. Open a widget's editor and go to the <strong>Measures</strong> tab to configure.</p>
+      <div class="sub">
+        <h3>Group &amp; Aggregate</h3>
+        <p>Groups rows by one or more columns and applies aggregation functions (sum, count, mean, min, max, median, std, percentiles).</p>
+        <div class="tip">Example: Group by <code>country</code>, aggregate <code>revenue</code> as sum and <code>orders</code> as count.</div>
+      </div>
+      <div class="sub">
+        <h3>Top / Bottom N</h3>
+        <p>Keeps only the top or bottom N rows, optionally per group.</p>
+        <div class="tip">Example: Top 10 countries by revenue.</div>
+      </div>
+      <div class="sub">
+        <h3>Filter</h3>
+        <p>Removes rows that don't match a condition (same operators as data transforms).</p>
+      </div>
+      <div class="sub">
+        <h3>Compute Column</h3>
+        <p>Creates a new calculated column using a JavaScript expression.</p>
+        <div class="tip">Example: <code>profit_margin = (revenue - cost) / revenue * 100</code></div>
+      </div>
+      <div class="sub">
+        <h3>Sort</h3>
+        <p>Reorders rows by a field, ascending or descending.</p>
+      </div>
+      <div class="sub">
+        <h3>Pipeline Controls</h3>
+        <ul>
+          <li><strong>Add step</strong>: Click <code>+</code> for the step type you need.</li>
+          <li><strong>Reorder</strong>: Use the arrow buttons to move steps up or down.</li>
+          <li><strong>Delete</strong>: Click <strong>&times;</strong> to remove a step.</li>
+          <li><strong>Preview</strong>: Each step shows an output indicator with column and row counts.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 9. Colors & Styling -->
+    <section id="colors" class="section">
+      <h2>9. Colors &amp; Styling</h2>
+      <div class="sub">
+        <h3>Color Modes</h3>
+        <p>Every chart supports two color modes, selectable in the <strong>Colors</strong> tab:</p>
+        <ul>
+          <li><strong>Categorical</strong> (default) — Each dimension value gets a distinct color from the palette.</li>
+          <li><strong>Gradient</strong> — Values are mapped to a continuous color gradient based on a numeric measure.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Color Palettes (15)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Palette</th><th>Style</th></tr></thead>
+            <tbody>
+              <tr><td>Vivid</td><td>Bold, high-contrast colors (Tableau10).</td></tr>
+              <tr><td>Spectrum</td><td>Classic D3 color set (Category10).</td></tr>
+              <tr><td>Muted</td><td>Desaturated, gentle tones (Set2).</td></tr>
+              <tr><td>Soft</td><td>Light pastel-like variety (Set3).</td></tr>
+              <tr><td>Pastel</td><td>Very soft pastels (Pastel1).</td></tr>
+              <tr><td>Contrast</td><td>Deep saturated tones (Dark2).</td></tr>
+              <tr><td>Duo</td><td>Pairs of light/dark variants (Paired).</td></tr>
+              <tr><td>Bold</td><td>Strong accent colors (Accent).</td></tr>
+              <tr><td>Blues / Greens / Reds / Purples / Oranges</td><td>Sequential 9-step single-hue ramps.</td></tr>
+              <tr><td>Warm &rarr; Cool</td><td>Diverging: Red &rarr; Yellow &rarr; Blue.</td></tr>
+              <tr><td>Brown &rarr; Green</td><td>Diverging: Brown &rarr; Green.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Palette-Linked Gradients</h3>
+        <p>When you switch to gradient mode, Ytics automatically selects a gradient that matches your palette:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Palette</th><th>Default Gradient</th></tr></thead>
+            <tbody>
+              <tr><td>Vivid</td><td>Turbo</td></tr>
+              <tr><td>Spectrum</td><td>Spectral</td></tr>
+              <tr><td>Muted</td><td>Viridis</td></tr>
+              <tr><td>Soft</td><td>Plasma</td></tr>
+              <tr><td>Pastel</td><td>Blues</td></tr>
+              <tr><td>Contrast</td><td>Inferno</td></tr>
+              <tr><td>Duo</td><td>Warm &rarr; Cool</td></tr>
+              <tr><td>Bold</td><td>Turbo</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Sequential and diverging palettes map to their matching gradient. You can override by checking <strong>"Override gradient"</strong> in the Colors tab.</p>
+      </div>
+      <div class="sub">
+        <h3>Gradient Schemes (13)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Gradient</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Blues / Greens / Reds / Purples / Oranges</td><td>Light &rarr; dark single-hue.</td></tr>
+              <tr><td>Warm &rarr; Cool</td><td>Red &rarr; Yellow &rarr; Blue (diverging).</td></tr>
+              <tr><td>Brown &rarr; Green</td><td>Brown &rarr; Green (diverging).</td></tr>
+              <tr><td>Viridis</td><td>Purple &rarr; teal &rarr; yellow.</td></tr>
+              <tr><td>Plasma</td><td>Purple &rarr; pink &rarr; yellow.</td></tr>
+              <tr><td>Inferno</td><td>Black &rarr; red &rarr; yellow.</td></tr>
+              <tr><td>Turbo</td><td>Blue &rarr; green &rarr; yellow &rarr; red.</td></tr>
+              <tr><td>Spectral</td><td>Red &rarr; yellow &rarr; blue (diverging).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Custom Gradient Field</h3>
+        <p>By default, the gradient is driven by the chart's primary value field. You can select a different numeric column under <strong>Color by field</strong> to drive the color independently.</p>
+        <div class="tip">Example: A bar chart showing revenue per country, colored by population.</div>
+      </div>
+      <div class="sub">
+        <h3>Dimension Colors (Cross-Chart Consistency)</h3>
+        <p>Pin specific dimension values to consistent colors across all charts on the dashboard. Found in the <strong>Colors</strong> tab under <strong>Dimension Colors</strong>:</p>
+        <ul>
+          <li><strong>Custom hex color</strong> — Stays fixed regardless of palette changes.</li>
+          <li><strong>Palette-relative color</strong> — Picks a palette index; updates when palette changes.</li>
+          <li><strong>Reset</strong> — Reverts to automatic assignment.</li>
+        </ul>
+        <div class="tip">Example: Pin "Argentina" to light blue (#74b9ff) so it appears the same in every chart.</div>
+        <p>Dimension colors are stored at the <strong>dashboard level</strong> and apply across all widgets.</p>
+      </div>
+    </section>
+
+    <!-- 10. Conditional Formatting -->
+    <section id="conditional-fmt" class="section">
+      <h2>10. Conditional Formatting</h2>
+      <p>Available for <strong>Data Table</strong> and <strong>Pivot Table</strong> widgets. Found in the Colors tab.</p>
+      <div class="sub">
+        <h3>Gradient Mode</h3>
+        <p>Colors cells on a continuous scale from the column's minimum to maximum value. Select a gradient scheme. Text color adjusts automatically for readability.</p>
+      </div>
+      <div class="sub">
+        <h3>Rules Mode</h3>
+        <p>Color cells based on specific conditions:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Operator</td><td>&gt;, &gt;=, &lt;, &lt;=, ==, !=, contains</td></tr>
+              <tr><td>Value</td><td>The comparison target.</td></tr>
+              <tr><td>Background color</td><td>Cell background when condition is met.</td></tr>
+              <tr><td>Text color</td><td>Cell text color when condition is met.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Multiple conditions can be added per rule; the first matching condition wins.</p>
+        <div class="tip">Example: Color the "Revenue" column with a Blues gradient. Or color "Status" — green for "Active", red for "Inactive".</div>
+      </div>
+    </section>
+
+    <!-- 11. Dashboard Themes -->
+    <section id="themes" class="section">
+      <h2>11. Dashboard Themes</h2>
+      <p>Global visual settings found in the <strong>Dashboard Styles</strong> section of the developer sidebar.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Setting</th><th>Options</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td>Font size</td><td>10-18px slider</td><td>13px</td></tr>
+            <tr><td>Canvas color</td><td>Color picker</td><td>#f1f5f9</td></tr>
+            <tr><td>Card color</td><td>Color picker</td><td>#ffffff</td></tr>
+            <tr><td>Border radius</td><td>0-20px slider</td><td>8px</td></tr>
+            <tr><td>Card shadow</td><td>None, Small, Medium, Large</td><td>Medium</td></tr>
+            <tr><td>Color scheme</td><td>Any of the 15 palettes</td><td>Vivid</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sub">
+        <h3>Theme Inheritance</h3>
+        <p>Widgets inherit from the dashboard theme by default. Override per-widget in the Aesthetics tab:</p>
+        <ul>
+          <li><strong>Color scheme</strong> — Specific palette or "Inherit from theme".</li>
+          <li><strong>Background color</strong> — Theme card color or custom.</li>
+          <li><strong>Border radius</strong> — Theme radius or custom value.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 12. Multi-Page Dashboards -->
+    <section id="multi-page" class="section">
+      <h2>12. Multi-Page Dashboards</h2>
+      <p>Organize complex dashboards into multiple pages, like tabs in a spreadsheet.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>How</th></tr></thead>
+          <tbody>
+            <tr><td>Add page</td><td>Click the + button at the end of the tab bar.</td></tr>
+            <tr><td>Switch page</td><td>Click any page tab.</td></tr>
+            <tr><td>Rename page</td><td>Double-click a page tab and type the new name.</td></tr>
+            <tr><td>Delete page</td><td>Click the &times; on a page tab (available with 2+ pages).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sub">
+        <h3>Moving Widgets Between Pages</h3>
+        <ol>
+          <li>Click the <strong>&#x21F1;</strong> button on a widget.</li>
+          <li>Select the destination page from the dropdown.</li>
+          <li>The widget moves to the target page.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 13. Viewer Mode -->
+    <section id="viewer-mode" class="section">
+      <h2>13. Viewer Mode</h2>
+      <p>Switch by clicking <strong>Viewer</strong> in the header. This is the presentation mode.</p>
+      <ul>
+        <li><strong>Read-only canvas</strong> — Widgets display but cannot be moved or edited.</li>
+        <li><strong>Interactive charts</strong> — Hover for tooltips, click for cross-filtering.</li>
+        <li><strong>Filter panel</strong> — Add, modify, and remove data filters.</li>
+        <li><strong>Page navigation</strong> — Arrow buttons and tab bar for multi-page dashboards.</li>
+        <li><strong>Maximize</strong> — Click &#x2922; on any widget for a full-screen view.</li>
+      </ul>
+    </section>
+
+    <!-- 14. Filtering & Cross-Filtering -->
+    <section id="filtering" class="section">
+      <h2>14. Filtering &amp; Cross-Filtering</h2>
+      <div class="sub">
+        <h3>Adding Filters</h3>
+        <ol>
+          <li>Click <strong>+ Filter</strong> in the viewer top bar.</li>
+          <li>If there are multiple datasets, select one.</li>
+          <li>Choose a field to filter on.</li>
+        </ol>
+        <p><strong>Categorical filter</strong> (string fields): Multi-select checkboxes with search, "All visible", "All", and "None" buttons.</p>
+        <p><strong>Range filter</strong> (numeric fields): Min/Max inputs with a "Reset to full range" button.</p>
+      </div>
+      <div class="sub">
+        <h3>Cross-Filtering</h3>
+        <p>Click on any chart element (bar, slice, dot, region...) to create or toggle a filter. Cross-filters work across all widgets sharing the same dataset.</p>
+        <div class="tip">Click "Argentina" on a bar chart — all other charts using the same dataset instantly filter to Argentina. Click again to remove.</div>
+      </div>
+      <div class="sub">
+        <h3>Filter Undo / Redo</h3>
+        <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes the last filter change. <kbd>Ctrl</kbd>+<kbd>Y</kbd> redoes it. Filter history is separate from developer-mode undo history.</p>
+      </div>
+    </section>
+
+    <!-- 15. Export & Import -->
+    <section id="export-import" class="section">
+      <h2>15. Export &amp; Import</h2>
+      <div class="sub">
+        <h3>Exporting</h3>
+        <p>Click <strong>Export</strong> in the header. Ytics saves a <code>.ytics</code> file (ZIP archive) containing:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>File</th><th>Contents</th></tr></thead>
+            <tbody>
+              <tr><td>dashboard.json</td><td>Full configuration: pages, widgets, layouts, theme, dimension colors.</td></tr>
+              <tr><td>data/*.csv</td><td>A CSV export of each dataset.</td></tr>
+              <tr><td>README.md</td><td>A human-readable summary.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Importing</h3>
+        <p>Click <strong>Import</strong> in the header and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs datasets, restores the dashboard state, and switches to Viewer mode.</p>
+      </div>
+    </section>
+
+    <!-- 16. Keyboard Shortcuts -->
+    <section id="shortcuts" class="section">
+      <h2>16. Keyboard Shortcuts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Shortcut</th><th>Mode</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Developer</td><td>Undo the last dashboard change.</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Developer</td><td>Redo a reverted change.</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Developer</td><td>Redo (alternative).</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Viewer</td><td>Undo the last filter change.</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Viewer</td><td>Redo filter change.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:8px; font-size:13px; color:var(--muted);">On macOS, use <kbd>Cmd</kbd> instead of <kbd>Ctrl</kbd>. Shortcuts are disabled when a text input is focused. Undo/redo tracks up to 50 states.</p>
+    </section>
+
+    <!-- 17. Tips & Best Practices -->
+    <section id="tips" class="section">
+      <h2>17. Tips &amp; Best Practices</h2>
+      <div class="sub">
+        <h3>Data Preparation</h3>
+        <ul>
+          <li><strong>Clean your CSVs</strong> before uploading — mixed text and numbers in a column may be treated as strings.</li>
+          <li><strong>Use clear column names</strong> — They appear as axis labels, legend text, and field selectors.</li>
+          <li><strong>Prefer tidy data</strong> — One row per observation, one column per variable. Use the Measure Pipeline for reshaping.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Dashboard Design</h3>
+        <ul>
+          <li><strong>Start simple</strong> — Add one chart, get the data mapping right, then expand.</li>
+          <li><strong>Use the Measure Pipeline</strong> instead of modifying source data — pipelines are per-widget.</li>
+          <li><strong>Leverage theme inheritance</strong> — Set palette and styles at the theme level; override only when needed.</li>
+          <li><strong>Pin dimension colors</strong> for key values so they're consistent across every chart.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Performance</h3>
+        <ul>
+          <li><strong>Large datasets</strong> (100k+ rows): Pre-aggregate in the Measure Pipeline or filter to relevant subsets.</li>
+          <li><strong>Many widgets</strong>: Keep 10-15 per page for comfortable performance.</li>
+        </ul>
+      </div>
+      <div class="sub">
+        <h3>Color Best Practices</h3>
+        <ul>
+          <li><strong>Categorical data</strong> &rarr; Use a categorical palette (Vivid, Spectrum, Muted).</li>
+          <li><strong>Sequential/ranked data</strong> &rarr; Use gradient mode with a single-hue gradient (Blues, Greens).</li>
+          <li><strong>Diverging data</strong> (profit/loss) &rarr; Use Warm&rarr;Cool or Brown&rarr;Green.</li>
+          <li><strong>Accessibility</strong> — Muted and Contrast palettes work well for color-blind viewers.</li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="footer">Built with React, D3.js, and react-grid-layout.</div>
+
+  </div>
+</div>
+
+<script>
+  // Mobile sidebar toggle
+  const toggle = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+  toggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+
+  // Close sidebar on link click (mobile)
+  sidebar.querySelectorAll('.toc a').forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 768) sidebar.classList.remove('open');
+    });
+  });
+
+  // Highlight active TOC item on scroll
+  const sections = document.querySelectorAll('.section');
+  const tocLinks = document.querySelectorAll('.toc a');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        tocLinks.forEach(l => l.style.borderLeftColor = 'transparent');
+        tocLinks.forEach(l => l.style.color = '');
+        const active = sidebar.querySelector('.toc a[href="#' + entry.target.id + '"]');
+        if (active) { active.style.borderLeftColor = 'var(--primary)'; active.style.color = 'var(--text)'; }
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

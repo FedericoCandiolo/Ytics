@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/Ytics/static/css/main.b11454f0.css",
+    "main.js": "/Ytics/static/js/main.3b9f66e0.js",
+    "static/js/93.b3f2cdc3.chunk.js": "/Ytics/static/js/93.b3f2cdc3.chunk.js",
+    "static/js/453.48144b84.chunk.js": "/Ytics/static/js/453.48144b84.chunk.js",
+    "index.html": "/Ytics/index.html",
+    "main.b11454f0.css.map": "/Ytics/static/css/main.b11454f0.css.map",
+    "main.3b9f66e0.js.map": "/Ytics/static/js/main.3b9f66e0.js.map",
+    "93.b3f2cdc3.chunk.js.map": "/Ytics/static/js/93.b3f2cdc3.chunk.js.map",
+    "453.48144b84.chunk.js.map": "/Ytics/static/js/453.48144b84.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.b11454f0.css",
+    "static/js/main.3b9f66e0.js"
+  ]
+}
