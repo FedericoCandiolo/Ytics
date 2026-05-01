@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { exportDashboard, importDashboard } from '../utils/exportUtils';
 import { TYPE_ICONS } from './Widgets/WidgetContainer';
 
-export default function Header({ onHelpOpen, isMobile, isTablet }) {
+export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isTablet }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
   const [saveFlash, setSaveFlash] = useState(false);
@@ -75,6 +75,16 @@ export default function Header({ onHelpOpen, isMobile, isTablet }) {
 
       {/* Widget search */}
       <WidgetSearch />
+
+      {/* AI toggle */}
+      <button
+        className={`btn btn-sm ${isAIOpen ? 'btn-primary' : 'btn-secondary'}`}
+        onClick={onAIToggle}
+        title="AI Assistant"
+        style={{ flexShrink: 0 }}
+      >
+        {compact ? '✦' : '✦ AI'}
+      </button>
 
       {/* Mode toggle — hidden on mobile (viewer-only) */}
       {!isMobile && (
