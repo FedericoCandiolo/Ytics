@@ -3,7 +3,7 @@ import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
 import FilterPanel from './FilterPanel';
-import { exportDashboard } from '../../utils/exportUtils';
+import { WidgetSearch } from '../Header';
 import { computeResponsiveLayouts, BREAKPOINTS, COLS } from '../../utils/layoutUtils';
 
 const ResponsiveGrid = WidthProvider(Responsive);
@@ -58,23 +58,13 @@ export default function ViewerMode({ isMobile }) {
       {/* ── Top bar: filters + export ── */}
       <div className="viewer-topbar">
         <FilterPanel />
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 'auto', alignItems: 'center' }}>
           {activeSelections.length > 0 && !isMobile && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {activeSelections.length} selection{activeSelections.length > 1 ? 's' : ''} active
             </span>
           )}
-          {!isMobile && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => dispatch({ type: 'SET_MODE', payload: 'developer' })}
-            >✏️ Edit</button>
-          )}
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={totalWidgets === 0}
-            onClick={() => exportDashboard(state.datasets, dashboard, state.selections)}
-          >{isMobile ? '⬇' : '⬇ Export'}</button>
+          {!isMobile && <WidgetSearch />}
         </div>
       </div>
 

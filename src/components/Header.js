@@ -6,7 +6,6 @@ import { TYPE_ICONS } from './Widgets/WidgetContainer';
 export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isTablet }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
-  const [saveFlash, setSaveFlash] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const menuRef = useRef(null);
@@ -43,12 +42,6 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
     setMenuOpen(false);
   };
 
-  const handleSave = () => {
-    setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 1500);
-    setMenuOpen(false);
-  };
-
   const canExport = state.datasets.length > 0 || state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0) > 0;
 
   // Compact mode: hide text labels on buttons (tablet)
@@ -58,7 +51,7 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
     <header className="header">
       <div className="header-logo">
         {!logoError ? (
-          <img src="/logo.png" alt="ytics" className="header-logo-img" onError={() => setLogoError(true)} />
+          <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="ytics" className="header-logo-img" onError={() => setLogoError(true)} />
         ) : (
           !isMobile && <span>ytics</span>
         )}
@@ -72,9 +65,6 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           placeholder="Dashboard title…"
         />
       </div>
-
-      {/* Widget search */}
-      <WidgetSearch />
 
       {/* AI toggle */}
       <button
@@ -119,12 +109,9 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           {menuOpen && (
             <div className="header-dropdown">
               <button className="header-dropdown-item" onClick={handleNew}>+ New</button>
-              <button className="header-dropdown-item" onClick={handleSave}>
-                {saveFlash ? '✓ Saved' : '💾 Save'}
-              </button>
               <button className="header-dropdown-item" onClick={() => { onHelpOpen(); setMenuOpen(false); }}>? Help</button>
               <button className="header-dropdown-item" onClick={() => { importRef.current?.click(); setMenuOpen(false); }}>
-                ⬆ Import
+                ⬆ Open
               </button>
               <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
               <button
@@ -132,7 +119,7 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
                 disabled={!canExport}
                 onClick={() => { exportDashboard(state.datasets, state.dashboard, state.selections); setMenuOpen(false); }}
               >
-                ⬇ Export
+                ⬇ Save
               </button>
             </div>
           )}
@@ -142,31 +129,24 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           <button className="btn btn-secondary btn-sm" onClick={handleNew} title="New dashboard">
             + New
           </button>
-          <button
-            className={`btn btn-sm ${saveFlash ? 'btn-success' : 'btn-secondary'}`}
-            onClick={handleSave}
-            title="Save dashboard"
-          >
-            {saveFlash ? '✓ Saved' : '💾 Save'}
-          </button>
           <button className="btn btn-secondary btn-sm" onClick={onHelpOpen} title="Help & Documentation">
             ? Help
           </button>
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => importRef.current?.click()}
-            title="Import .ytics file"
+            title="Open .ytics file"
           >
-            ⬆ Import
+            ⬆ Open
           </button>
           <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
           <button
             className="btn btn-primary btn-sm"
             disabled={!canExport}
             onClick={() => exportDashboard(state.datasets, state.dashboard, state.selections)}
-            title="Export as .ytics"
+            title="Save as .ytics"
           >
-            ⬇ Export
+            ⬇ Save
           </button>
         </div>
       )}
@@ -176,7 +156,7 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
 
 /* ── Dashboard-level widget search ────────────────────────────────────────── */
 
-function WidgetSearch() {
+export function WidgetSearch() {
   const { state, dispatch } = useApp();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);

@@ -2,6 +2,14 @@
 // Builds system prompts and context from app state for developer/viewer modes.
 // Two modes: "full" (default) and "light" (minimal tokens for free tiers).
 
+const RESPONSE_RULES = `
+Response rules:
+- Reply in markdown. Use **bold**, lists, and headers for readability.
+- Never output XML, HTML tags, or raw structured data in your text. Tool calls handle structured actions.
+- After performing actions via tools, briefly confirm what you did in 1-2 sentences.
+- Do not echo widget IDs or dataset IDs to the user — refer to things by their name/title.
+- Keep responses short and conversational.`;
+
 function getCurrentPageWidgets(state) {
   const page = state.dashboard.pages.find(p => p.id === state.dashboard.currentPageId)
     || state.dashboard.pages[0];
@@ -15,7 +23,7 @@ function buildDeveloperFull(state) {
 You help users create and configure data visualizations.
 You can add widgets, update their configuration, and suggest chart types.
 Always use tool calls to make changes — never just describe what to do.
-Be concise in your text responses.
+${RESPONSE_RULES}
 
 Available chart types: bar, line, scatter, pie, histogram, combo, kpi, heatmap, treemap, funnel, radar, boxplot, violin, waterfall, waffle, wordcloud, sankey, bubble, bump, stream, correlogram, density, mekko, geo, pivot, straighttable, table, carousel, text, image, embed.
 
@@ -51,6 +59,12 @@ You help users understand their data by answering questions, finding patterns, a
 Use the query_data tool to examine data before answering questions. Be specific and cite numbers.
 Use the describe_data tool to get statistical summaries.
 Use the set_selection tool to filter the dashboard when the user asks to focus on specific values.
+${RESPONSE_RULES}
+
+When presenting data results:
+- Format numbers with appropriate precision (e.g., 7.9B instead of 7888000000).
+- Use markdown tables for tabular results.
+- Highlight key findings with **bold**.
 
 ${state.datasets.length > 0 ? `## Datasets
 ${state.datasets.map(d => {
@@ -68,8 +82,6 @@ ${Object.entries(state.selections || {}).map(([field, values]) =>
 }
 
 // ── Light context (minimal tokens) ──────────────────────────────────────────
-// Sends only column names and counts. No samples, no property lists, no widget details.
-// AI relies on tool calls (describe_data, suggest_charts) to learn about the data.
 
 function buildDeveloperLight(state) {
   const ds = state.datasets.map(d =>
@@ -81,7 +93,7 @@ function buildDeveloperLight(state) {
     ? widgets.map(w => `${w.id}:${w.type}`).join(', ')
     : 'none';
 
-  return `Ytics dashboard builder AI. Use tool calls. Be concise.
+  return `Ytics dashboard builder AI. Use tool calls. Reply in markdown. Be concise. Never output XML/HTML.
 Charts: bar,line,scatter,pie,histogram,combo,kpi,heatmap,treemap,funnel,radar,boxplot,violin,waterfall,waffle,wordcloud,sankey,bubble,bump,stream,correlogram,density,mekko,geo,pivot,straighttable,table,text.
 Datasets:\n${ds}
 Widgets: ${wList}`;
@@ -97,7 +109,7 @@ function buildViewerLight(state) {
     .map(([f, v]) => `${f}:${v.length}sel`)
     .join(', ');
 
-  return `Data analyst AI for Ytics. Use query_data/describe_data tools to examine data before answering. Be specific, cite numbers. Use set_selection to filter.
+  return `Data analyst AI for Ytics. Use query_data/describe_data tools to examine data before answering. Be specific, cite numbers. Use set_selection to filter. Reply in markdown. Never output XML/HTML. Format large numbers readably.
 Datasets:\n${ds}${sel ? `\nSelections: ${sel}` : ''}`;
 }
 
