@@ -299,8 +299,11 @@ function TypeBadge({ col, datasetId, dispatch }) {
 
 // ── Data Preview ──────────────────────────────────────────────────────────────
 function DataPreview({ dataset, dispatch }) {
+  const { state } = useApp();
   const cols = getColumnInfo(dataset.data);
   const rows = dataset.data.slice(0, 200);
+  const [showSynonyms, setShowSynonyms] = useState(false);
+  const fieldSynonyms = state.dashboard.fieldSynonyms || {};
 
   if (!cols.length) return (
     <div className="empty-state">
@@ -309,6 +312,8 @@ function DataPreview({ dataset, dispatch }) {
     </div>
   );
 
+  const synCount = cols.filter(c => fieldSynonyms[c.name]?.length > 0).length;
+
   return (
     <div>
       <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
@@ -316,7 +321,17 @@ function DataPreview({ dataset, dispatch }) {
           {dataset.data.length.toLocaleString()} rows · {cols.length} columns
           {dataset.transforms.length > 0 && ` · ${dataset.transforms.length} transforms applied`}
         </span>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowSynonyms(v => !v)}
+          style={{ fontSize: 12 }}
+        >
+          {showSynonyms ? '▾' : '▸'} Synonyms{synCount > 0 ? ` (${synCount})` : ''}
+        </button>
       </div>
+      {showSynonyms && (
+        <SynonymsEditor cols={cols} fieldSynonyms={fieldSynonyms} dispatch={dispatch} />
+      )}
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
@@ -349,6 +364,87 @@ function DataPreview({ dataset, dispatch }) {
           Showing first 200 of {dataset.data.length.toLocaleString()} rows
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Field Synonyms Editor ─────────────────────────────────────────────────────
+function SynonymsEditor({ cols, fieldSynonyms, dispatch }) {
+  const [editingField, setEditingField] = useState(null);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef(null);
+
+  const startEdit = (fieldName) => {
+    setEditingField(fieldName);
+    setDraft((fieldSynonyms[fieldName] || []).join(', '));
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const commit = () => {
+    if (!editingField) return;
+    const synonyms = draft.split(',').map(s => s.trim()).filter(Boolean);
+    dispatch({ type: 'SET_FIELD_SYNONYMS', payload: { field: editingField, synonyms } });
+    setEditingField(null);
+    setDraft('');
+  };
+
+  return (
+    <div style={{
+      marginBottom: 12, padding: '10px 12px',
+      background: 'var(--bg-hover, #f8fafc)', borderRadius: 8,
+      border: '1px solid var(--border)',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+        Add synonyms so the AI can understand natural language references to your fields.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {cols.map(c => {
+          const syns = fieldSynonyms[c.name] || [];
+          const isEditing = editingField === c.name;
+          return (
+            <div key={c.name} style={{
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+              padding: '4px 0', borderBottom: '1px solid var(--border-light, #e2e8f0)',
+            }}>
+              <span style={{ fontWeight: 600, minWidth: 100, flexShrink: 0 }}>{c.name}</span>
+              {isEditing ? (
+                <div style={{ display: 'flex', flex: 1, gap: 4 }}>
+                  <input
+                    ref={inputRef}
+                    className="input input-sm"
+                    style={{ flex: 1, fontSize: 12 }}
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingField(null); }}
+                    placeholder="sales, revenue, income (comma-separated)"
+                  />
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={commit}>OK</button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => setEditingField(null)}>Cancel</button>
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} onClick={() => startEdit(c.name)}>
+                  {syns.length > 0 ? (
+                    <span style={{ color: 'var(--text)' }}>{syns.join(', ')}</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-light)', fontStyle: 'italic' }}>click to add...</span>
+                  )}
+                  {syns.length > 0 && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 10, padding: '1px 4px', marginLeft: 'auto' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dispatch({ type: 'SET_FIELD_SYNONYMS', payload: { field: c.name, synonyms: [] } });
+                      }}
+                      title="Remove synonyms"
+                    >&#10005;</button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -161,6 +161,7 @@ const initialState = {
     currentPageId: _firstPage.id,
     theme: { ...defaultTheme },
     dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
+    fieldSynonyms: {},     // { fieldName: ['synonym1', 'synonym2', ...] }
     advancedStats: false,  // enable advanced aggregation functions + formula editor
     modelPositions: null,  // { datasetId: { x, y }, ... } for data model ER diagram
     // Shared dimension definitions + state
@@ -721,6 +722,18 @@ function reducer(state, action) {
       return { ...state, dashboard: { ...state.dashboard, dimensionColors: dc } };
     }
 
+    // ── Field synonyms ────────────────────────────────────────
+    case 'SET_FIELD_SYNONYMS': {
+      const { field, synonyms } = action.payload;
+      const fs = { ...state.dashboard.fieldSynonyms };
+      if (!synonyms || synonyms.length === 0) {
+        delete fs[field];
+      } else {
+        fs[field] = synonyms;
+      }
+      return { ...state, dashboard: { ...state.dashboard, fieldSynonyms: fs } };
+    }
+
     // ── Shared dimensions (dashboard-level) ─────────────────
     case 'SET_HIERARCHIC_DIMENSIONS':
       return { ...state, dashboard: { ...state.dashboard, hierarchicDimensions: action.payload } };
@@ -883,6 +896,7 @@ const UNDOABLE_ACTIONS = new Set([
   'LOAD_DATASET', 'DELETE_DATASET', 'RENAME_DATASET',
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
   'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR',
+  'SET_FIELD_SYNONYMS',
   'RUN_CLUSTERING', 'REMOVE_COLUMN',
 ]);
 

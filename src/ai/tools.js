@@ -83,6 +83,42 @@ export const DEVELOPER_TOOLS = [
       },
     },
   },
+  {
+    name: 'lookup_help',
+    description: 'Search the Ytics user guide / documentation. Use this to answer questions about how to use features, configure charts, manage data, etc.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g. "how to join tables", "scatter plot options", "conditional formatting")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'set_field_synonyms',
+    description: 'Set synonyms/aliases for a dataset field so the AI can understand natural language references. E.g. set "revenue" synonyms to ["sales", "income", "earnings"]. Call with empty array to remove synonyms.',
+    parameters: {
+      type: 'object',
+      properties: {
+        field: { type: 'string', description: 'The actual field name in the dataset' },
+        synonyms: {
+          type: 'array', items: { type: 'string' },
+          description: 'List of synonyms/aliases for this field',
+        },
+      },
+      required: ['field', 'synonyms'],
+    },
+  },
+  {
+    name: 'suggest_synonyms',
+    description: 'Returns all field names across all datasets so you can suggest synonyms for them. Does not modify anything — present suggestions to the user for approval before calling set_field_synonyms.',
+    parameters: {
+      type: 'object',
+      properties: {
+        datasetId: { type: 'string', description: 'Dataset to analyze. Omit for all datasets.' },
+      },
+    },
+  },
 ];
 
 export const VIEWER_TOOLS = [
@@ -136,6 +172,17 @@ export const VIEWER_TOOLS = [
         },
       },
       required: ['field', 'values'],
+    },
+  },
+  {
+    name: 'lookup_help',
+    description: 'Search the Ytics user guide / documentation. Use this to answer questions about how to use features.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+      },
+      required: ['query'],
     },
   },
 ];

@@ -16,12 +16,25 @@ function getCurrentPageWidgets(state) {
   return page?.widgets || [];
 }
 
+function buildSynonymsContext(state) {
+  const syns = state.dashboard?.fieldSynonyms || {};
+  const entries = Object.entries(syns).filter(([, v]) => v?.length > 0);
+  if (entries.length === 0) return '';
+  return `\n## Field Synonyms
+${entries.map(([field, aliases]) =>
+    `- "${field}" is also known as: ${aliases.join(', ')}`
+  ).join('\n')}
+When the user refers to fields by synonym, use the actual field name in tool calls.\n`;
+}
+
 // ── Full context (default) ──────────────────────────────────────────────────
 
 function buildDeveloperFull(state) {
   return `You are an AI assistant for Ytics, a dashboard builder.
 You help users create and configure data visualizations.
 You can add widgets, update their configuration, and suggest chart types.
+You can also answer questions about how to use Ytics features — use the lookup_help tool to search the documentation.
+You can set field synonyms so that natural language questions map to actual field names — use set_field_synonyms and suggest_synonyms.
 Always use tool calls to make changes — never just describe what to do.
 ${RESPONSE_RULES}
 
@@ -44,7 +57,7 @@ ${state.datasets.map(d =>
 Columns: ${Object.entries(d.columnTypes).map(([name, type]) => `${name} (${type})`).join(', ')}
 Rows: ${d.data.length}`
 ).join('\n\n')}` : 'No datasets loaded yet.'}
-
+${buildSynonymsContext(state)}
 ## Current Dashboard
 Title: ${state.dashboard.title || '(untitled)'}
 Pages: ${state.dashboard.pages.length}
@@ -59,6 +72,7 @@ You help users understand their data by answering questions, finding patterns, a
 Use the query_data tool to examine data before answering questions. Be specific and cite numbers.
 Use the describe_data tool to get statistical summaries.
 Use the set_selection tool to filter the dashboard when the user asks to focus on specific values.
+You can also answer questions about how to use Ytics — use the lookup_help tool to search the documentation.
 ${RESPONSE_RULES}
 
 When presenting data results:
@@ -74,7 +88,7 @@ Columns: ${Object.entries(d.columnTypes).map(([name, type]) => `${name} (${type}
 Rows: ${d.data.length}
 Sample: ${JSON.stringify(sample)}`;
 }).join('\n\n')}` : 'No datasets loaded.'}
-
+${buildSynonymsContext(state)}
 ## Active Selections
 ${Object.entries(state.selections || {}).map(([field, values]) =>
   values.length > 0 ? `${field}: ${values.join(', ')}` : `${field}: all`
@@ -93,9 +107,11 @@ function buildDeveloperLight(state) {
     ? widgets.map(w => `${w.id}:${w.type}`).join(', ')
     : 'none';
 
-  return `Ytics dashboard builder AI. Use tool calls. Reply in markdown. Be concise. Never output XML/HTML.
+  const syns = buildSynonymsContext(state);
+
+  return `Ytics dashboard builder AI. Use tool calls. Reply in markdown. Be concise. Never output XML/HTML. Use lookup_help for feature questions. Use set_field_synonyms/suggest_synonyms for field aliases.
 Charts: bar,line,scatter,pie,histogram,combo,kpi,heatmap,treemap,funnel,radar,boxplot,violin,waterfall,waffle,wordcloud,sankey,bubble,bump,stream,correlogram,density,mekko,geo,pivot,straighttable,table,text.
-Datasets:\n${ds}
+Datasets:\n${ds}${syns}
 Widgets: ${wList}`;
 }
 
@@ -109,8 +125,10 @@ function buildViewerLight(state) {
     .map(([f, v]) => `${f}:${v.length}sel`)
     .join(', ');
 
-  return `Data analyst AI for Ytics. Use query_data/describe_data tools to examine data before answering. Be specific, cite numbers. Use set_selection to filter. Reply in markdown. Never output XML/HTML. Format large numbers readably.
-Datasets:\n${ds}${sel ? `\nSelections: ${sel}` : ''}`;
+  const syns = buildSynonymsContext(state);
+
+  return `Data analyst AI for Ytics. Use query_data/describe_data tools to examine data before answering. Be specific, cite numbers. Use set_selection to filter. Use lookup_help for feature questions. Reply in markdown. Never output XML/HTML. Format large numbers readably.
+Datasets:\n${ds}${syns}${sel ? `\nSelections: ${sel}` : ''}`;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────

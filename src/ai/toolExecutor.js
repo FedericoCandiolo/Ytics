@@ -1,6 +1,8 @@
 // ── Tool Executor ────────────────────────────────────────────────────────────
 // Executes AI tool calls against app state/dispatch. Returns result objects.
 
+import { searchHelp } from './helpDocs';
+
 function findDataset(state, datasetId) {
   if (datasetId) return state.datasets.find(d => d.id === datasetId);
   return state.datasets[0];
@@ -173,6 +175,39 @@ export function executeTool(toolCall, dispatch, state) {
     case 'set_selection': {
       dispatch({ type: 'SET_SELECTION', payload: { field: args.field, values: args.values } });
       return { success: true, message: `Selection set on ${args.field}: ${args.values.length ? args.values.join(', ') : 'all'}` };
+    }
+
+    case 'lookup_help': {
+      const results = searchHelp(args.query);
+      if (results.length === 0) return { message: 'No matching help sections found.' };
+      // Return top 3 full sections
+      return {
+        sections: results.slice(0, 3).map(s => ({ title: s.title, content: s.content })),
+        message: `Found ${results.length} relevant section(s).`,
+      };
+    }
+
+    case 'set_field_synonyms': {
+      dispatch({ type: 'SET_FIELD_SYNONYMS', payload: { field: args.field, synonyms: args.synonyms } });
+      const action = args.synonyms.length === 0 ? 'Removed synonyms for' : `Set synonyms for "${args.field}": ${args.synonyms.join(', ')}`;
+      return { success: true, message: action };
+    }
+
+    case 'suggest_synonyms': {
+      const datasets = args.datasetId
+        ? state.datasets.filter(d => d.id === args.datasetId)
+        : state.datasets;
+      if (datasets.length === 0) return { error: 'No datasets found' };
+      const fields = {};
+      for (const ds of datasets) {
+        for (const [col, type] of Object.entries(ds.columnTypes)) {
+          fields[col] = { type, dataset: ds.name, currentSynonyms: state.dashboard.fieldSynonyms?.[col] || [] };
+        }
+      }
+      return {
+        fields,
+        message: 'Analyze these field names and suggest natural-language synonyms. Present suggestions to the user before applying with set_field_synonyms.',
+      };
     }
 
     default:
