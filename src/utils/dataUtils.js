@@ -728,7 +728,7 @@ export function sortAggregated(pts, options = {}) {
 }
 
 export function applyParetoGrouping(pts, options = {}) {
-  const { method = 'topN', topN = 10, threshold = 0.8, othersLabel = 'Others' } = options;
+  const { method = 'topN', topN = 10, threshold = 0.8, othersLabel = 'Others', showOthers = true } = options;
   if (!pts || pts.length === 0) return [];
 
   let splitIndex = pts.length; // default: keep everything
@@ -781,6 +781,8 @@ export function applyParetoGrouping(pts, options = {}) {
   if (splitIndex >= pts.length) return [...pts];
 
   const kept = pts.slice(0, splitIndex);
+  if (!showOthers) return kept;
+
   const tail = pts.slice(splitIndex);
   const othersValue = tail.reduce((s, p) => s + p.value, 0);
   const othersCount = tail.reduce((s, p) => s + (p.count || 0), 0);

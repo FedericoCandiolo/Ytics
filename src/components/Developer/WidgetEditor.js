@@ -1698,16 +1698,17 @@ function SortOptions({ widget, onUpdate }) {
 }
 
 function ParetoOptions({ widget, onUpdate }) {
+  const showOthers = widget.showOthers !== false;
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
       <label className="checkbox-row" style={{ marginBottom: 8 }}>
         <input type="checkbox" checked={!!widget.paretoEnabled} onChange={e => onUpdate({ paretoEnabled: e.target.checked })} />
-        Group tail into "Others"
+        Limit categories
       </label>
       {widget.paretoEnabled && (
         <>
           <div className="form-group" style={{ marginBottom: 10 }}>
-            <label className="form-label">Grouping method</label>
+            <label className="form-label">Method</label>
             <select className="select select-sm" value={widget.paretoMethod || 'topN'} onChange={e => onUpdate({ paretoMethod: e.target.value })}>
               <option value="topN">Top N</option>
               <option value="threshold">Cumulative % threshold</option>
@@ -1733,11 +1734,17 @@ function ParetoOptions({ widget, onUpdate }) {
               Items where (cumulative count ratio / cumulative value ratio) &lt; 1 are grouped as Others.
             </div>
           )}
-          <div className="form-group" style={{ marginBottom: 10 }}>
-            <label className="form-label">Others label</label>
-            <input className="input input-sm" value={widget.othersLabel || 'Others'}
-              onChange={e => onUpdate({ othersLabel: e.target.value })} />
-          </div>
+          <label className="checkbox-row" style={{ marginBottom: 8 }}>
+            <input type="checkbox" checked={showOthers} onChange={e => onUpdate({ showOthers: e.target.checked })} />
+            Show "Others" bucket
+          </label>
+          {showOthers && (
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label className="form-label">Others label</label>
+              <input className="input input-sm" value={widget.othersLabel || 'Others'}
+                onChange={e => onUpdate({ othersLabel: e.target.value })} />
+            </div>
+          )}
         </>
       )}
     </div>

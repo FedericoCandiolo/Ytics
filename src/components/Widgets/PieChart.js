@@ -42,6 +42,7 @@ export default function PieChart({ widget, data, onCrossFilter }) {
         topN: widget.paretoTopN ?? 10,
         threshold: widget.paretoThreshold ?? 0.8,
         othersLabel: widget.othersLabel || 'Others',
+        showOthers: widget.showOthers !== false,
       });
       // Re-apply user's sort, keep Others at end
       const othersLabel = widget.othersLabel || 'Others';

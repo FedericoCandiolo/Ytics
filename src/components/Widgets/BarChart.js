@@ -134,6 +134,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       topN: widget.paretoTopN ?? 10,
       threshold: widget.paretoThreshold ?? 0.8,
       othersLabel: widget.othersLabel || 'Others',
+      showOthers: widget.showOthers !== false,
     });
     // Re-apply user's chosen sort (but keep Others at end)
     const othersLabel = widget.othersLabel || 'Others';
@@ -303,6 +304,7 @@ function renderMultiMeasure(svgRef, data, widget, extraMeasures, dims, isH, barM
       topN: widget.paretoTopN ?? 10,
       threshold: widget.paretoThreshold ?? 0.8,
       othersLabel: widget.othersLabel || 'Others',
+      showOthers: widget.showOthers !== false,
     });
     const othersLabel = widget.othersLabel || 'Others';
     const keptKeys = new Set(grouped.filter(d => d.key !== othersLabel).map(d => d.key));
@@ -417,6 +419,7 @@ function renderGrouped(svgRef, data, widget, dims, isH, barMode, opacity, showTo
       topN: widget.paretoTopN ?? 10,
       threshold: widget.paretoThreshold ?? 0.8,
       othersLabel: widget.othersLabel || 'Others',
+      showOthers: widget.showOthers !== false,
     });
     const othersLabel = widget.othersLabel || 'Others';
     const keptKeys = new Set(grouped.filter(d => d.key !== othersLabel).map(d => d.key));

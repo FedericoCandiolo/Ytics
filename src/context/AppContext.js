@@ -222,6 +222,7 @@ function defaultWidget(overrides = {}) {
     paretoTopN: 10,
     paretoThreshold: 0.8,
     othersLabel: 'Others',
+    showOthers: true,
     // Reference line (bar chart)
     referenceLine: null,        // { value: number, label: string } or null
     useLogScale: false,

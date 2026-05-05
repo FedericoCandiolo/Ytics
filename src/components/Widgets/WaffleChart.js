@@ -46,8 +46,10 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
     const total = cats.reduce((s, c) => s + c.value, 0);
     if (total === 0) return;
 
+    const hideOthers = widget.showOthers === false;
+
     // Allocate cells using largest remainder method.
-    // Categories below 0.5% of total are grouped into "Others".
+    // Categories below 0.5% of total are grouped into "Others" (or dropped if hidden).
     const threshold = 0.005; // 0.5%
     let mainCats = [];
     let othersValue = 0;
@@ -59,7 +61,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
         othersValue += cat.value;
       }
     }
-    if (othersValue > 0) {
+    if (othersValue > 0 && !hideOthers) {
       mainCats.push({ key: 'Others', value: othersValue, pct: othersValue / total });
     }
     // Re-sort descending after adding Others, but keep Others last
@@ -92,7 +94,7 @@ export default function WaffleChart({ widget, data, onCrossFilter }) {
         finalCats.push(cat);
       }
     }
-    if (extraOthers > 0) {
+    if (extraOthers > 0 && !hideOthers) {
       const existing = finalCats.find(c => c.key === 'Others');
       if (existing) {
         existing.value += extraOthers;
