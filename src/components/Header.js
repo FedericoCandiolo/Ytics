@@ -1,20 +1,40 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { exportDashboard, importDashboard } from '../utils/exportUtils';
+import { exportDashboard, importDashboard, generateDashboardBlob } from '../utils/exportUtils';
+import { pickFile, downloadFile, createFile, updateFile } from '../utils/googleDrive';
 import { TYPE_ICONS } from './Widgets/WidgetContainer';
+
+// ── Google Drive icon (inline SVG for the buttons) ──────────────────────────
+const DriveIcon = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle' }}>
+    <path d="M6.6 66.85L0 53.9 27.6 0h18.6L6.6 66.85z" fill="#0066da"/>
+    <path d="M27.6 78l13.2-24.1H87.3L74.1 78H27.6z" fill="#00ac47"/>
+    <path d="M45.3 29.1l16.2 24.8H87.3L58.8 0H45.6L45.3 29.1z" fill="#ea4335"/>
+    <path d="M45.3 29.1L27.6 0H46.2L58.8 24.8 45.3 29.1z" fill="#00832d"/>
+    <path d="M6.6 66.85L27.6 78l13.2-24.1-16.2-24.8L6.6 66.85z" fill="#2684fc"/>
+    <path d="M45.3 29.1l16.2 24.8H40.8L27.6 78H74.1l13.2-24.1H61.5L45.3 29.1z" fill="#ffba00"/>
+  </svg>
+);
 
 export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isTablet }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(false);
+  const [saveDropdown, setSaveDropdown] = useState(false);
+  const [saving, setSaving] = useState(false);
   const menuRef = useRef(null);
+  const openRef = useRef(null);
+  const saveRef = useRef(null);
 
-  // Close menu on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !openDropdown && !saveDropdown) return;
     const handler = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+      if (openRef.current && !openRef.current.contains(e.target)) setOpenDropdown(false);
+      if (saveRef.current && !saveRef.current.contains(e.target)) setSaveDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     document.addEventListener('touchstart', handler);
@@ -22,18 +42,89 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('touchstart', handler);
     };
-  }, [menuOpen]);
+  }, [menuOpen, openDropdown, saveDropdown]);
 
   const handleImport = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
       const result = await importDashboard(file);
-      dispatch({ type: 'IMPORT_STATE', payload: result });
+      dispatch({ type: 'IMPORT_STATE', payload: { ...result, fileOrigin: { source: 'local' } } });
     } catch (err) {
       alert('Failed to import: ' + err.message);
     }
     e.target.value = '';
+  };
+
+  const handleOpenFromDrive = async () => {
+    setOpenDropdown(false);
+    setMenuOpen(false);
+    try {
+      const picked = await pickFile();
+      if (!picked) return;
+      const buffer = await downloadFile(picked.id);
+      const blob = new Blob([buffer], { type: 'application/zip' });
+      // Create a File object for importDashboard
+      const file = new File([blob], picked.name, { type: 'application/zip' });
+      const result = await importDashboard(file);
+      dispatch({
+        type: 'IMPORT_STATE',
+        payload: { ...result, fileOrigin: { source: 'googledrive', fileId: picked.id, fileName: picked.name } },
+      });
+    } catch (err) {
+      if (err.message !== 'Google authorization cancelled') {
+        alert('Failed to open from Google Drive: ' + err.message);
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    setSaveDropdown(false);
+    setMenuOpen(false);
+    if (state.fileOrigin?.source === 'googledrive') {
+      // Update existing file on Drive
+      setSaving(true);
+      try {
+        const blob = await generateDashboardBlob(state.datasets, state.dashboard, state.selections);
+        await updateFile(state.fileOrigin.fileId, blob);
+      } catch (err) {
+        alert('Failed to save to Google Drive: ' + err.message);
+      }
+      setSaving(false);
+    } else {
+      // Download locally
+      exportDashboard(state.datasets, state.dashboard, state.selections);
+    }
+  };
+
+  const handleSaveToDrive = async () => {
+    setSaveDropdown(false);
+    setMenuOpen(false);
+    setSaving(true);
+    try {
+      const blob = await generateDashboardBlob(state.datasets, state.dashboard, state.selections);
+      const fileName = (state.dashboard.title || 'dashboard').replace(/[^a-z0-9]/gi, '_');
+      if (state.fileOrigin?.source === 'googledrive') {
+        await updateFile(state.fileOrigin.fileId, blob);
+      } else {
+        const created = await createFile(fileName, blob);
+        dispatch({
+          type: 'SET_FILE_ORIGIN',
+          payload: { source: 'googledrive', fileId: created.id, fileName: created.name },
+        });
+      }
+    } catch (err) {
+      if (err.message !== 'Google authorization required') {
+        alert('Failed to save to Google Drive: ' + err.message);
+      }
+    }
+    setSaving(false);
+  };
+
+  const handleDownload = () => {
+    setSaveDropdown(false);
+    setMenuOpen(false);
+    exportDashboard(state.datasets, state.dashboard, state.selections);
   };
 
   const handleNew = () => {
@@ -43,9 +134,49 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
   };
 
   const canExport = state.datasets.length > 0 || state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0) > 0;
+  const isDriveFile = state.fileOrigin?.source === 'googledrive';
 
   // Compact mode: hide text labels on buttons (tablet)
   const compact = isMobile || isTablet;
+
+  // Shared dropdown styles
+  const dropdownStyle = {
+    position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+    background: 'var(--bg-card, #fff)', border: '1px solid var(--border, #e2e8f0)',
+    borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)',
+    zIndex: 1000, minWidth: 180, padding: '4px 0',
+  };
+  const dropdownItemStyle = {
+    display: 'flex', alignItems: 'center', gap: 8,
+    width: '100%', padding: '8px 14px', border: 'none', background: 'none',
+    cursor: 'pointer', fontSize: 13, color: 'var(--text)', textAlign: 'left',
+    whiteSpace: 'nowrap',
+  };
+
+  const openLocalBtn = (onClick) => (
+    <>
+      <button
+        style={dropdownItemStyle}
+        onClick={() => { importRef.current?.click(); if (onClick) onClick(); }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      >
+        <span>📁</span> From computer
+      </button>
+      <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
+    </>
+  );
+
+  const openDriveBtn = (onClick) => (
+    <button
+      style={dropdownItemStyle}
+      onClick={() => { handleOpenFromDrive(); if (onClick) onClick(); }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+    >
+      <DriveIcon /> From Google Drive
+    </button>
+  );
 
   return (
     <header className="header">
@@ -64,6 +195,11 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           onChange={e => dispatch({ type: 'SET_DASHBOARD_TITLE', payload: e.target.value })}
           placeholder="Dashboard title…"
         />
+        {isDriveFile && (
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4, flexShrink: 0 }} title={state.fileOrigin.fileName}>
+            <DriveIcon size={10} /> Drive
+          </span>
+        )}
       </div>
 
       {/* AI toggle */}
@@ -110,17 +246,32 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
             <div className="header-dropdown">
               <button className="header-dropdown-item" onClick={handleNew}>+ New</button>
               <button className="header-dropdown-item" onClick={() => { onHelpOpen(); setMenuOpen(false); }}>? Help</button>
+              <div style={{ borderTop: '1px solid var(--border, #e2e8f0)', margin: '4px 0' }} />
               <button className="header-dropdown-item" onClick={() => { importRef.current?.click(); setMenuOpen(false); }}>
-                ⬆ Open
+                📁 Open from computer
               </button>
               <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
+              <button className="header-dropdown-item" onClick={handleOpenFromDrive}>
+                <DriveIcon /> Open from Drive
+              </button>
+              <div style={{ borderTop: '1px solid var(--border, #e2e8f0)', margin: '4px 0' }} />
               <button
                 className="header-dropdown-item header-dropdown-item--primary"
-                disabled={!canExport}
-                onClick={() => { exportDashboard(state.datasets, state.dashboard, state.selections); setMenuOpen(false); }}
+                disabled={!canExport || saving}
+                onClick={handleSave}
               >
-                ⬇ Save
+                {saving ? '⏳ Saving…' : isDriveFile ? '☁️ Save to Drive' : '⬇ Save'}
               </button>
+              {isDriveFile && (
+                <button className="header-dropdown-item" disabled={!canExport} onClick={handleDownload}>
+                  ⬇ Download copy
+                </button>
+              )}
+              {!isDriveFile && canExport && (
+                <button className="header-dropdown-item" disabled={saving} onClick={handleSaveToDrive}>
+                  <DriveIcon /> Save to Drive
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -132,22 +283,68 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           <button className="btn btn-secondary btn-sm" onClick={onHelpOpen} title="Help & Documentation">
             ? Help
           </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => importRef.current?.click()}
-            title="Open .ytics file"
-          >
-            ⬆ Open
-          </button>
-          <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={!canExport}
-            onClick={() => exportDashboard(state.datasets, state.dashboard, state.selections)}
-            title="Save as .ytics"
-          >
-            ⬇ Save
-          </button>
+
+          {/* Open button with dropdown */}
+          <div ref={openRef} style={{ position: 'relative' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setOpenDropdown(o => !o)}
+              title="Open .ytics file"
+            >
+              ⬆ Open ▾
+            </button>
+            {openDropdown && (
+              <div style={dropdownStyle}>
+                {openLocalBtn(() => setOpenDropdown(false))}
+                {openDriveBtn(() => setOpenDropdown(false))}
+              </div>
+            )}
+          </div>
+
+          {/* Save button with dropdown */}
+          <div ref={saveRef} style={{ position: 'relative' }}>
+            <div style={{ display: 'flex' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!canExport || saving}
+                onClick={handleSave}
+                title={isDriveFile ? `Save to Google Drive (${state.fileOrigin.fileName})` : 'Save as .ytics'}
+                style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+              >
+                {saving ? '⏳' : isDriveFile ? '☁️' : '⬇'} Save
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!canExport}
+                onClick={() => setSaveDropdown(o => !o)}
+                title="More save options"
+                style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(255,255,255,0.3)', padding: '0 6px' }}
+              >
+                ▾
+              </button>
+            </div>
+            {saveDropdown && (
+              <div style={dropdownStyle}>
+                <button
+                  style={dropdownItemStyle}
+                  onClick={handleDownload}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <span>⬇</span> Download .ytics
+                </button>
+                <button
+                  style={dropdownItemStyle}
+                  onClick={handleSaveToDrive}
+                  disabled={saving}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <DriveIcon /> {isDriveFile ? 'Update on Drive' : 'Save to Google Drive'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </header>

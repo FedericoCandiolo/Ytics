@@ -168,6 +168,7 @@ const initialState = {
     hierarchicDimensions: [], // [{ id, name, levels: [field,...], currentLevel: 0, filters: [] }]
     cyclicDimensions: [],     // [{ id, name, fields: [field,...], activeIndex: 0 }]
   },
+  fileOrigin: null, // null | { source: 'local' } | { source: 'googledrive', fileId, fileName }
   filters: {},
   selections: {},  // { fieldName: string[] } — associative selections
   editingWidgetId: null,
@@ -861,6 +862,7 @@ function reducer(state, action) {
         dashboard: { ...dashboard, pages, currentPageId, theme },
         colStore: { dicts, tables },
         selections,
+        fileOrigin: action.payload.fileOrigin || null,
       };
     }
 
@@ -876,6 +878,9 @@ function reducer(state, action) {
         },
       };
     }
+
+    case 'SET_FILE_ORIGIN':
+      return { ...state, fileOrigin: action.payload };
 
     case 'RESTORE_STATE':
       return action.payload;

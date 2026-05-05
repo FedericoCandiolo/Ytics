@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 
-export async function exportDashboard(datasets, dashboard, selections) {
+export async function generateDashboardBlob(datasets, dashboard, selections) {
   const zip = new JSZip();
   const dataFolder = zip.folder('data');
 
@@ -17,7 +17,11 @@ export async function exportDashboard(datasets, dashboard, selections) {
 
   zip.file('README.md', generateMarkdown(dashboard));
 
-  const blob = await zip.generateAsync({ type: 'blob' });
+  return zip.generateAsync({ type: 'blob' });
+}
+
+export async function exportDashboard(datasets, dashboard, selections) {
+  const blob = await generateDashboardBlob(datasets, dashboard, selections);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
