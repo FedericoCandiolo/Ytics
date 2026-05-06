@@ -4,5 +4,11 @@
     "description": "Retail sales data with KPIs, combo charts, and cross-filtering. Shows multi-page layout and selections.",
     "file": "Northwind.ytics",
     "thumbnail": "Northwind.png"
+  },
+  {
+    "name": "World Population",
+    "description": "Retail sales data with KPIs, combo charts, and cross-filtering. Shows multi-page layout and selections.",
+    "file": "World Population.ytics",
+    "thumbnail": "World Population.png"
   }
 ]
