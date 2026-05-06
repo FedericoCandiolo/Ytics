@@ -1546,15 +1546,35 @@ function GradientColorSection({ widget, columns, onUpdate }) {
 }
 
 function DimensionColorsSection({ widget, dataset, dispatch, dimensionColors }) {
+  const { state } = useApp();
   const [search, setSearch] = useState('');
 
   const dimFieldFn = COLOR_DIMENSION_FIELD[widget.type];
   const dimField = dimFieldFn ? dimFieldFn(widget) : null;
+  const isConsistent = dimField ? (state.dashboard.consistentColorFields || []).includes(dimField) : false;
 
   const uniqueVals = useMemo(() => {
     if (!dimField || !dataset?.data?.length) return [];
     return [...new Set(dataset.data.map(r => String(r[dimField] ?? '')))].sort();
   }, [dimField, dataset]);
+
+  // When consistent colors is on, use the GLOBAL sorted domain (same as WidgetContainer)
+  // so the editor preview matches what's shown in all charts.
+  const globalSortedVals = useMemo(() => {
+    if (!isConsistent || !dimField) return null;
+    const vals = new Set();
+    for (const ds of state.datasets) {
+      if (ds.data) {
+        for (const row of ds.data) {
+          if (row[dimField] != null && row[dimField] !== '') vals.add(String(row[dimField]));
+        }
+      }
+    }
+    return [...vals].sort((a, b) => String(a).localeCompare(String(b)));
+  }, [isConsistent, dimField, state.datasets]);
+
+  // sortedDomain: global when consistent (for accurate color preview), local otherwise
+  const sortedDomain = globalSortedVals || uniqueVals;
 
   const filtered = search
     ? uniqueVals.filter(v => v.toLowerCase().includes(search.toLowerCase()))
@@ -1587,19 +1607,37 @@ function DimensionColorsSection({ widget, dataset, dispatch, dimensionColors }) 
         Applied across all charts in this dashboard.
       </div>
 
+      <label className="checkbox-row" style={{ marginBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={isConsistent}
+          onChange={() => dispatch({ type: 'TOGGLE_CONSISTENT_COLOR_FIELD', payload: dimField })}
+        />
+        Consistent Colors
+        <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--text-muted)' }}>
+          — applies to all charts on this dashboard
+        </span>
+      </label>
+
       {uniqueVals.length > 10 && (
         <input className="input input-sm" placeholder="Search values..." value={search}
           onChange={e => setSearch(e.target.value)} style={{ marginBottom: 8, width: '100%' }} />
       )}
 
       <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-        {filtered.map((val, i) => {
-          const override = dimensionColors[val];
-          const defaultColor = paletteArr[i % paletteArr.length];
+        {filtered.map((val) => {
+          // Use global sorted domain index so preview matches what charts show
+          const domainIdx = sortedDomain.indexOf(val);
+          const fallbackIdx = domainIdx >= 0 ? domainIdx : uniqueVals.indexOf(val);
+          const rawOverride = dimensionColors[val];
+          // When consistent colors is on, palette-type entries are stale auto-assignments; ignore them
+          const override = isConsistent && rawOverride?.type === 'palette' ? null : rawOverride;
+          const autoColor = paletteArr[fallbackIdx % paletteArr.length];
           const displayColor = override
             ? (override.type === 'custom' ? override.color : paletteArr[override.index % paletteArr.length])
-            : defaultColor;
+            : autoColor;
           const isCustom = override?.type === 'custom';
+          const isConsistentAuto = isConsistent && !override;
 
           return (
             <div key={val} className="dim-color-row">
@@ -1614,6 +1652,9 @@ function DimensionColorsSection({ widget, dataset, dispatch, dimensionColors }) 
               </span>
               {isCustom && (
                 <span style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>custom</span>
+              )}
+              {isConsistentAuto && (
+                <span style={{ fontSize: 10, color: 'var(--primary)', flexShrink: 0 }}>auto</span>
               )}
               {override && (
                 <button className="btn btn-ghost btn-icon btn-sm" style={{ fontSize: 10, padding: 2 }}
@@ -2107,6 +2148,12 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
             </div>
           </div>
         )}
+        {(widget.scatterPointType === 'pie' || widget.scatterPointType === 'bar') && (
+          <label className="checkbox-row" style={{ marginTop: 8 }}>
+            <input type="checkbox" checked={!!widget.miniChartShowLabel} onChange={e => onUpdate({ miniChartShowLabel: e.target.checked })} />
+            Show category label
+          </label>
+        )}
       </div>
       <div className="form-group" style={{ marginBottom: 10 }}>
         <label className="form-label">Min dot size — {widget.dotSizeMin ?? 4}px</label>
@@ -2179,6 +2226,13 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
         <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
         Logarithmic axes
       </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.filterZeros} onChange={e => onUpdate({ filterZeros: e.target.checked })} />
+        Exclude points where X or Y is zero
+      </label>
+      {(widget.scatterPointType === 'pie' || widget.scatterPointType === 'bar') && widget.scatterOverlaySource === 'dimension' && (
+        <ParetoOptions widget={widget} onUpdate={onUpdate} />
+      )}
     </div>
   );
 
@@ -2563,6 +2617,21 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           <option value="percent">Percent (%)</option>
         </select>
       </div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Subtitle label</label>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input className="input input-sm" style={{ flex: 1 }}
+            value={widget.kpiLabel ?? ''}
+            onChange={e => onUpdate({ kpiLabel: e.target.value })}
+            placeholder={widget.valueField || 'Field name'}
+            disabled={!!widget.kpiHideLabel} />
+          <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={!!widget.kpiHideLabel}
+              onChange={e => onUpdate({ kpiHideLabel: e.target.checked })} />
+            Hide
+          </label>
+        </div>
+      </div>
       {widget.kpiStyle === 'gauge' && (
         <>
           <div className="form-group" style={{ marginBottom: 10 }}>
@@ -2933,6 +3002,19 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
     </div>
   );
 
+  if (widget.type === 'pivot') return (
+    <div>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.pivotHideBlanks} onChange={e => onUpdate({ pivotHideBlanks: e.target.checked })} />
+        Hide blank dimension values
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.pivotHideZeros} onChange={e => onUpdate({ pivotHideZeros: e.target.checked })} />
+        Hide dimensions where the measure is zero
+      </label>
+    </div>
+  );
+
   if (widget.type === 'correlogram') return (
     <div>
       <div className="form-group" style={{ marginBottom: 10 }}>
@@ -3115,6 +3197,10 @@ function CarouselTab({ widget, dataset, onUpdate }) {
       )}
 
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.carouselUseSlideTitle} onChange={e => onUpdate({ carouselUseSlideTitle: e.target.checked })} />
+          Use slide title as widget title
+        </label>
         <label className="checkbox-row" style={{ marginBottom: 8 }}>
           <input type="checkbox" checked={!!widget.autoPlay} onChange={e => onUpdate({ autoPlay: e.target.checked })} />
           Auto-advance slides

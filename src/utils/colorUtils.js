@@ -29,6 +29,27 @@ const DIVERGING = {
 
 export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING };
 
+// Deterministic string hash → palette index for consistent cross-chart coloring
+function valueHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+/**
+ * Returns a color for `value` that is stable across charts and pages.
+ * Falls back to dimension-color overrides if present.
+ */
+export function getConsistentColor(value, schemeKey, overrides) {
+  const arr = ALL_SCHEMES[schemeKey] || CATEGORICAL.vivid;
+  const ov = overrides?.[value];
+  if (ov?.type === 'custom') return ov.color;
+  if (ov?.type === 'palette') return arr[ov.index % arr.length];
+  return arr[valueHash(String(value ?? '')) % arr.length];
+}
+
 // Build a smooth interpolator from an array of color stops
 function interpFromColors(colors) {
   const scale = d3.scaleLinear()
@@ -132,11 +153,14 @@ export function getSwatchColors(schemeKey) {
  * overrides: { 'Argentina': { type: 'custom', color: '#74b9ff' },
  *              'Brazil':    { type: 'palette', index: 2 } }
  */
-export function getColorScaleWithOverrides(schemeKey, domain, overrides) {
+export function getColorScaleWithOverrides(schemeKey, domain, overrides, consistent) {
+  const arr = ALL_SCHEMES[schemeKey] || CATEGORICAL.vivid;
+  if (consistent) {
+    return (val) => getConsistentColor(val, schemeKey, overrides);
+  }
   if (!overrides || Object.keys(overrides).length === 0) {
     return getColorScale(schemeKey, domain);
   }
-  const arr = ALL_SCHEMES[schemeKey] || CATEGORICAL.vivid;
   const base = d3.scaleOrdinal(arr).domain(domain || []);
   return (val) => {
     const ov = overrides[val];
@@ -150,7 +174,10 @@ export function getColorScaleWithOverrides(schemeKey, domain, overrides) {
 /**
  * Like getColorArray-based ordinal but with overrides (for grouped/stacked).
  */
-export function getOrdinalWithOverrides(schemeKey, domain, overrides) {
+export function getOrdinalWithOverrides(schemeKey, domain, overrides, consistent) {
+  if (consistent) {
+    return (val) => getConsistentColor(val, schemeKey, overrides);
+  }
   const arr = ALL_SCHEMES[schemeKey] || CATEGORICAL.vivid;
   const base = d3.scaleOrdinal().domain(domain).range(arr);
   if (!overrides || Object.keys(overrides).length === 0) return base;

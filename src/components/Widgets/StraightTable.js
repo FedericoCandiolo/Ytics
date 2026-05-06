@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { aggregate, formatValue } from '../../utils/dataUtils';
 import { getSequentialScale, contrastText, getColorArray } from '../../utils/colorUtils';
 import { useApp } from '../../context/AppContext';
+import { useTooltip } from './useTooltip';
 
 // ── CSV export ───────────────────────────────────────────────────────────────
 
@@ -193,6 +194,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
   const [pageSize, setPageSize] = useState(20);
   const containerRef = useRef(null);
+  const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
 
   // Dynamically compute page size based on available height
   const measure = useCallback(() => {
@@ -493,8 +495,28 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
                     const colors = mcColorsMap?.get(c.key) || [];
                     const groupKey = dimensions.map(d => String(row[d] ?? '(blank)')).join(KEY_SEP);
                     const slices = colData.slicesMap.get(groupKey) || [];
+                    const fmt = c.numberFormat || widget.numberFormat;
                     return (
-                      <td key={c.key} style={{ padding: '2px 4px', textAlign: 'center' }}>
+                      <td
+                        key={c.key}
+                        style={{ padding: '2px 4px', textAlign: 'center', cursor: 'default' }}
+                        onMouseEnter={e => {
+                          const content = (
+                            <div>
+                              {slices.filter(s => s.value !== 0).map((s, si) => (
+                                <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '1px 0' }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: colors[si % colors.length], flexShrink: 0, display: 'inline-block' }} />
+                                  <span style={{ flex: 1 }}>{s.label}</span>
+                                  <span style={{ fontWeight: 600, marginLeft: 8 }}>{formatValue(s.value, fmt)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                          showTooltip(e, content);
+                        }}
+                        onMouseMove={moveTooltip}
+                        onMouseLeave={hideTooltip}
+                      >
                         <MiniChart type={c.chartType} slices={slices} colors={colors} width={80} height={22} />
                       </td>
                     );
@@ -572,6 +594,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
           )}
         </div>
       </div>
+      {tooltipEl}
     </div>
   );
 }

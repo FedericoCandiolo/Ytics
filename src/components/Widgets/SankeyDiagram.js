@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
+import { sankey as d3Sankey, sankeyLinkHorizontal, sankeyLeft } from 'd3-sankey';
 import { aggregate, formatValue } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
@@ -50,35 +50,45 @@ export default function SankeyDiagram({ widget, data, onCrossFilter }) {
       }
     }
 
-    // Build node set
+    // Build ordered node list (insertion order = chain order for correct column placement)
     const nodeSet = new Set();
-    const links = [];
+    // Add nodes in chain order so depth computation is stable
+    for (let i = 0; i < dimChain.length; i++) {
+      for (const row of data) {
+        const raw = String(row[dimChain[i]] ?? '');
+        if (!raw) continue;
+        const key = dimChain.length > 2 ? `${dimChain[i]}:${raw}` : raw;
+        nodeSet.add(key);
+      }
+    }
+
+    const sankeyLinks = [];
     for (const { src, tgt, vals } of linkMap.values()) {
       nodeSet.add(src);
       nodeSet.add(tgt);
-      links.push({ source: src, target: tgt, value: aggregate(vals, widget.aggregation || 'sum') });
+      sankeyLinks.push({
+        source: src,
+        target: tgt,
+        value: Math.max(aggregate(vals, widget.aggregation || 'sum'), 0.001),
+      });
     }
 
-    if (links.length === 0) return;
+    if (sankeyLinks.length === 0) return;
 
     const nodeNames = [...nodeSet];
-    const nodeIndex = new Map(nodeNames.map((n, i) => [n, i]));
     const nodes = nodeNames.map(name => ({ name }));
-    const sankeyLinks = links.map(l => ({
-      source: nodeIndex.get(l.source),
-      target: nodeIndex.get(l.target),
-      value: Math.max(l.value, 0.001), // sankey needs positive values
-    }));
 
     const sankeyGen = d3Sankey()
-      .nodeId(d => d.index)
+      .nodeId(d => d.name)
+      .nodeAlign(sankeyLeft)
+      .nodeSort(null)
       .nodeWidth(16)
       .nodePadding(12)
       .extent([[0, 0], [W, H]]);
 
     let graph;
     try {
-      graph = sankeyGen({ nodes: nodes.map((n, i) => ({ ...n, index: i })), links: sankeyLinks });
+      graph = sankeyGen({ nodes, links: sankeyLinks });
     } catch {
       return; // circular links or other sankey issues
     }

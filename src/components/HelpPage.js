@@ -469,9 +469,9 @@ export default function HelpPage({ onClose }) {
                 options="Inner radius (0%=pie, 1–100%=donut), sort by value."
                 gradient="Slice value" />
               <ChartCard icon="⊞" name="Pivot Table"
-                desc="Cross-tabulation with row and column dimensions."
-                fields="Value (numeric). Optional: Row fields, Column fields."
-                options="Aggregation, conditional formatting."
+                desc="Cross-tabulation with row and column dimensions, with interactive expand/collapse of nested groups."
+                fields="Value (numeric). Optional: Row fields (up to 3 levels), Column fields (up to 3 levels)."
+                options="Aggregation, expand/collapse row and column groups (▶/▼ per node; Expand All / Collapse All buttons), Hide Blank rows/columns (Colors tab), Hide Zero rows/columns (Colors tab), conditional formatting."
                 gradient="N/A — uses conditional formatting" />
               <ChartCard icon="🕸" name="Radar Chart"
                 desc="Multi-axis spider/web chart comparing entities across dimensions."
@@ -484,9 +484,9 @@ export default function HelpPage({ onClose }) {
                 options="Legend, opacity."
                 gradient="Max flow per node" />
               <ChartCard icon="📋" name="Straight Table"
-                desc="Simple flat data table with sorting, multiple measures, and optional conditional formatting."
+                desc="Flat data table with sorting, multiple measures, inline mini charts per row, and optional conditional formatting."
                 fields="Dimensions, multiple measures (each with independent aggregation, label, and number format)."
-                options="Conditional formatting (gradient or rules). Per-measure number format, totals row."
+                options="Conditional formatting (gradient or rules). Per-measure number format, totals row. Inline mini bar/pie charts for measure columns — hover to see a tooltip with exact values."
                 gradient="N/A — uses conditional formatting" />
               <ChartCard icon="⬤" name="Scatter Plot"
                 desc="Individual data points on X/Y coordinates with optional size encoding. Supports connected scatterplot mode to draw lines between points using different ordering strategies."
@@ -892,22 +892,32 @@ export default function HelpPage({ onClose }) {
             </Sub>
             <Sub title="Dimension Colors (Cross-Chart Consistency)">
               <p>
-                Pin specific dimension values to consistent colors across all charts on the dashboard.
-                Found in the <strong>Colors</strong> tab under <strong>Dimension Colors</strong>:
+                Assign stable colors to dimension values so each value looks the same across every chart on the dashboard.
+                Found in the <strong>Colors</strong> tab under <strong>Dimension Colors</strong>.
               </p>
+              <p><strong>Consistent Colors</strong> — Enable the checkbox to activate automatic color assignment for that dimension field:</p>
               <ul className="help-ul">
-                <li><strong>Custom hex color</strong> — Stays fixed regardless of palette changes.</li>
-                <li><strong>Palette-relative color</strong> — Picks a palette index; updates when palette changes.</li>
-                <li><strong>Reset</strong> — Reverts to automatic assignment.</li>
+                <li>All unique values for the field are collected across every dataset, sorted alphabetically, and assigned palette colors in order — ensuring the full palette is used and the same value always gets the same color on every chart.</li>
+                <li>The assignment is <strong>field-level</strong>, not widget-level: enabling it on any chart enables it for that field across the whole dashboard.</li>
+                <li>Color swatches in the editor reflect the auto-assigned colors, labelled <em>auto</em>.</li>
               </ul>
-              <Tip>Example: Pin "Argentina" to light blue (#74b9ff) so it appears the same in every chart.</Tip>
-              <p>Dimension colors are stored at the <strong>dashboard level</strong> and apply across all widgets.</p>
+              <p><strong>Custom overrides</strong> — Click a color swatch to pin that specific value to a hand-picked hex color. The override label changes to <em>custom</em> and a reset button (↺) appears. Manual overrides always win over the auto-assignment, even with Consistent Colors on.</p>
+              <Tip>Example: Enable Consistent Colors on "FullName" — every employee appears in the same color in both the bar chart and bump chart. Then manually pin "Peacock, Margaret" to a specific red so she stands out.</Tip>
+              <p>Dimension colors are stored at the <strong>dashboard level</strong> and apply across all widgets and pages.</p>
             </Sub>
           </Section>
 
           {/* ── 12. Conditional Formatting ─────────────────────────────── */}
           <Section id="conditional-fmt" title="12. Conditional Formatting">
             <p>Available for <strong>Data Table</strong> and <strong>Pivot Table</strong> widgets. Found in the Colors tab.</p>
+            <Sub title="Pivot Table: Hide Blanks / Hide Zeros">
+              <p>Two toggles in the Pivot Table's Colors tab let you clean up the view:</p>
+              <ul className="help-ul">
+                <li><strong>Hide Blank rows/columns</strong> — Removes any dimension group whose label is null or empty.</li>
+                <li><strong>Hide Zero rows/columns</strong> — Removes dimension groups where the aggregated measure value is zero across all cells.</li>
+              </ul>
+              <Tip>Useful when a sparse cross-tab has many empty cells from mismatched row/column combinations.</Tip>
+            </Sub>
             <Sub title="Gradient Mode">
               <p>Colors cells on a continuous scale from the column's minimum to maximum value. Select a gradient scheme. Text color adjusts automatically for readability.</p>
             </Sub>
@@ -1145,7 +1155,7 @@ export default function HelpPage({ onClose }) {
                 <li><strong>Start simple</strong> — Add one chart, get the data mapping right, then expand.</li>
                 <li><strong>Use the Measure Pipeline</strong> instead of modifying source data — pipelines are per-widget.</li>
                 <li><strong>Leverage theme inheritance</strong> — Set palette and styles at the theme level; override only when needed.</li>
-                <li><strong>Pin dimension colors</strong> for key values so they're consistent across every chart.</li>
+                <li><strong>Use Consistent Colors</strong> for key dimension fields (e.g. employee names, regions) so the same value always shows the same color on every chart. Enable it in the Colors tab of any widget using that field.</li>
               </ul>
             </Sub>
             <Sub title="Performance">

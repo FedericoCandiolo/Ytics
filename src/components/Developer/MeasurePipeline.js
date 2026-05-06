@@ -599,6 +599,7 @@ function ComputeEditor({ step, cols, onChange, tableGroups }) {
         <input className="input input-sm" value={step.expression} onChange={e => onChange({ expression: e.target.value })} placeholder="e.g. salary / population" />
         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
           Use column names as variables. Available: {cols.map(c => c.name).join(', ')}
+          <br/>Row helpers: <code>ROW(n).col</code>, <code>PREV.col</code>, <code>NEXT.col</code>, <code>rows</code> (all), <code>i</code> (index)
         </div>
       </div>
     </div>

@@ -43,9 +43,10 @@ function renderCard(svg, value, target, widget, w, h, primaryColor) {
   const g = svg.append('g').attr('opacity', opacity);
 
   // Main value
-  const valueFontSize = Math.max(16, Math.min(56, Math.min(w, h) * 0.3));
+  const hideLabel = !!widget.kpiHideLabel;
+  const valueFontSize = Math.max(16, Math.min(hideLabel ? 72 : 56, Math.min(w, h) * (hideLabel ? 0.4 : 0.3)));
   g.append('text')
-    .attr('x', cx).attr('y', cy - (target != null ? 8 : 4))
+    .attr('x', cx).attr('y', cy - (target != null ? 8 : hideLabel ? 0 : 4))
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'central')
     .attr('font-size', valueFontSize)
@@ -54,16 +55,18 @@ function renderCard(svg, value, target, widget, w, h, primaryColor) {
     .attr('font-family', 'var(--font)')
     .text(formatKPI(value, format, widget.numberFormat));
 
-  // Subtitle (field name)
+  // Subtitle (field name or custom label)
   const subtitleSize = Math.max(10, Math.min(14, valueFontSize * 0.28));
-  g.append('text')
-    .attr('x', cx).attr('y', cy + valueFontSize * 0.45 + (target != null ? -4 : 4))
-    .attr('text-anchor', 'middle')
-    .attr('dominant-baseline', 'hanging')
-    .attr('font-size', subtitleSize)
-    .attr('fill', 'var(--text-muted)')
-    .attr('font-family', 'var(--font)')
-    .text(widget.valueField);
+  if (!widget.kpiHideLabel) {
+    g.append('text')
+      .attr('x', cx).attr('y', cy + valueFontSize * 0.45 + (target != null ? -4 : 4))
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'hanging')
+      .attr('font-size', subtitleSize)
+      .attr('fill', 'var(--text-muted)')
+      .attr('font-family', 'var(--font)')
+      .text(widget.kpiLabel || widget.valueField);
+  }
 
   // Delta row (if target exists)
   if (target != null) {
@@ -71,7 +74,7 @@ function renderCard(svg, value, target, widget, w, h, primaryColor) {
     const isPositive = delta >= 0;
     const deltaColor = isPositive ? '#16a34a' : '#dc2626';
     const arrow = isPositive ? '\u25B2' : '\u25BC';
-    const deltaY = cy + valueFontSize * 0.45 + subtitleSize + (target != null ? 4 : 12);
+    const deltaY = cy + valueFontSize * 0.45 + (widget.kpiHideLabel ? 0 : subtitleSize) + (target != null ? 4 : 12);
     const deltaFontSize = Math.max(10, Math.min(16, valueFontSize * 0.32));
 
     g.append('text')
@@ -249,15 +252,17 @@ function renderGauge(svg, value, target, widget, w, h, gradientScale) {
     .text(formatKPI(value, format, widget.numberFormat));
 
   // Field name subtitle
-  const subSize = Math.max(9, Math.min(12, valueFontSize * 0.36));
-  g.append('text')
-    .attr('x', cx).attr('y', cy + valueFontSize * 0.6 + 8 + valueFontSize + 2)
-    .attr('text-anchor', 'middle')
-    .attr('dominant-baseline', 'hanging')
-    .attr('font-size', subSize)
-    .attr('fill', 'var(--text-muted)')
-    .attr('font-family', 'var(--font)')
-    .text(widget.valueField);
+  if (!widget.kpiHideLabel) {
+    const subSize = Math.max(9, Math.min(12, valueFontSize * 0.36));
+    g.append('text')
+      .attr('x', cx).attr('y', cy + valueFontSize * 0.6 + 8 + valueFontSize + 2)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'hanging')
+      .attr('font-size', subSize)
+      .attr('fill', 'var(--text-muted)')
+      .attr('font-family', 'var(--font)')
+      .text(widget.kpiLabel || widget.valueField);
+  }
 }
 
 // ── Style 3: Satellite (circular progress) ───────────────────────────────────
@@ -373,15 +378,17 @@ function renderSatellite(svg, value, target, widget, w, h, gradientScale) {
     .text(formatKPI(value, format, widget.numberFormat));
 
   // Field name below value
-  const subSize = Math.max(9, Math.min(12, valueFontSize * 0.34));
-  g.append('text')
-    .attr('x', cx).attr('y', cy + valueFontSize * 0.5 + 6)
-    .attr('text-anchor', 'middle')
-    .attr('dominant-baseline', 'hanging')
-    .attr('font-size', subSize)
-    .attr('fill', 'var(--text-muted)')
-    .attr('font-family', 'var(--font)')
-    .text(widget.valueField);
+  if (!widget.kpiHideLabel) {
+    const subSize = Math.max(9, Math.min(12, valueFontSize * 0.34));
+    g.append('text')
+      .attr('x', cx).attr('y', cy + valueFontSize * 0.5 + 6)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'hanging')
+      .attr('font-size', subSize)
+      .attr('fill', 'var(--text-muted)')
+      .attr('font-family', 'var(--font)')
+      .text(widget.kpiLabel || widget.valueField);
+  }
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────

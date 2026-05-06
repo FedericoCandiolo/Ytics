@@ -16,6 +16,126 @@ const DriveIcon = ({ size = 14 }) => (
   </svg>
 );
 
+// ── Examples Modal ──────────────────────────────────────────────────────────
+
+function ExamplesModal({ onClose, onLoad }) {
+  const [examples, setExamples] = useState(null);
+  const [loading, setLoading] = useState(null); // id of loading example
+
+  useEffect(() => {
+    fetch(`${process.env.PUBLIC_URL}/examples/manifest.json`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setExamples)
+      .catch(() => setExamples([]));
+  }, []);
+
+  const handleLoad = async (ex) => {
+    setLoading(ex.file);
+    try {
+      const res = await fetch(`${process.env.PUBLIC_URL}/examples/${ex.file}`);
+      if (!res.ok) throw new Error('File not found');
+      const blob = await res.blob();
+      await onLoad(blob, ex.name);
+      onClose();
+    } catch (err) {
+      alert('Failed to load example: ' + err.message);
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(4px)',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-card, #fff)', borderRadius: 12,
+        boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+        width: 'min(680px, 90vw)', maxHeight: '80vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: '1px solid var(--border, #e2e8f0)',
+        }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>
+            Example Dashboards
+          </h2>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 18, color: 'var(--text-muted)', padding: '2px 6px',
+          }}>x</button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
+          {examples === null && (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
+              Loading examples...
+            </div>
+          )}
+          {examples?.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>
+              No examples available yet.
+            </div>
+          )}
+          {examples?.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: 16,
+            }}>
+              {examples.map(ex => (
+                <div
+                  key={ex.file}
+                  onClick={() => !loading && handleLoad(ex)}
+                  style={{
+                    border: '1px solid var(--border, #e2e8f0)',
+                    borderRadius: 10, overflow: 'hidden', cursor: loading ? 'wait' : 'pointer',
+                    transition: 'box-shadow 0.15s, transform 0.15s',
+                    opacity: loading && loading !== ex.file ? 0.5 : 1,
+                  }}
+                  onMouseEnter={e => { if (!loading) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
+                >
+                  {/* Thumbnail */}
+                  <div style={{
+                    height: 140, background: 'var(--bg-hover, #f1f5f9)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}>
+                    {ex.thumbnail ? (
+                      <img
+                        src={`${process.env.PUBLIC_URL}/examples/${ex.thumbnail}`}
+                        alt={ex.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 36, opacity: 0.3 }}>📊</span>
+                    )}
+                  </div>
+                  {/* Info */}
+                  <div style={{ padding: '12px 14px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>
+                      {loading === ex.file ? 'Loading...' : ex.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      {ex.description}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isTablet }) {
   const { state, dispatch } = useApp();
   const importRef = useRef(null);
@@ -24,6 +144,7 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
   const [openDropdown, setOpenDropdown] = useState(false);
   const [saveDropdown, setSaveDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
   const menuRef = useRef(null);
   const openRef = useRef(null);
   const saveRef = useRef(null);
@@ -133,6 +254,12 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
     setMenuOpen(false);
   };
 
+  const handleLoadExample = async (blob, name) => {
+    const file = new File([blob], name + '.ytics', { type: 'application/zip' });
+    const result = await importDashboard(file);
+    dispatch({ type: 'IMPORT_STATE', payload: { ...result, fileOrigin: null } });
+  };
+
   const canExport = state.datasets.length > 0 || state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0) > 0;
   const isDriveFile = state.fileOrigin?.source === 'googledrive';
 
@@ -154,17 +281,14 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
   };
 
   const openLocalBtn = (onClick) => (
-    <>
-      <button
-        style={dropdownItemStyle}
-        onClick={() => { importRef.current?.click(); if (onClick) onClick(); }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'none'}
-      >
-        <span>📁</span> From computer
-      </button>
-      <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
-    </>
+    <button
+      style={dropdownItemStyle}
+      onClick={() => { importRef.current?.click(); if (onClick) onClick(); }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+    >
+      <span>📁</span> From computer
+    </button>
   );
 
   const openDriveBtn = (onClick) => (
@@ -180,6 +304,7 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
 
   return (
     <header className="header">
+      <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
       <div className="header-logo">
         {!logoError ? (
           <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="ytics" className="header-logo-img" onError={() => setLogoError(true)} />
@@ -245,12 +370,12 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           {menuOpen && (
             <div className="header-dropdown">
               <button className="header-dropdown-item" onClick={handleNew}>+ New</button>
+              <button className="header-dropdown-item" onClick={() => { setShowExamples(true); setMenuOpen(false); }}>Examples</button>
               <button className="header-dropdown-item" onClick={() => { onHelpOpen(); setMenuOpen(false); }}>? Help</button>
               <div style={{ borderTop: '1px solid var(--border, #e2e8f0)', margin: '4px 0' }} />
               <button className="header-dropdown-item" onClick={() => { importRef.current?.click(); setMenuOpen(false); }}>
                 📁 Open from computer
               </button>
-              <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
               <button className="header-dropdown-item" onClick={handleOpenFromDrive}>
                 <DriveIcon /> Open from Drive
               </button>
@@ -279,6 +404,9 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
         <div className="flex gap-2">
           <button className="btn btn-secondary btn-sm" onClick={handleNew} title="New dashboard">
             + New
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowExamples(true)} title="Example dashboards">
+            Examples
           </button>
           <button className="btn btn-secondary btn-sm" onClick={onHelpOpen} title="Help & Documentation">
             ? Help
@@ -346,6 +474,12 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
             )}
           </div>
         </div>
+      )}
+      {showExamples && (
+        <ExamplesModal
+          onClose={() => setShowExamples(false)}
+          onLoad={handleLoadExample}
+        />
       )}
     </header>
   );

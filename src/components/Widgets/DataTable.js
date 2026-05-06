@@ -161,7 +161,7 @@ export default function DataTable({ widget, data, onCrossFilter }) {
 
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>

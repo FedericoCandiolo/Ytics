@@ -284,6 +284,10 @@ export default function DashboardBuilder() {
   const [draggingWidgetId, setDraggingWidgetId] = useState(null);
   const [dropTargetPageId, setDropTargetPageId] = useState(null);
 
+  // ── Tab reorder state ──
+  const [draggingTabId, setDraggingTabId] = useState(null);
+  const [tabDropTargetId, setTabDropTargetId] = useState(null);
+
   const [editingPageName, setEditingPageName] = useState(null); // page id being renamed
   const [stylesOpen, setStylesOpen] = useState(false);
   const [dimsOpen, setDimsOpen] = useState(false);
@@ -593,7 +597,7 @@ export default function DashboardBuilder() {
                     onSelect={() => dispatch({ type: 'SET_EDITING_WIDGET', payload: widget.id })}
                     onRemove={() => dispatch({ type: 'REMOVE_WIDGET', payload: widget.id })}
                     onDuplicate={() => dispatch({ type: 'DUPLICATE_WIDGET', payload: widget.id })}
-                    onDragToPage={dashboard.pages.length > 1 ? setDraggingWidgetId : undefined}
+                    onDragToPage={setDraggingWidgetId}
                     onTypeReplace={(newType, newLabel) => handleTypeReplace(widget.id, newType, newLabel)}
                   />
                 </div>
@@ -607,18 +611,44 @@ export default function DashboardBuilder() {
           {dashboard.pages.map(page => (
             <div
               key={page.id}
-              className={`page-tab ${page.id === dashboard.currentPageId ? 'page-tab--active' : ''} ${dropTargetPageId === page.id ? 'page-tab--drop-target' : ''}`}
+              draggable={editingPageName !== page.id}
+              className={`page-tab ${page.id === dashboard.currentPageId ? 'page-tab--active' : ''} ${dropTargetPageId === page.id ? 'page-tab--drop-target' : ''} ${tabDropTargetId === page.id && draggingTabId !== page.id ? 'page-tab--reorder-target' : ''}`}
               onClick={() => dispatch({ type: 'SET_CURRENT_PAGE', payload: page.id })}
               onDoubleClick={() => setEditingPageName(page.id)}
-              onDragOver={e => {
-                if (!draggingWidgetId || page.id === dashboard.currentPageId) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = e.shiftKey ? 'copy' : 'move';
-                setDropTargetPageId(page.id);
+              onDragStart={e => {
+                e.dataTransfer.setData('application/page-id', page.id);
+                e.dataTransfer.effectAllowed = 'move';
+                setDraggingTabId(page.id);
               }}
-              onDragLeave={() => setDropTargetPageId(null)}
+              onDragEnd={() => { setDraggingTabId(null); setTabDropTargetId(null); }}
+              onDragOver={e => {
+                const isTab = e.dataTransfer.types.includes('application/page-id');
+                const isWidget = draggingWidgetId || e.dataTransfer.types.includes('application/widget-id');
+                if (isTab && draggingTabId && draggingTabId !== page.id) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setTabDropTargetId(page.id);
+                } else if (isWidget && page.id !== dashboard.currentPageId) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = e.shiftKey ? 'copy' : 'move';
+                  setDropTargetPageId(page.id);
+                }
+              }}
+              onDragLeave={e => {
+                if (!e.currentTarget.contains(e.relatedTarget)) {
+                  setDropTargetPageId(null);
+                  setTabDropTargetId(null);
+                }
+              }}
               onDrop={e => {
                 e.preventDefault();
+                const droppedTabId = e.dataTransfer.getData('application/page-id');
+                if (droppedTabId && droppedTabId !== page.id) {
+                  dispatch({ type: 'REORDER_PAGE', payload: { fromId: droppedTabId, toId: page.id } });
+                  setDraggingTabId(null);
+                  setTabDropTargetId(null);
+                  return;
+                }
                 const widgetId = e.dataTransfer.getData('application/widget-id') || draggingWidgetId;
                 if (widgetId && page.id !== dashboard.currentPageId) {
                   dispatch({

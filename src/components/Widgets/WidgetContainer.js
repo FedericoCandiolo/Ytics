@@ -36,6 +36,23 @@ import ImageWidget from './ImageWidget';
 import EmbedWidget from './EmbedWidget';
 import Correlogram from './Correlogram';
 import DensityChart from './DensityChart';
+import { getColorArray } from '../../utils/colorUtils';
+
+// Returns the field whose values are used for dimension coloring
+function getColorDimensionField(w) {
+  const t = w.type;
+  if (t === 'bar') return w.groupField || w.xField;
+  if (t === 'line' || t === 'scatter' || t === 'bump' || t === 'stream' ||
+      t === 'bubble' || t === 'mekko' || t === 'graph' || t === 'network' ||
+      t === 'density' || t === 'histogram') return w.colorField;
+  if (t === 'pie' || t === 'treemap' || t === 'waffle') return w.labelField;
+  if (t === 'heatmap' || t === 'violin' || t === 'boxplot' ||
+      t === 'waterfall' || t === 'wordcloud' || t === 'funnel' || t === 'combo') return w.xField;
+  if (t === 'radar') return w.colorField || w.axisField;
+  if (t === 'sankey') return w.sourceField;
+  if (t === 'geo') return w.colorField || w.geoField;
+  return null;
+}
 
 const CHART_MAP = {
   bar: BarChart, line: LineChart, scatter: ScatterPlot, pie: PieChart,
@@ -154,6 +171,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     if (!v && globalMaximized) dispatch({ type: 'MAXIMIZE_WIDGET', payload: null });
   }, [globalMaximized, dispatch]);
   const [dropHover, setDropHover] = useState(false);
+  const [slideTitle, setSlideTitle] = useState(null);
   const theme = state.dashboard.theme || {};
 
   // ── Resolve dimension references from widget field values ───────────────
@@ -207,12 +225,45 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     dispatch({ type: 'TOGGLE_SELECTION', payload: { field, value: String(value) } });
   }, [isEditing, boundHierarchies, dispatch]);
 
+  // ── Consistent colors: sorted-domain palette assignment (field-level setting) ─
+  const consistentColorOverrides = useMemo(() => {
+    const consistentFields = state.dashboard.consistentColorFields || [];
+    if (consistentFields.length === 0) return null;
+    const field = getColorDimensionField(widget);
+    if (!field || !consistentFields.includes(field)) return null;
+    const vals = new Set();
+    for (const ds of state.datasets) {
+      if (ds.data) {
+        for (const row of ds.data) {
+          if (row[field] != null && row[field] !== '') vals.add(String(row[field]));
+        }
+      }
+    }
+    const sorted = [...vals].sort((a, b) => String(a).localeCompare(String(b)));
+    const scheme = widget.colorScheme ?? theme.colorScheme ?? 'vivid';
+    const palette = getColorArray(scheme);
+    const overrides = {};
+    sorted.forEach((val, i) => {
+      overrides[val] = { type: 'palette', index: i % palette.length };
+    });
+    return overrides;
+  }, [state.dashboard.consistentColorFields, widget.type, widget.colorField, widget.groupField,
+      widget.xField, widget.labelField, widget.axisField, widget.sourceField, widget.geoField,
+      widget.colorScheme, theme.colorScheme, state.datasets]);
+
   // ── Resolve effective widget (field overrides + color scheme) ───────────
   const effectiveWidget = useMemo(() => {
+    const baseDimColors = state.dashboard.dimensionColors || {};
     const ew = {
       ...widget,
       colorScheme: widget.colorScheme ?? theme.colorScheme ?? 'vivid',
-      dimensionColors: state.dashboard.dimensionColors || {},
+      // Consistent colors inject sorted-domain assignments; only hand-picked custom colors win
+      dimensionColors: consistentColorOverrides
+        ? {
+          ...consistentColorOverrides,
+          ...Object.fromEntries(Object.entries(baseDimColors).filter(([, v]) => v?.type === 'custom')),
+        }
+        : baseDimColors,
     };
 
     // Hierarchic: override target field with current level
@@ -228,7 +279,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     }
 
     return ew;
-  }, [widget, theme.colorScheme, state.dashboard.dimensionColors, boundHierarchies, boundCyclics]);
+  }, [widget, theme.colorScheme, state.dashboard.dimensionColors, consistentColorOverrides, boundHierarchies, boundCyclics]);
 
   // ── Data pipeline (associative) ─────────────────────────────────────────
   const resolvedData = useMemo(() => {
@@ -264,7 +315,13 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
   const crossFilter = isEditing ? undefined : onCrossFilter;
   const hasData = data.length > 0 || state.datasets.length > 0;
   const chartBody = hasData
-    ? <Chart widget={effectiveWidget} data={data} onCrossFilter={crossFilter} />
+    ? <Chart
+        widget={effectiveWidget}
+        data={data}
+        onCrossFilter={crossFilter}
+        isEditing={isEditing}
+        onSlideChange={widget.type === 'carousel' && widget.carouselUseSlideTitle ? setSlideTitle : undefined}
+      />
     : (
       <div className="empty-state" style={{ height: '100%' }}>
         <div style={{ fontSize: 28, opacity: .3 }}>⚙</div>
@@ -335,7 +392,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
               onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
             />
           ) : (
-            <span className="widget-title">{widget.title || 'Untitled'}</span>
+            <span className="widget-title">{(widget.carouselUseSlideTitle && slideTitle) ? slideTitle : (widget.title || 'Untitled')}</span>
           )}
           {dimControls}
           <div className="widget-actions">
@@ -354,7 +411,7 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
             {isEditing && onDragToPage && (
               <button
                 className="btn btn-ghost btn-icon btn-sm widget-drag-to-page"
-                title="Drag to another page"
+                title="Drag to another page or into a Carousel"
                 draggable
                 onDragStart={e => {
                   e.stopPropagation();

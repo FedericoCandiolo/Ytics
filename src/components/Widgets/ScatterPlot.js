@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useId } from 'react';
 import * as d3 from 'd3';
-import { formatValue, aggregate, linearRegression } from '../../utils/dataUtils';
+import { formatValue, aggregate, linearRegression, applyParetoGrouping } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getPrimaryColor, getSequentialScale, resolveGradient, getColorArray } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
 import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale, drawTrendLine } from './chartHelpers';
@@ -40,7 +40,7 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
       size: widget.sizeField ? +d[widget.sizeField] || 0 : null,
       label: widget.labelField ? String(d[widget.labelField] ?? '') : null,
       raw: d,
-    })).filter(d => !isNaN(d.x) && !isNaN(d.y));
+    })).filter(d => !isNaN(d.x) && !isNaN(d.y) && (!widget.filterZeros || (d.x !== 0 && d.y !== 0)));
 
     if (!pts.length) return;
 
@@ -91,19 +91,54 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           if (!grp.breakdown.has(dimVal)) grp.breakdown.set(dimVal, []);
           grp.breakdown.get(dimVal).push(d.y);
         }
-        const allDimVals = new Set();
-        for (const [, grp] of groups) for (const k of grp.breakdown.keys()) allDimVals.add(k);
-        sliceLegendLabels = [...allDimVals];
+
+        // Collect all dimension values with global totals for Pareto grouping
+        const globalTotals = new Map();
+        for (const [, grp] of groups) {
+          for (const [dv, vals] of grp.breakdown) {
+            globalTotals.set(dv, (globalTotals.get(dv) || 0) + Math.abs(aggregate(vals, widget.aggregation || 'sum')));
+          }
+        }
+        let allDimVals = [...globalTotals.keys()];
+
+        // Apply Pareto/Others grouping to dimension values
+        const othersLabel = widget.othersLabel || 'Others';
+        if (widget.paretoEnabled) {
+          const sorted = allDimVals.map(k => ({ key: k, value: globalTotals.get(k) || 0 }))
+            .sort((a, b) => b.value - a.value);
+          const grouped = applyParetoGrouping(sorted, {
+            method: widget.paretoMethod || 'topN',
+            topN: widget.paretoTopN ?? 10,
+            threshold: widget.paretoThreshold ?? 0.8,
+            othersLabel,
+            showOthers: widget.showOthers !== false,
+          });
+          allDimVals = grouped.map(g => g.key);
+        }
+
+        sliceLegendLabels = allDimVals;
+        const keptSet = new Set(allDimVals.filter(k => k !== othersLabel));
+        const hasOthers = widget.paretoEnabled && allDimVals.includes(othersLabel);
 
         ptsWithSlices = [];
         for (const [key, grp] of groups) {
           const avgX = d3.mean(grp.pts, p => p.x);
           const avgY = d3.mean(grp.pts, p => p.y);
           const avgSize = widget.sizeField ? d3.mean(grp.pts, p => p.size) : null;
-          const slices = sliceLegendLabels.map(dv => ({
-            label: dv,
-            value: aggregate(grp.breakdown.get(dv) || [], widget.aggregation || 'sum'),
-          }));
+          const slices = [];
+          let othersVal = 0;
+          for (const dv of keptSet) {
+            slices.push({
+              label: dv,
+              value: aggregate(grp.breakdown.get(dv) || [], widget.aggregation || 'sum'),
+            });
+          }
+          if (hasOthers) {
+            for (const [dv, vals] of grp.breakdown) {
+              if (!keptSet.has(dv)) othersVal += Math.abs(aggregate(vals, widget.aggregation || 'sum'));
+            }
+            slices.push({ label: othersLabel, value: othersVal });
+          }
           ptsWithSlices.push({
             x: avgX, y: avgY, size: avgSize,
             label: key, slices, raw: grp.pts[0].raw,
@@ -314,6 +349,16 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
           });
         }
 
+        if (widget.miniChartShowLabel && d.label != null) {
+          pg.append('text')
+            .attr('y', r + 10)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', Math.max(9, Math.min(13, r * 0.7)))
+            .attr('fill', 'var(--text)')
+            .attr('pointer-events', 'none')
+            .text(d.label);
+        }
+
         pg.append('circle').attr('r', r + 2).attr('fill', 'transparent')
           .style('cursor', onCrossFilter ? 'pointer' : 'default')
           .on('mouseover', (ev) => {
@@ -346,15 +391,23 @@ export default function ScatterPlot({ widget, data, onCrossFilter }) {
             connHighG.selectAll('*').remove();
             const baseR = widget.sizeField ? sizeScale(d.size) : sMin + 2;
             const highlightColor = gradientFn ? '#333' : widget.colorField ? colors(d.color) : primaryColor;
-            const neighbors = [nb.prev, nb.next].filter(Boolean);
-            for (const n of neighbors) {
-              connHighG.append('line')
-                .attr('x1', xScale(d.x)).attr('y1', yScale(d.y))
-                .attr('x2', xScale(n.x)).attr('y2', yScale(n.y))
+            const highlightLineGen = d3.line()
+              .x(p => xScale(p.x)).y(p => yScale(p.y))
+              .curve(d3.curveMonotoneX);
+            // Draw curved segment through [prev, hovered, next]
+            const segment = [nb.prev, d, nb.next].filter(Boolean);
+            if (segment.length >= 2) {
+              connHighG.append('path')
+                .datum(segment)
+                .attr('d', highlightLineGen)
+                .attr('fill', 'none')
                 .attr('stroke', highlightColor)
                 .attr('stroke-width', (widget.connectionWidth ?? 1.5) + 2)
                 .attr('stroke-opacity', 0.85)
                 .attr('stroke-linecap', 'round');
+            }
+            const neighbors = [nb.prev, nb.next].filter(Boolean);
+            for (const n of neighbors) {
               const nr = widget.sizeField ? sizeScale(n.size) : sMin + 2;
               connHighG.append('circle')
                 .attr('cx', xScale(n.x)).attr('cy', yScale(n.y))
@@ -471,7 +524,7 @@ function MiniChartTip({ d, widget, slices }) {
         <span className="tt-label">{widget.yField}</span>
         <span className="tt-value">{formatValue(d.y, widget.numberFormat)}</span>
       </div>
-      {slices.map((s, i) => (
+      {slices.filter(s => s.value !== 0).map((s, i) => (
         <div key={i} className="chart-tooltip-row">
           <span className="tt-label">{s.label}</span>
           <span className="tt-value">{formatValue(s.value, widget.numberFormat)}</span>

@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { aggregate, formatValue, AGGREGATIONS } from '../../utils/dataUtils';
 
 // ── CSV helpers ─────────────────────────────────────────────────────────────────
 function downloadCSV(lines, filename) {
-  const bom = '\uFEFF';
+  const bom = '﻿';
   const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -30,29 +30,57 @@ const TOTAL_KEY = '__TOTAL__';
 const DIM_MIME = 'application/pivot-dim';
 
 export default function PivotTable({ widget, data, onCrossFilter }) {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const [expanded, setExpanded] = useState(new Set());
-  const [dragOver, setDragOver] = useState(null); // { axis, idx } — where the drop indicator is
+  const [expandedCols, setExpandedCols] = useState(new Set());
+  const hideBlanks = !!widget.pivotHideBlanks;
+  const hideZeros = !!widget.pivotHideZeros;
+  const [dragOver, setDragOver] = useState(null);
+  const [fieldSearch, setFieldSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef(null);
 
   const pivotRows = useMemo(() => widget.pivotRows || [], [widget.pivotRows]);
   const pivotCols = useMemo(() => widget.pivotCols || [], [widget.pivotCols]);
   const valueField = widget.valueField;
   const aggFn = widget.aggregation || 'sum';
 
-  // Track drag source so we can show visual feedback
   const dragSourceRef = useRef(null);
 
-  // All columns from data
+  // All columns from ALL datasets (not just the current widget's data)
   const allColumns = useMemo(() => {
-    if (!data?.length) return [];
-    return Object.keys(data[0]);
-  }, [data]);
+    const cols = new Set();
+    if (data?.length) Object.keys(data[0]).forEach(c => cols.add(c));
+    if (state.colStore?.tables) {
+      for (const table of Object.values(state.colStore.tables)) {
+        if (table.columns) Object.keys(table.columns).forEach(c => cols.add(c));
+      }
+    }
+    return [...cols].sort((a, b) => a.localeCompare(b));
+  }, [data, state.colStore]);
 
-  // Columns not already used in rows or cols
   const availableColumns = useMemo(() => {
     const used = new Set([...pivotRows, ...pivotCols]);
     return allColumns.filter(c => !used.has(c));
   }, [allColumns, pivotRows, pivotCols]);
+
+  const filteredColumns = useMemo(() => {
+    if (!fieldSearch.trim()) return availableColumns;
+    const q = fieldSearch.toLowerCase();
+    return availableColumns.filter(c => c.toLowerCase().includes(q));
+  }, [availableColumns, fieldSearch]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+        setFieldSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [searchOpen]);
 
   // ── Dispatch helpers ────────────────────────────────────────────────────────
   const updateWidget = useCallback((updates) => {
@@ -99,7 +127,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
   }, [pivotRows, pivotCols]);
 
   const handleDragLeave = useCallback((e) => {
-    // Only clear if actually leaving the zone
     if (!e.currentTarget.contains(e.relatedTarget)) {
       setDragOver(null);
     }
@@ -116,29 +143,17 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     const srcIdx = src.idx;
     const dim = src.dim;
 
-    // Build new arrays
     let newRows = [...pivotRows];
     let newCols = [...pivotCols];
 
-    // Remove from source
-    if (srcAxis === 'rows') {
-      newRows = newRows.filter((_, i) => i !== srcIdx);
-    } else {
-      newCols = newCols.filter((_, i) => i !== srcIdx);
-    }
+    if (srcAxis === 'rows') newRows = newRows.filter((_, i) => i !== srcIdx);
+    else newCols = newCols.filter((_, i) => i !== srcIdx);
 
-    // Adjust target index if removing from the same axis shifted things
     let adjIdx = targetIdx;
-    if (srcAxis === targetAxis && srcIdx < targetIdx) {
-      adjIdx--;
-    }
+    if (srcAxis === targetAxis && srcIdx < targetIdx) adjIdx--;
 
-    // Insert into target
-    if (targetAxis === 'rows') {
-      newRows.splice(adjIdx, 0, dim);
-    } else {
-      newCols.splice(adjIdx, 0, dim);
-    }
+    if (targetAxis === 'rows') newRows.splice(adjIdx, 0, dim);
+    else newCols.splice(adjIdx, 0, dim);
 
     updateWidget({ pivotRows: newRows, pivotCols: newCols });
   }, [pivotRows, pivotCols, updateWidget]);
@@ -148,7 +163,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     setDragOver(null);
   }, []);
 
-  // ── Unique column paths (sorted) ──────────────────────────────────────────
+  // ── Full column paths (used for valueMap bucketing) ───────────────────────
   const colPaths = useMemo(() => {
     if (!data?.length || pivotCols.length === 0) return [];
     const set = new Map();
@@ -165,6 +180,47 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
       return 0;
     });
   }, [data, pivotCols]);
+
+  // ── Column tree (mirrors rowTree for expand/collapse) ─────────────────────
+  const colTree = useMemo(() => {
+    if (!data?.length || pivotCols.length === 0) return new Map();
+    const tree = new Map();
+    for (const row of data) {
+      let node = tree;
+      for (let i = 0; i < pivotCols.length; i++) {
+        const key = String(row[pivotCols[i]] ?? '(blank)');
+        if (!node.has(key)) node.set(key, i < pivotCols.length - 1 ? new Map() : null);
+        node = node.get(key);
+        if (node === null) break;
+      }
+    }
+    const sortMap = (map) => {
+      if (!map || !(map instanceof Map)) return map;
+      const sorted = new Map([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
+      for (const [k, v] of sorted) {
+        if (v instanceof Map) sorted.set(k, sortMap(v));
+      }
+      return sorted;
+    };
+    return sortMap(tree);
+  }, [data, pivotCols]);
+
+  // ── All non-leaf column keys (for Expand All) ─────────────────────────────
+  const allNonLeafColKeys = useMemo(() => {
+    const keys = new Set();
+    const walk = (map, path) => {
+      if (!map || !(map instanceof Map)) return;
+      for (const [k, v] of map) {
+        const newPath = [...path, k];
+        if (v instanceof Map) {
+          keys.add(newPath.join(PATH_SEP));
+          walk(v, newPath);
+        }
+      }
+    };
+    walk(colTree, []);
+    return keys;
+  }, [colTree]);
 
   // ── Value map ─────────────────────────────────────────────────────────────
   const valueMap = useMemo(() => {
@@ -185,25 +241,33 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
 
       // Full intersection
       getOrCreate(rowKey + KEY_SEP + colKey).push(val);
-
       // Row total
       getOrCreate(rowKey + KEY_SEP + TOTAL_KEY).push(val);
-
       // Column total
       getOrCreate(TOTAL_KEY + KEY_SEP + colKey).push(val);
-
       // Grand total
       getOrCreate(TOTAL_KEY + KEY_SEP + TOTAL_KEY).push(val);
 
-      // Partial row paths (subtotals) x column paths
-      for (let depth = 0; depth < rowPath.length - 1; depth++) {
-        const partialRowKey = rowPath.slice(0, depth + 1).join(PATH_SEP);
+      // Partial row paths × full col + total
+      for (let rdepth = 0; rdepth < rowPath.length - 1; rdepth++) {
+        const partialRowKey = rowPath.slice(0, rdepth + 1).join(PATH_SEP);
         getOrCreate(partialRowKey + KEY_SEP + colKey).push(val);
         getOrCreate(partialRowKey + KEY_SEP + TOTAL_KEY).push(val);
       }
+
+      // Partial col paths × full row + total (enables collapsed col subtotals)
+      for (let cdepth = 0; cdepth < colPath.length - 1; cdepth++) {
+        const partialColKey = colPath.slice(0, cdepth + 1).join(PATH_SEP);
+        getOrCreate(rowKey + KEY_SEP + partialColKey).push(val);
+        getOrCreate(TOTAL_KEY + KEY_SEP + partialColKey).push(val);
+        // Also partial row × partial col
+        for (let rdepth = 0; rdepth < rowPath.length - 1; rdepth++) {
+          const partialRowKey = rowPath.slice(0, rdepth + 1).join(PATH_SEP);
+          getOrCreate(partialRowKey + KEY_SEP + partialColKey).push(val);
+        }
+      }
     }
 
-    // Aggregate all buckets
     const result = new Map();
     for (const [key, vals] of buckets) {
       result.set(key, aggregate(vals, aggFn));
@@ -228,7 +292,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
         if (node === null) break;
       }
     }
-    // Sort each level
     const sortMap = (map) => {
       if (!map || !(map instanceof Map)) return map;
       const sorted = new Map([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
@@ -240,7 +303,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     return sortMap(tree);
   }, [data, pivotRows]);
 
-  // ── Collect all non-leaf row keys for expand all ─────────────────────────
   const allNonLeafKeys = useMemo(() => {
     const keys = new Set();
     const walk = (map, path) => {
@@ -257,8 +319,15 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     return keys;
   }, [rowTree]);
 
-  const expandAll = useCallback(() => setExpanded(new Set(allNonLeafKeys)), [allNonLeafKeys]);
-  const collapseAll = useCallback(() => setExpanded(new Set()), []);
+  const expandAll = useCallback(() => {
+    setExpanded(new Set(allNonLeafKeys));
+    setExpandedCols(new Set(allNonLeafColKeys));
+  }, [allNonLeafKeys, allNonLeafColKeys]);
+
+  const collapseAll = useCallback(() => {
+    setExpanded(new Set());
+    setExpandedCols(new Set());
+  }, []);
 
   const toggleExpand = useCallback((key) => {
     setExpanded(prev => {
@@ -269,11 +338,19 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     });
   }, []);
 
-  // ── Build flat row list for rendering ─────────────────────────────────────
+  const toggleExpandCol = useCallback((key) => {
+    setExpandedCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // ── Flat row list for rendering ───────────────────────────────────────────
   const flatRows = useMemo(() => {
     const rows = [];
     if (pivotRows.length === 0) {
-      // No row dims: single "All" row
       rows.push({ path: [], label: 'All', depth: 0, isLeaf: true, rowKey: TOTAL_KEY });
       return rows;
     }
@@ -293,38 +370,102 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     return rows;
   }, [rowTree, pivotRows, expanded]);
 
-  // ── Column header rows ────────────────────────────────────────────────────
+  // ── Visible column paths (collapsed groups show as subtotal columns) ───────
+  const visibleColPaths = useMemo(() => {
+    if (pivotCols.length === 0) return [];
+    const visible = [];
+    const walk = (map, path) => {
+      if (!map || !(map instanceof Map)) return;
+      for (const [k, v] of map) {
+        const newPath = [...path, k];
+        const pathKey = newPath.join(PATH_SEP);
+        const isLeaf = !(v instanceof Map);
+        if (isLeaf || !expandedCols.has(pathKey)) {
+          // Show as a single column (leaf or collapsed group = subtotal)
+          visible.push(newPath);
+        } else {
+          // Expanded: recurse into children (no subtotal column for this group)
+          walk(v, newPath);
+        }
+      }
+    };
+    walk(colTree, []);
+    return visible;
+  }, [colTree, pivotCols, expandedCols]);
+
+  // ── Filter: hide blank / zero dimensions ─────────────────────────────────
+  const filteredFlatRows = useMemo(() => {
+    let rows = flatRows;
+    if (hideBlanks) rows = rows.filter(r => !r.path.some(v => v === '(blank)' || v === ''));
+    if (hideZeros) rows = rows.filter(r => {
+      const v = getValue(r.rowKey, TOTAL_KEY);
+      return v != null && v !== 0;
+    });
+    return rows;
+  }, [flatRows, hideBlanks, hideZeros, getValue]);
+
+  const filteredVisibleColPaths = useMemo(() => {
+    let paths = visibleColPaths;
+    if (hideBlanks) paths = paths.filter(p => !p.some(v => v === '(blank)' || v === ''));
+    if (hideZeros) paths = paths.filter(p => {
+      const v = getValue(TOTAL_KEY, p.join(PATH_SEP));
+      return v != null && v !== 0;
+    });
+    return paths;
+  }, [visibleColPaths, hideBlanks, hideZeros, getValue]);
+
+  // ── Column header rows (supports mixed-depth paths + expand toggles) ───────
   const colHeaderRows = useMemo(() => {
-    if (colPaths.length === 0) return [];
+    if (filteredVisibleColPaths.length === 0) return [];
     const levels = pivotCols.length;
     const headerRows = [];
+
     for (let lvl = 0; lvl < levels; lvl++) {
       const cells = [];
       let i = 0;
-      while (i < colPaths.length) {
-        const val = colPaths[i][lvl];
+      while (i < filteredVisibleColPaths.length) {
+        const path = filteredVisibleColPaths[i];
+        const pathDepth = path.length - 1; // 0-indexed
+
+        if (pathDepth < lvl) {
+          // This partial path spans via rowSpan from a higher level — skip here
+          i++;
+          continue;
+        }
+
+        const val = path[lvl];
         let span = 1;
-        while (i + span < colPaths.length) {
-          const next = colPaths[i + span];
+        while (i + span < filteredVisibleColPaths.length) {
+          const next = filteredVisibleColPaths[i + span];
+          if (next.length - 1 < lvl) break;
           let parentMatch = true;
           for (let p = 0; p < lvl; p++) {
-            if (colPaths[i][p] !== next[p]) { parentMatch = false; break; }
+            if (path[p] !== next[p]) { parentMatch = false; break; }
           }
           if (parentMatch && next[lvl] === val) span++;
           else break;
         }
-        cells.push({ label: val, span });
+
+        // A partial path at its leaf level (pathDepth === lvl) needs rowSpan to cover remaining levels
+        const isLeafCell = pathDepth === lvl;
+        const rowSpan = isLeafCell && lvl < levels - 1 ? levels - lvl : 1;
+        // Toggle: only shown for non-last levels
+        const showToggle = lvl < levels - 1;
+        // isExpanded: true when this group's children are visible (path goes deeper than lvl)
+        const isExpanded = pathDepth > lvl;
+        const partialKey = path.slice(0, lvl + 1).join(PATH_SEP);
+
+        cells.push({ label: val, span, rowSpan, showToggle, isExpanded, partialKey });
         i += span;
       }
       headerRows.push(cells);
     }
     return headerRows;
-  }, [colPaths, pivotCols]);
+  }, [filteredVisibleColPaths, pivotCols]);
 
   // ── Export CSV ────────────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
     const lines = [];
-    // Header rows
     if (colHeaderRows.length > 0) {
       for (let lvl = 0; lvl < colHeaderRows.length; lvl++) {
         const parts = [esc('')];
@@ -339,12 +480,11 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
       lines.push([esc(''), esc('Value'), esc('Total')].join(','));
     }
 
-    // Data rows
-    for (const row of flatRows) {
+    for (const row of filteredFlatRows) {
       const indent = '  '.repeat(row.depth);
       const parts = [esc(indent + row.label)];
-      if (colPaths.length > 0) {
-        for (const cp of colPaths) {
+      if (filteredVisibleColPaths.length > 0) {
+        for (const cp of filteredVisibleColPaths) {
           const colKey = cp.join(PATH_SEP);
           const v = getValue(row.rowKey, colKey);
           parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
@@ -358,11 +498,10 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
       lines.push(parts.join(','));
     }
 
-    // Grand total row
     {
       const parts = [esc('Grand Total')];
-      if (colPaths.length > 0) {
-        for (const cp of colPaths) {
+      if (filteredVisibleColPaths.length > 0) {
+        for (const cp of filteredVisibleColPaths) {
           const colKey = cp.join(PATH_SEP);
           const v = getValue(TOTAL_KEY, colKey);
           parts.push(esc(v != null ? formatValue(v, widget.numberFormat) : ''));
@@ -377,7 +516,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     }
 
     downloadCSV(lines, (widget.title || 'pivot') + '.csv');
-  }, [colPaths, colHeaderRows, flatRows, getValue, widget.title, widget.numberFormat]);
+  }, [colHeaderRows, filteredFlatRows, filteredVisibleColPaths, getValue, widget.title, widget.numberFormat]);
 
   // ── Dimension chip renderer ────────────────────────────────────────────────
   const renderChip = (axis, dim, idx) => {
@@ -404,9 +543,62 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
     );
   };
 
+  // ── Field search popover ──────────────────────────────────────────────────
+  const FieldPicker = (
+    <div ref={searchRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        className="pivot-dim-add"
+        onClick={() => { setSearchOpen(o => !o); setFieldSearch(''); }}
+        title="Add field to rows or columns"
+      >+ Field</button>
+      {searchOpen && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 50, marginTop: 2,
+          background: 'var(--card-bg, #fff)', border: '1px solid var(--border)',
+          borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.12)',
+          width: 240,
+        }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+            <input
+              autoFocus
+              className="input input-sm"
+              style={{ width: '100%', boxSizing: 'border-box' }}
+              placeholder="Search fields…"
+              value={fieldSearch}
+              onChange={e => setFieldSearch(e.target.value)}
+            />
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {filteredColumns.length === 0 && (
+              <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>No fields</div>
+            )}
+            {filteredColumns.map(c => (
+              <div key={c} style={{ display: 'flex', alignItems: 'center', padding: '3px 8px', gap: 4 }}>
+                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c}</span>
+                <button
+                  style={{ fontSize: 10, padding: '1px 6px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', flexShrink: 0 }}
+                  onClick={() => { addDim('rows', c); setFieldSearch(''); }}
+                  title="Add to Rows"
+                >Row</button>
+                <button
+                  style={{ fontSize: 10, padding: '1px 6px', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)', flexShrink: 0 }}
+                  onClick={() => { addDim('cols', c); setFieldSearch(''); }}
+                  title="Add to Columns"
+                >Col</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   // ── Dimension Controls ────────────────────────────────────────────────────
   const DimensionControls = (
-    <div className="pivot-dim-controls">
+    <div className="pivot-dim-controls" style={{ flexWrap: 'wrap', gap: 4 }}>
+      <div className="pivot-dim-axis" style={{ flexShrink: 0 }}>
+        {FieldPicker}
+      </div>
       {['rows', 'cols'].map(axis => {
         const dims = axis === 'rows' ? pivotRows : pivotCols;
         const isEndTarget = dragOver && dragOver.axis === axis && dragOver.idx === dims.length;
@@ -430,18 +622,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                 </span>
               ))}
               {isEndTarget && <span className="pivot-drop-indicator" />}
-              {availableColumns.length > 0 && (
-                <select
-                  className="pivot-dim-add"
-                  value=""
-                  onChange={e => addDim(axis, e.target.value)}
-                >
-                  <option value="">+ Add</option>
-                  {availableColumns.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              )}
             </div>
           </div>
         );
@@ -476,13 +656,12 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   const aggLabel = AGGREGATIONS[aggFn] || aggFn;
-  const showExpandControls = pivotRows.length > 1;
+  const showExpandControls = pivotRows.length > 1 || pivotCols.length > 1;
 
   return (
     <div className="pivot-container">
       {DimensionControls}
 
-      {/* Pivot grid */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         <table className="pivot-table">
           <thead>
@@ -490,17 +669,24 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
               colHeaderRows.map((cells, lvl) => (
                 <tr key={lvl}>
                   {lvl === 0 && (
-                    <th
-                      className="pivot-corner"
-                      rowSpan={colHeaderRows.length}
-                    />
+                    <th className="pivot-corner" rowSpan={colHeaderRows.length} />
                   )}
                   {cells.map((cell, ci) => (
                     <th
                       key={ci}
                       className="pivot-col-header"
                       colSpan={cell.span}
+                      rowSpan={cell.rowSpan}
                     >
+                      {cell.showToggle && (
+                        <button
+                          className="pivot-toggle"
+                          onClick={() => toggleExpandCol(cell.partialKey)}
+                          title={cell.isExpanded ? 'Collapse' : 'Expand'}
+                        >
+                          {cell.isExpanded ? '▼' : '▶'}
+                        </button>
+                      )}
                       {cell.label}
                     </th>
                   ))}
@@ -523,11 +709,10 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
             )}
           </thead>
           <tbody>
-            {flatRows.map((row, ri) => {
+            {filteredFlatRows.map((row, ri) => {
               const isSubtotal = !row.isLeaf && pivotRows.length > 1;
-              const rowClassName = isSubtotal ? 'pivot-subtotal-row' : '';
               return (
-                <tr key={ri} className={rowClassName}>
+                <tr key={ri} className={isSubtotal ? 'pivot-subtotal-row' : ''}>
                   <td
                     className="pivot-row-header"
                     style={{ paddingLeft: 8 + row.depth * 18 }}
@@ -537,7 +722,7 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                         className="pivot-toggle"
                         onClick={() => toggleExpand(row.rowKey)}
                       >
-                        {expanded.has(row.rowKey) ? '\u25BC' : '\u25B6'}
+                        {expanded.has(row.rowKey) ? '▼' : '▶'}
                       </button>
                     ) : (
                       pivotRows.length > 1 && <span style={{ display: 'inline-block', width: 18 }} />
@@ -547,8 +732,8 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                       style={onCrossFilter && row.isLeaf ? { cursor: 'pointer' } : undefined}
                     >{row.label}</span>
                   </td>
-                  {colPaths.length > 0 ? (
-                    colPaths.map((cp, ci) => {
+                  {filteredVisibleColPaths.length > 0 ? (
+                    filteredVisibleColPaths.map((cp, ci) => {
                       const colKey = cp.join(PATH_SEP);
                       const v = getValue(row.rowKey, colKey);
                       return (
@@ -565,7 +750,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
                       })()}
                     </td>
                   )}
-                  {/* Row total */}
                   <td className="pivot-cell pivot-total-cell">
                     {(() => {
                       const v = getValue(row.rowKey, TOTAL_KEY);
@@ -576,11 +760,10 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
               );
             })}
 
-            {/* Grand total row */}
             <tr className="pivot-grand-total-row">
               <td className="pivot-row-header pivot-total-cell">Grand Total</td>
-              {colPaths.length > 0 ? (
-                colPaths.map((cp, ci) => {
+              {filteredVisibleColPaths.length > 0 ? (
+                filteredVisibleColPaths.map((cp, ci) => {
                   const colKey = cp.join(PATH_SEP);
                   const v = getValue(TOTAL_KEY, colKey);
                   return (
@@ -608,7 +791,6 @@ export default function PivotTable({ widget, data, onCrossFilter }) {
         </table>
       </div>
 
-      {/* Footer — consistent with DataTable */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '6px 12px', borderTop: '1px solid var(--border)',

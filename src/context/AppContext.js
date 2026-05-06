@@ -160,8 +160,9 @@ const initialState = {
     pages: [_firstPage],
     currentPageId: _firstPage.id,
     theme: { ...defaultTheme },
-    dimensionColors: {},   // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
-    fieldSynonyms: {},     // { fieldName: ['synonym1', 'synonym2', ...] }
+    dimensionColors: {},           // { 'Argentina': { type: 'custom', color: '#74b9ff' }, 'Brazil': { type: 'palette', index: 2 } }
+    consistentColorFields: [],     // field names using sorted-palette consistent coloring across all charts
+    fieldSynonyms: {},             // { fieldName: ['synonym1', 'synonym2', ...] }
     advancedStats: false,  // enable advanced aggregation functions + formula editor
     modelPositions: null,  // { datasetId: { x, y }, ... } for data model ER diagram
     // Shared dimension definitions + state
@@ -506,6 +507,19 @@ function reducer(state, action) {
       return { ...state, dashboard: { ...state.dashboard, pages } };
     }
 
+    case 'REORDER_PAGE': {
+      // payload: { fromId, toId } — move fromId tab to the position of toId
+      const { fromId, toId } = action.payload;
+      if (fromId === toId) return state;
+      const pages = [...state.dashboard.pages];
+      const fromIdx = pages.findIndex(p => p.id === fromId);
+      const toIdx = pages.findIndex(p => p.id === toId);
+      if (fromIdx < 0 || toIdx < 0) return state;
+      pages.splice(fromIdx, 1);
+      pages.splice(toIdx, 0, state.dashboard.pages[fromIdx]);
+      return { ...state, dashboard: { ...state.dashboard, pages } };
+    }
+
     case 'SET_CURRENT_PAGE':
       return {
         ...state,
@@ -554,6 +568,55 @@ function reducer(state, action) {
       }));
       const editingWidgetId = state.editingWidgetId === id ? null : state.editingWidgetId;
       return { ...state, dashboard: { ...state.dashboard, pages }, editingWidgetId };
+    }
+
+    case 'ADD_TO_CAROUSEL': {
+      // payload: { carouselId, widgetId }
+      const { carouselId, widgetId } = action.payload;
+      const pages = state.dashboard.pages.map(p => {
+        const srcWidget = p.widgets.find(w => w.id === widgetId);
+        if (!srcWidget) return p;
+        // Convert widget to a slide (same fields, new id)
+        const slide = { ...srcWidget, id: uuid() };
+        delete slide.slides; // prevent nesting carousels
+        const updatedWidgets = p.widgets
+          .filter(w => w.id !== widgetId)
+          .map(w => w.id === carouselId ? { ...w, slides: [...(w.slides || []), slide] } : w);
+        return {
+          ...p,
+          widgets: updatedWidgets,
+          layout: p.layout.filter(l => l.i !== widgetId),
+        };
+      });
+      const editingWidgetId = state.editingWidgetId === widgetId ? carouselId : state.editingWidgetId;
+      return { ...state, dashboard: { ...state.dashboard, pages }, editingWidgetId };
+    }
+
+    case 'EJECT_FROM_CAROUSEL': {
+      // payload: { carouselId, slideId }
+      const { carouselId, slideId } = action.payload;
+      let ejected = null;
+      const pages = state.dashboard.pages.map(p => {
+        const carousel = p.widgets.find(w => w.id === carouselId);
+        if (!carousel) return p;
+        const slide = (carousel.slides || []).find(s => s.id === slideId);
+        if (!slide) return p;
+        ejected = { ...slide, id: uuid() };
+        const carouselLayout = p.layout.find(l => l.i === carouselId) || { x: 0, y: 0, w: 12, h: 5 };
+        const { x: slotX, y: slotY } = findFirstSlot(p.layout, carouselLayout.w, carouselLayout.h);
+        return {
+          ...p,
+          widgets: [
+            ...p.widgets.map(w => w.id === carouselId
+              ? { ...w, slides: (w.slides || []).filter(s => s.id !== slideId) }
+              : w
+            ),
+            ejected,
+          ],
+          layout: [...p.layout, { i: ejected.id, x: slotX, y: slotY, w: carouselLayout.w, h: carouselLayout.h }],
+        };
+      });
+      return { ...state, dashboard: { ...state.dashboard, pages }, editingWidgetId: ejected?.id ?? state.editingWidgetId };
     }
 
     case 'DUPLICATE_WIDGET': {
@@ -722,6 +785,20 @@ function reducer(state, action) {
       const dc = { ...state.dashboard.dimensionColors };
       delete dc[action.payload];
       return { ...state, dashboard: { ...state.dashboard, dimensionColors: dc } };
+    }
+
+    case 'TOGGLE_CONSISTENT_COLOR_FIELD': {
+      const field = action.payload;
+      const current = state.dashboard.consistentColorFields || [];
+      const isEnabling = !current.includes(field);
+      const next = isEnabling ? [...current, field] : current.filter(f => f !== field);
+      // When enabling: purge stale palette-type dimension color entries (from older code versions)
+      let dimColors = state.dashboard.dimensionColors;
+      if (isEnabling) {
+        const cleaned = Object.fromEntries(Object.entries(dimColors).filter(([, v]) => v?.type !== 'palette'));
+        if (Object.keys(cleaned).length !== Object.keys(dimColors).length) dimColors = cleaned;
+      }
+      return { ...state, dashboard: { ...state.dashboard, consistentColorFields: next, dimensionColors: dimColors } };
     }
 
     // ── Field synonyms ────────────────────────────────────────
@@ -896,12 +973,13 @@ function reducer(state, action) {
 const UNDO_LIMIT = 50;
 const UNDOABLE_ACTIONS = new Set([
   'ADD_WIDGET', 'UPDATE_WIDGET', 'REMOVE_WIDGET', 'DUPLICATE_WIDGET',
+  'ADD_TO_CAROUSEL', 'EJECT_FROM_CAROUSEL',
   'MOVE_WIDGET_TO_PAGE', 'UPDATE_LAYOUT',
-  'ADD_PAGE', 'REMOVE_PAGE', 'RENAME_PAGE',
+  'ADD_PAGE', 'REMOVE_PAGE', 'RENAME_PAGE', 'REORDER_PAGE',
   'SET_THEME', 'SET_DASHBOARD_TITLE',
   'LOAD_DATASET', 'DELETE_DATASET', 'RENAME_DATASET',
   'ADD_TRANSFORM', 'REMOVE_TRANSFORM', 'UPDATE_TRANSFORM', 'MOVE_TRANSFORM',
-  'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR',
+  'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR', 'TOGGLE_CONSISTENT_COLOR_FIELD',
   'SET_FIELD_SYNONYMS',
   'RUN_CLUSTERING', 'REMOVE_COLUMN',
 ]);

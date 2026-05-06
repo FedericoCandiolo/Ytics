@@ -2,7 +2,10 @@
  * Carousel — cycles through multiple chart slides on the same dataset.
  * widget.slides = [{ id, type, title, xField, yField, ... }]
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useApp } from '../../context/AppContext';
+import { resolveWidgetData } from '../../utils/associativeEngine';
+import { executeMeasurePipeline } from '../../utils/dataUtils';
 import BarChart from './BarChart';
 import LineChart from './LineChart';
 import ScatterPlot from './ScatterPlot';
@@ -22,16 +25,31 @@ const SLIDE_CHART_MAP = {
   treemap: Treemap, heatmap: HeatMap, bump: BumpChart, stream: StreamGraph, violin: ViolinPlot,
 };
 
-export default function Carousel({ widget, data, onCrossFilter }) {
+export default function Carousel({ widget, data, onCrossFilter, isEditing, onSlideChange }) {
+  const { state, dispatch } = useApp();
+  const isEditingMode = isEditing ?? false;
   const slides = widget.slides || [];
   const [idx, setIdx] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
   const menuRef = useRef(null);
+
+  const eject = (slideId) => {
+    dispatch({ type: 'EJECT_FROM_CAROUSEL', payload: { carouselId: widget.id, slideId } });
+    setMenuOpen(false);
+  };
 
   // Clamp idx when slides change
   useEffect(() => {
     setIdx(i => Math.min(i, Math.max(0, slides.length - 1)));
   }, [slides.length]);
+
+  // Notify parent of current slide title
+  useEffect(() => {
+    if (onSlideChange && slides[idx]) {
+      onSlideChange(slides[idx].title || null);
+    }
+  }, [idx, slides, onSlideChange]);
 
   // Auto-advance
   useEffect(() => {
@@ -53,18 +71,68 @@ export default function Carousel({ widget, data, onCrossFilter }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  if (!slides.length) return <Placeholder text="No slides — add charts in the editor" />;
+  const dropHandlers = isEditingMode ? {
+    onDragOver: (e) => {
+      if (e.dataTransfer.types.includes('application/widget-id')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        setDropHover(true);
+      }
+    },
+    onDragLeave: (e) => {
+      if (!e.currentTarget.contains(e.relatedTarget)) setDropHover(false);
+    },
+    onDrop: (e) => {
+      const widgetId = e.dataTransfer.getData('application/widget-id');
+      setDropHover(false);
+      if (widgetId && widgetId !== widget.id) {
+        e.preventDefault();
+        e.stopPropagation();
+        dispatch({ type: 'ADD_TO_CAROUSEL', payload: { carouselId: widget.id, widgetId } });
+      }
+    },
+  } : {};
 
   const slide = slides[idx] || slides[0];
   const Chart = SLIDE_CHART_MAP[slide?.type] || BarChart;
 
+  // Resolve data for the current slide independently so each slide's dataset
+  // and measure pipeline are applied correctly (not the carousel container's).
+  const slideData = useMemo(() => {
+    if (!slide) return data;
+    const resolved = resolveWidgetData(slide, state.datasets, state.colStore, null);
+    const base = resolved.length > 0 ? resolved : data;
+    if (slide.measures?.length > 0) {
+      try { return executeMeasurePipeline(base, slide.measures); } catch { return base; }
+    }
+    return base;
+  }, [slide, state.datasets, state.colStore, data]);
+
   const go = (delta) => setIdx(i => (i + delta + slides.length) % slides.length);
 
+  if (!slides.length) return (
+    <div
+      style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: dropHover ? '2px dashed var(--primary)' : '2px dashed transparent',
+        borderRadius: 8, background: dropHover ? 'var(--surface-hover, rgba(0,0,0,.04))' : 'transparent',
+        transition: 'all .15s', boxSizing: 'border-box' }}
+      {...dropHandlers}
+    >
+      <Placeholder text={isEditingMode ? 'Drop a widget here or add slides in the editor' : 'No slides — add charts in the editor'} />
+    </div>
+  );
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{ height: '100%', display: 'flex', flexDirection: 'column',
+        outline: dropHover ? '2px dashed var(--primary)' : 'none',
+        borderRadius: 8, boxSizing: 'border-box' }}
+      {...dropHandlers}
+    >
       {/* Chart area */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme, dimensionColors: widget.dimensionColors }} data={data} onCrossFilter={onCrossFilter} />
+        <Chart widget={{ ...slide, colorScheme: slide.colorScheme || widget.colorScheme, dimensionColors: widget.dimensionColors }} data={slideData} onCrossFilter={onCrossFilter} />
       </div>
 
       {/* Navigation */}
@@ -104,18 +172,36 @@ export default function Carousel({ widget, data, onCrossFilter }) {
                     ? `${s.title}${groupLabel}`
                     : `Slide ${i + 1}${groupLabel}`;
                   return (
-                    <button
+                    <div
                       key={s.id || i}
                       style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '6px 12px', border: 'none', background: i === idx ? 'var(--surface-hover, #f0f0f0)' : 'transparent',
-                        cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font)',
-                        color: 'var(--text)',
+                        display: 'flex', alignItems: 'center',
+                        background: i === idx ? 'var(--surface-hover, #f0f0f0)' : 'transparent',
                       }}
-                      onClick={() => { setIdx(i); setMenuOpen(false); }}
                     >
-                      {i + 1}. {label}
-                    </button>
+                      <button
+                        style={{
+                          flex: 1, textAlign: 'left',
+                          padding: '6px 12px', border: 'none', background: 'transparent',
+                          cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font)',
+                          color: 'var(--text)',
+                        }}
+                        onClick={() => { setIdx(i); setMenuOpen(false); }}
+                      >
+                        {i + 1}. {label}
+                      </button>
+                      {isEditingMode && s.id && (
+                        <button
+                          title="Eject to canvas"
+                          style={{
+                            border: 'none', background: 'transparent', cursor: 'pointer',
+                            padding: '4px 8px', fontSize: 13, color: 'var(--text-muted)',
+                            flexShrink: 0,
+                          }}
+                          onClick={() => eject(s.id)}
+                        >⇲</button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

@@ -143,13 +143,23 @@ function applyRename(data, { oldName, newName }) {
 
 function applyCompute(data, { newColumn, expression }) {
   if (!newColumn || !expression) return data;
-  return data.map(row => {
+  // Pre-compile the function once with column names + row-referencing helpers
+  const sampleKeys = data.length > 0 ? Object.keys(data[0]) : [];
+  const paramNames = [...sampleKeys, 'rows', 'i', 'ROW', 'PREV', 'NEXT'];
+  let fn;
+  try {
+    // eslint-disable-next-line no-new-func
+    fn = new Function(...paramNames, `return (${expression})`);
+  } catch {
+    return data.map(row => ({ ...row, [newColumn]: null }));
+  }
+  const ROW = (n) => n >= 0 && n < data.length ? data[n] : {};
+  return data.map((row, idx) => {
     try {
-      const keys = Object.keys(row);
-      const vals = keys.map(k => row[k]);
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(...keys, `return (${expression})`);
-      return { ...row, [newColumn]: fn(...vals) };
+      const vals = sampleKeys.map(k => row[k]);
+      const PREV = idx > 0 ? data[idx - 1] : {};
+      const NEXT = idx < data.length - 1 ? data[idx + 1] : {};
+      return { ...row, [newColumn]: fn(...vals, data, idx, ROW, PREV, NEXT) };
     } catch {
       return { ...row, [newColumn]: null };
     }
