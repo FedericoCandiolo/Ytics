@@ -141,11 +141,17 @@ function applyRename(data, { oldName, newName }) {
   });
 }
 
+function isValidIdentifier(name) {
+  try { new Function(name, ''); return true; } catch { return false; }
+}
+
 function applyCompute(data, { newColumn, expression }) {
   if (!newColumn || !expression) return data;
-  // Pre-compile the function once with column names + row-referencing helpers
+  // Only use column names that are valid JS identifiers as named params.
+  // Columns with spaces or special chars are accessible via row['column name'].
   const sampleKeys = data.length > 0 ? Object.keys(data[0]) : [];
-  const paramNames = [...sampleKeys, 'rows', 'i', 'ROW', 'PREV', 'NEXT'];
+  const validKeys = sampleKeys.filter(isValidIdentifier);
+  const paramNames = [...validKeys, 'row', 'rows', 'i', 'ROW', 'PREV', 'NEXT'];
   let fn;
   try {
     // eslint-disable-next-line no-new-func
@@ -156,10 +162,10 @@ function applyCompute(data, { newColumn, expression }) {
   const ROW = (n) => n >= 0 && n < data.length ? data[n] : {};
   return data.map((row, idx) => {
     try {
-      const vals = sampleKeys.map(k => row[k]);
+      const vals = validKeys.map(k => row[k]);
       const PREV = idx > 0 ? data[idx - 1] : {};
       const NEXT = idx < data.length - 1 ? data[idx + 1] : {};
-      return { ...row, [newColumn]: fn(...vals, data, idx, ROW, PREV, NEXT) };
+      return { ...row, [newColumn]: fn(...vals, row, data, idx, ROW, PREV, NEXT) };
     } catch {
       return { ...row, [newColumn]: null };
     }

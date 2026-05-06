@@ -820,32 +820,46 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
             { value: 'bar', label: 'Mini bar chart' },
             { value: 'pie', label: 'Mini pie chart' },
             { value: 'line', label: 'Mini line chart' },
+            { value: 'link', label: 'Link' },
           ];
           return (
             <div key={f.key} className="form-group editor-section" style={{ marginBottom: 10 }}>
               <label className="form-label">{f.label}</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {current.map((m, i) => (
-                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {/* Row 1: field, aggregation, reorder & delete */}
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                {current.map((m, i) => {
+                  const isLink = m.representation === 'link';
+                  return (
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 6px 4px', display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+                    {/* Remove button */}
+                    <button className="btn btn-ghost btn-icon btn-sm" title="Remove measure"
+                      style={{ position: 'absolute', top: 2, right: 2, lineHeight: 1 }}
+                      onClick={() => onUpdate({ straightTableMeasures: current.filter((_, j) => j !== i) })}>
+                      {'\u2715'}
+                    </button>
+                    {/* Row 1: field picker + aggregation (hidden for link) + reorder */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', paddingRight: 20 }}>
                       <SearchableFieldPicker style={{ flex: 1 }}
-                        tableGroups={tableGroups} customFields={customFields} typeFilter={['number']}
-                        value={m.field || ''} onChange={v => {
+                        tableGroups={tableGroups} customFields={customFields}
+                        typeFilter={isLink ? [] : ['number']}
+                        value={m.field || ''}
+                        placeholder={isLink ? 'Link text field (optional)' : undefined}
+                        onChange={v => {
                           const next = [...current];
                           next[i] = { ...next[i], field: v || '' };
                           onUpdate({ straightTableMeasures: next });
                         }} />
-                      <AggregationSelect
-                        value={m.aggregation || 'sum'}
-                        onChange={v => {
-                          const next = [...current];
-                          next[i] = { ...next[i], aggregation: v };
-                          onUpdate({ straightTableMeasures: next });
-                        }}
-                        advancedStats={state.dashboard.advancedStats}
-                        style={{ width: 80 }}
-                      />
+                      {!isLink && (
+                        <AggregationSelect
+                          value={m.aggregation || 'sum'}
+                          onChange={v => {
+                            const next = [...current];
+                            next[i] = { ...next[i], aggregation: v };
+                            onUpdate({ straightTableMeasures: next });
+                          }}
+                          advancedStats={state.dashboard.advancedStats}
+                          style={{ width: 80 }}
+                        />
+                      )}
                       <button className="btn btn-ghost btn-icon btn-sm" disabled={i === 0} onClick={() => {
                         const next = [...current];
                         [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -856,41 +870,40 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
                         [next[i], next[i + 1]] = [next[i + 1], next[i]];
                         onUpdate({ straightTableMeasures: next });
                       }} title="Move down">{'\u2193'}</button>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
-                        onUpdate({ straightTableMeasures: current.filter((_, j) => j !== i) });
-                      }}>{'\u2715'}</button>
                     </div>
-                    {/* Row 2: modifiers + number format */}
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <ModifierTags
-                        distinct={m.distinct} total={m.total}
-                        onDistinctChange={v => {
-                          const next = [...current];
-                          next[i] = { ...next[i], distinct: v };
-                          onUpdate({ straightTableMeasures: next });
-                        }}
-                        onTotalChange={v => {
-                          const next = [...current];
-                          next[i] = { ...next[i], total: v };
-                          onUpdate({ straightTableMeasures: next });
-                        }}
-                      />
-                      <select className="select select-sm" style={{ fontSize: 10, width: 'auto', marginLeft: 'auto' }}
-                        value={m.numberFormat || 'auto'}
-                        onChange={e => {
-                          const next = [...current];
-                          next[i] = { ...next[i], numberFormat: e.target.value };
-                          onUpdate({ straightTableMeasures: next });
-                        }}
-                        title="Number format for this measure">
-                        {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
-                          <option key={k} value={k}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Row 3: custom label */}
+                    {/* Row 2: modifiers + number format (hidden for link) */}
+                    {!isLink && (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <ModifierTags
+                          distinct={m.distinct} total={m.total}
+                          onDistinctChange={v => {
+                            const next = [...current];
+                            next[i] = { ...next[i], distinct: v };
+                            onUpdate({ straightTableMeasures: next });
+                          }}
+                          onTotalChange={v => {
+                            const next = [...current];
+                            next[i] = { ...next[i], total: v };
+                            onUpdate({ straightTableMeasures: next });
+                          }}
+                        />
+                        <select className="select select-sm" style={{ fontSize: 10, width: 'auto', marginLeft: 'auto' }}
+                          value={m.numberFormat || 'auto'}
+                          onChange={e => {
+                            const next = [...current];
+                            next[i] = { ...next[i], numberFormat: e.target.value };
+                            onUpdate({ straightTableMeasures: next });
+                          }}
+                          title="Number format for this measure">
+                          {Object.entries(NUMBER_FORMATS).map(([k, label]) => (
+                            <option key={k} value={k}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {/* Row 3: column header label */}
                     <input className="input input-sm" style={{ width: '100%' }}
-                      placeholder={`Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
+                      placeholder={isLink ? 'Column header label' : `Label: ${m.field || 'Measure'} (${m.aggregation || 'sum'})`}
                       value={m.label || ''}
                       onChange={e => {
                         const next = [...current];
@@ -898,18 +911,29 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
                         onUpdate({ straightTableMeasures: next });
                       }}
                     />
-                    {/* Row 4: representation + breakdown dimension */}
+                    {/* Row 4: representation selector + URL template or chart breakdown */}
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <select className="select select-sm" style={{ flex: 1 }} value={m.representation || 'text'}
+                      <select className="select select-sm" style={{ flexShrink: 0, width: isLink ? 90 : 'auto' }}
+                        value={m.representation || 'text'}
                         onChange={e => {
                           const next = [...current];
                           next[i] = { ...next[i], representation: e.target.value };
                           if (e.target.value === 'text') next[i] = { ...next[i], dimension: undefined };
+                          if (e.target.value !== 'link') next[i] = { ...next[i], urlTemplate: undefined, linkText: undefined };
                           onUpdate({ straightTableMeasures: next });
                         }}>
                         {REPR_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
-                      {(m.representation && m.representation !== 'text') && (
+                      {isLink ? (
+                        <input className="input input-sm" style={{ flex: 1 }}
+                          placeholder="https://...{{ColumnName}}..."
+                          value={m.urlTemplate || ''}
+                          onChange={e => {
+                            const next = [...current];
+                            next[i] = { ...next[i], urlTemplate: e.target.value };
+                            onUpdate({ straightTableMeasures: next });
+                          }} />
+                      ) : (m.representation && m.representation !== 'text') ? (
                         <SearchableFieldPicker style={{ flex: 1 }}
                           tableGroups={tableGroups} customFields={customFields}
                           value={m.dimension || ''} placeholder="Breakdown dim…"
@@ -918,10 +942,22 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
                             next[i] = { ...next[i], dimension: v || undefined };
                             onUpdate({ straightTableMeasures: next });
                           }} />
-                      )}
+                      ) : null}
                     </div>
+                    {/* Row 5 (link only): fixed link text override */}
+                    {isLink && (
+                      <input className="input input-sm" style={{ width: '100%' }}
+                        placeholder="Link text (optional, e.g. View ↗ — falls back to field value)"
+                        value={m.linkText || ''}
+                        onChange={e => {
+                          const next = [...current];
+                          next[i] = { ...next[i], linkText: e.target.value };
+                          onUpdate({ straightTableMeasures: next });
+                        }} />
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 <button className="btn btn-ghost btn-sm" onClick={() => {
                   onUpdate({ straightTableMeasures: [...current, { field: '', aggregation: 'sum', representation: 'text' }] });
                 }}>+ Add measure</button>
@@ -1514,13 +1550,13 @@ function GradientColorSection({ widget, columns, onUpdate }) {
 
           <label className="checkbox-row" style={{ fontSize: 12, marginTop: 8 }}>
             <input type="checkbox" checked={!!widget.invertGradient}
-              onChange={e => onUpdate({ invertGradient: e.target.checked || undefined })} />
+              onChange={e => onUpdate({ invertGradient: e.target.checked })} />
             Invert gradient
           </label>
 
           <label className="checkbox-row" style={{ fontSize: 12, marginTop: 4 }}>
             <input type="checkbox" checked={!!widget.logGradient}
-              onChange={e => onUpdate({ logGradient: e.target.checked || undefined })} />
+              onChange={e => onUpdate({ logGradient: e.target.checked })} />
             Logarithmic scale
           </label>
 

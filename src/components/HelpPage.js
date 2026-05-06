@@ -429,10 +429,10 @@ export default function HelpPage({ onClose }) {
                 options="Directed/undirected, show labels, node size range, edge width (constant or by measure), edge color (source/target/constant/gradient), repulsion, link strength."
                 gradient="Edge measure value" />
               <ChartCard icon="🌍" name="Geo Map"
-                desc="Choropleth world map colored by a numeric value per country."
-                fields="Geography (country name), Value (numeric)."
-                options="Projection: Natural Earth, Mercator, Equal Earth, Orthographic."
-                gradient="Country value (always sequential)" />
+                desc="Choropleth world map colored by a numeric value or category per country. Supports point overlays, gradient or categorical color modes, and globe rotation."
+                fields="Geography (country name), Value (numeric) or Color (categorical)."
+                options="Projection: Natural Earth, Mercator, Equal Earth, Orthographic (globe). In globe mode: drag to rotate, scroll to zoom. Gradient: invert, logarithmic scale. Categorical: palette-driven coloring. Overlay: scatter points, mini pie/bar charts per country."
+                gradient="Country value (sequential gradient, log-capable)" />
               <ChartCard icon="🌡" name="Heat Map"
                 desc="Color matrix showing intensity across two categorical dimensions."
                 fields="X (row), Y (column), Value (numeric)."
@@ -484,9 +484,9 @@ export default function HelpPage({ onClose }) {
                 options="Legend, opacity."
                 gradient="Max flow per node" />
               <ChartCard icon="📋" name="Straight Table"
-                desc="Flat data table with sorting, multiple measures, inline mini charts per row, and optional conditional formatting."
+                desc="Flat data table with sorting, pagination, horizontal scroll, multiple measures, inline mini charts, clickable links, and optional conditional formatting."
                 fields="Dimensions, multiple measures (each with independent aggregation, label, and number format)."
-                options="Conditional formatting (gradient or rules). Per-measure number format, totals row. Inline mini bar/pie charts for measure columns — hover to see a tooltip with exact values."
+                options="Conditional formatting (gradient or rules). Per-measure number format, totals row. Inline mini bar/pie/line charts with hover tooltip. Link columns: URL template with {{ColumnName}} placeholders — opens in a new tab."
                 gradient="N/A — uses conditional formatting" />
               <ChartCard icon="⬤" name="Scatter Plot"
                 desc="Individual data points on X/Y coordinates with optional size encoding. Supports connected scatterplot mode to draw lines between points using different ordering strategies."
@@ -690,7 +690,7 @@ export default function HelpPage({ onClose }) {
                 <li><strong>Combo Chart</strong>: Bar mode, line type, dual-axis configuration.</li>
                 <li><strong>Correlogram</strong>: Cell mode (circles, scatter, text). Mixed-type support: Pearson r for numeric pairs, Eta η for numeric-categorical, Cramér's V for categorical pairs. Diagonal: histograms (numeric) or bar charts (categorical). Dual color legends.</li>
                 <li><strong>Density Chart</strong>: Four modes (shading, contour, hexbin, 2D histogram). Filled toggle (contours always visible). Multi-series color modes: auto, palette, complementary, CMY. CMYK-like subtractive blending for overlaps. Bandwidth, contour levels, data point overlay.</li>
-                <li><strong>Geo Map</strong>: Map projection (Natural Earth, Mercator, Equal Earth, Orthographic).</li>
+                <li><strong>Geo Map</strong>: Map projection (Natural Earth, Mercator, Equal Earth, Orthographic/globe). In <strong>Orthographic</strong> mode, drag the globe to rotate it and use the scroll wheel to zoom in/out. The reset button returns the globe to its default orientation. Gradient mode supports logarithmic scale — the legend bar always reflects the active scale.</li>
                 <li><strong>Histogram</strong>: Number of bins.</li>
                 <li><strong>KPI Card</strong>: Style (card/gauge/satellite), format, gauge min/max, gauge segments with auto-palette colors, invert gradient.</li>
                 <li><strong>Line Chart</strong>: Line type (6 curves), points, area, stack mode, X-axis spacing.</li>
@@ -752,7 +752,7 @@ export default function HelpPage({ onClose }) {
               <Table
                 headers={['Chart', 'How It Works']}
                 rows={[
-                  ['Straight Table', 'Add any number of measures, each with its own field, aggregation, label, and number format. Measures appear as columns.'],
+                  ['Straight Table', 'Add any number of measures, each with its own field, aggregation, label, number format, and representation (text, mini bar/pie/line chart, or link). Remove a measure with the ✕ button in the top-right corner of each measure card. The table scrolls horizontally when columns overflow.'],
                   ['Line Chart', 'Add additional measures in the Fields tab. Each measure becomes its own line series. Use this instead of Color field when you want to compare different metrics (e.g., sales vs. costs).'],
                   ['Bar Chart', 'Add additional measures in the Fields tab. Each measure becomes a group in stacked or grouped bar mode.'],
                 ]}
@@ -784,6 +784,28 @@ export default function HelpPage({ onClose }) {
               />
               <Tip>Find this setting in the Options tab of the Line Chart editor.</Tip>
             </Sub>
+            <Sub title="Straight Table: Link Columns">
+              <p>
+                Additional measures in the Straight Table can use the <strong>Link</strong> representation to render each cell as a clickable hyperlink that opens in a new tab.
+              </p>
+              <Table
+                headers={['Setting', 'Description']}
+                rows={[
+                  ['Representation → Link', 'Switches the measure column to link mode.'],
+                  ['URL template', 'The URL to open, with {{ColumnName}} placeholders replaced by the row\'s value for that column. Example: https://en.wikipedia.org/wiki/{{Country}}'],
+                  ['Link text field', 'Optional — the column whose value is shown as the clickable text. Leave blank to show ↗.'],
+                  ['Link text override', 'Optional fixed label shown in every cell of this column, e.g. "View ↗". Takes priority over the field value.'],
+                  ['Column header', 'The column heading label shown in the table header.'],
+                ]}
+              />
+              <Tip>
+                <strong>Variables in the URL</strong>: <code>{'{{ColumnName}}'}</code> is replaced with the row value for that column.
+                The value is URL-encoded automatically (spaces become <code>%20</code>).
+                You can reference any column — it does not need to be a table dimension.
+                Example: <code>{'https://en.wikipedia.org/wiki/{{Country_ID}}'}</code>
+              </Tip>
+              <Tip>Link columns do not aggregate — they look up raw data values per row group, so they work even if the referenced column is not set as a dimension.</Tip>
+            </Sub>
           </Section>
 
           {/* ── 10. Measure Pipeline ────────────────────────────────────── */}
@@ -808,8 +830,17 @@ export default function HelpPage({ onClose }) {
               <p>Removes rows that don't match a condition (same operators as data transforms).</p>
             </Sub>
             <Sub title="Compute Column">
-              <p>Creates a new calculated column using a JavaScript expression.</p>
+              <p>Creates a new calculated column using a JavaScript expression. Column names that are valid JavaScript identifiers can be used directly. Columns with spaces or special characters must be referenced via <code>{"row['column name']"}</code>.</p>
               <Tip>Example: <code>profit_margin = (revenue - cost) / revenue * 100</code></Tip>
+              <Tip>Column with spaces: <code>{"row['Growth Rate'] - 1"}</code></Tip>
+              <p>Additional helpers available in every expression:</p>
+              <ul className="help-ul">
+                <li><code>row</code> — the full current row object (use for columns with spaces or special characters).</li>
+                <li><code>PREV</code> / <code>NEXT</code> — previous and next row objects.</li>
+                <li><code>ROW(n)</code> — row at absolute index <code>n</code>.</li>
+                <li><code>rows</code> — the full dataset array.</li>
+                <li><code>i</code> — current row index.</li>
+              </ul>
             </Sub>
             <Sub title="Sort">
               <p>Reorders rows by a field, ascending or descending.</p>

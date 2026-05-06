@@ -239,10 +239,10 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         label: widget.primaryMeasureLabel || undefined,
       });
     }
-    // Additional measures
+    // Additional measures — exclude link columns (they don't aggregate)
     if (widget.straightTableMeasures?.length) {
       for (const m of widget.straightTableMeasures) {
-        if (m.field) ms.push(m);
+        if (m.field && m.representation !== 'link') ms.push(m);
       }
     }
     return ms;
@@ -256,30 +256,73 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
     for (const dim of dimensions) {
       cols.push({ key: dim, label: dim, type: 'dimension' });
     }
-    // Measure columns — each may have a representation (text, bar, pie, line)
-    // Use index-based keys to avoid collisions when same field+agg appears multiple times
-    for (let mi = 0; mi < measures.length; mi++) {
-      const m = measures[mi];
-      const aggLabel = m.aggregation || 'sum';
-      const label = m.label || `${m.field} (${aggLabel})`;
-      const key = `__m${mi}_${m.field}_${aggLabel}`;
-      const repr = m.representation || 'text';
+    // Primary measure column
+    let mi = 0;
+    if (widget.valueField) {
+      const aggLabel = widget.aggregation || 'sum';
+      const repr = widget.primaryRepresentation || 'text';
       const isChart = repr !== 'text';
       cols.push({
-        key,
-        label,
+        key: `__m${mi}_${widget.valueField}_${aggLabel}`,
+        label: widget.primaryMeasureLabel || `${widget.valueField} (${aggLabel})`,
         type: isChart ? 'minichart' : 'measure',
-        field: m.field,
+        field: widget.valueField,
         aggregation: aggLabel,
         chartType: isChart ? repr : null,
-        chartDimension: isChart ? m.dimension : null,
-        numberFormat: m.numberFormat || null,
+        chartDimension: isChart ? widget.primaryChartDimension : null,
+        numberFormat: widget.primaryNumberFormat || null,
       });
+      mi++;
+    }
+    // Additional measures — link columns interleaved in order, non-link columns use mi index
+    if (widget.straightTableMeasures?.length) {
+      for (const m of widget.straightTableMeasures) {
+        if (m.representation === 'link') {
+          cols.push({
+            key: `__link_${mi}_${m.field || ''}`,
+            label: m.label || (m.field ? m.field : 'Link'),
+            type: 'link',
+            field: m.field || null,
+            urlTemplate: m.urlTemplate || '',
+            linkText: m.linkText || '',
+            numberFormat: m.numberFormat || null,
+          });
+        } else if (m.field) {
+          const aggLabel = m.aggregation || 'sum';
+          const repr = m.representation || 'text';
+          const isChart = repr !== 'text';
+          cols.push({
+            key: `__m${mi}_${m.field}_${aggLabel}`,
+            label: m.label || `${m.field} (${aggLabel})`,
+            type: isChart ? 'minichart' : 'measure',
+            field: m.field,
+            aggregation: aggLabel,
+            chartType: isChart ? repr : null,
+            chartDimension: isChart ? m.dimension : null,
+            numberFormat: m.numberFormat || null,
+          });
+          mi++;
+        }
+      }
     }
     return cols;
-  }, [dimensions, measures]);
+  }, [dimensions, measures, widget.straightTableMeasures, widget.valueField, widget.aggregation, widget.primaryRepresentation, widget.primaryChartDimension, widget.primaryMeasureLabel, widget.primaryNumberFormat]);
 
   // ── Aggregate data ─────────────────────────────────────────────────────────
+
+  // Fields referenced in link URL templates that aren't dimensions — need to be carried through aggregation
+  const linkExtraFields = useMemo(() => {
+    const fields = new Set();
+    for (const m of widget.straightTableMeasures || []) {
+      if (m.representation === 'link' && m.urlTemplate) {
+        for (const [, name] of m.urlTemplate.matchAll(/\{\{([^}]+)\}\}/g)) {
+          const f = name.trim();
+          if (!dimensions.includes(f)) fields.add(f);
+        }
+      }
+    }
+    return fields;
+  }, [widget.straightTableMeasures, dimensions]);
 
   const aggregatedRows = useMemo(() => {
     if (!data?.length || dimensions.length === 0 || measures.length === 0) return [];
@@ -291,7 +334,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
       const key = keyParts.join(KEY_SEP);
 
       if (!groups.has(key)) {
-        groups.set(key, { keyParts, buckets: {} });
+        groups.set(key, { keyParts, buckets: {}, linkVals: {} });
         for (let mi = 0; mi < measures.length; mi++) {
           const m = measures[mi];
           const mKey = `__m${mi}_${m.field}_${m.aggregation || 'sum'}`;
@@ -307,9 +350,13 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         const val = agg === 'count' ? 1 : (+row[m.field] || 0);
         group.buckets[mKey].push(val);
       }
+      // Capture first non-null value for each link extra field
+      for (const f of linkExtraFields) {
+        if (!(f in group.linkVals) && row[f] != null) group.linkVals[f] = row[f];
+      }
     }
 
-    return Array.from(groups.values()).map(({ keyParts, buckets }) => {
+    return Array.from(groups.values()).map(({ keyParts, buckets, linkVals }) => {
       const row = {};
       // Set dimension values
       dimensions.forEach((d, i) => {
@@ -322,9 +369,11 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
         const agg = m.aggregation || 'sum';
         row[mKey] = aggregate(buckets[mKey], agg, undefined, { distinct: m.distinct });
       }
+      // Include link template fields (not dimensions, not aggregated)
+      Object.assign(row, linkVals);
       return row;
     });
-  }, [data, dimensions, measures]);
+  }, [data, dimensions, measures, linkExtraFields]);
 
   // ── Mini-chart data per column per row ──────────────────────────────────────
 
@@ -468,7 +517,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
 
   return (
     <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -521,6 +570,37 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
                       </td>
                     );
                   }
+                  // Link cell
+                  if (c.type === 'link') {
+                    const url = c.urlTemplate
+                      ? c.urlTemplate.replace(/\{\{([^}]+)\}\}/g, (_, varName) => {
+                          const name = varName.trim();
+                          if (row[name] != null) return encodeURIComponent(String(row[name]));
+                          const col = columns.find(col => col.label === name);
+                          if (col && row[col.key] != null) return encodeURIComponent(String(row[col.key]));
+                          return '';
+                        })
+                      : '';
+                    const rawVal = c.field ? row[c.field] : null;
+                    const fmt = c.numberFormat || widget.numberFormat;
+                    const displayText = c.linkText
+                      || (rawVal != null ? (typeof rawVal === 'number' ? formatValue(rawVal, fmt) : String(rawVal)) : null)
+                      || '↗';
+                    return (
+                      <td key={c.key} style={{ textAlign: 'center', padding: '2px 6px' }}>
+                        {url ? (
+                          <a href={url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: 'var(--accent, #3b82f6)', textDecoration: 'none', fontWeight: 500 }}
+                            onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }}
+                            onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}>
+                            {displayText}
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>No URL</span>
+                        )}
+                      </td>
+                    );
+                  }
                   const cellVal = row[c.key];
                   const fmtStyle = getCellStyle(fmtMap, c.key, cellVal);
                   const isDim = c.type === 'dimension';
@@ -551,7 +631,7 @@ export default function StraightTable({ widget, data, onCrossFilter }) {
             {totalsRow && safePage === totalPages - 1 && (
               <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                 {columns.map(c => {
-                  if (c.type === 'minichart') return <td key={c.key} />;
+                  if (c.type === 'minichart' || c.type === 'link') return <td key={c.key} />;
                   const cellVal = totalsRow[c.key];
                   const totFmt = c.numberFormat || widget.numberFormat;
                   const displayVal = typeof cellVal === 'number' ? formatValue(cellVal, totFmt) : cellVal;

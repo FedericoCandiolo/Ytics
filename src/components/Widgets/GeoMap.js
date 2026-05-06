@@ -140,6 +140,10 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const zoomRef = useRef(null);
+  const projectionRef = useRef(null);
+  const pathGenRef = useRef(null);
+  const globeRotateRef = useRef([0, -30, 0]);
+  const globeScaleRef = useRef(null);
   const dims = useChartDims(containerRef);
   const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
 
@@ -255,9 +259,22 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
     }
 
     // ── Projection ──
+    const isGlobe = widget.mapProjection === 'orthographic';
     const ProjFn = PROJECTIONS[widget.mapProjection] || PROJECTIONS.naturalEarth;
-    const projection = ProjFn().fitSize([w - 20, h - 50], fitTarget);
+    let projection;
+    if (isGlobe) {
+      const autoScale = Math.min(w - 20, h - 50) / 2 - 5;
+      projection = ProjFn()
+        .scale(globeScaleRef.current ?? autoScale)
+        .translate([w / 2, (h - 30) / 2])
+        .rotate(globeRotateRef.current);
+    } else {
+      globeScaleRef.current = null;
+      projection = ProjFn().fitSize([w - 20, h - 50], fitTarget);
+    }
     const pathGen = d3.geoPath(projection);
+    projectionRef.current = projection;
+    pathGenRef.current = pathGen;
 
     // ── SVG ──
     const svg = d3.select(svgRef.current);
@@ -269,7 +286,25 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
       .append('rect').attr('width', w).attr('height', h);
 
     const zoomGroup = svg.append('g').attr('clip-path', 'url(#geo-clip)');
-    const mapGroup = zoomGroup.append('g').attr('transform', 'translate(10, 10)');
+    const mapGroup = zoomGroup.append('g').attr('transform', isGlobe ? null : 'translate(10, 10)');
+
+    // ── Globe background + graticule ──
+    if (isGlobe) {
+      mapGroup.append('path')
+        .datum({ type: 'Sphere' })
+        .attr('class', 'geo-sphere')
+        .attr('d', pathGen)
+        .attr('fill', 'var(--input-bg, #e8eef8)')
+        .attr('stroke', '#aac')
+        .attr('stroke-width', 0.5);
+      mapGroup.append('path')
+        .datum(d3.geoGraticule()())
+        .attr('class', 'geo-graticule')
+        .attr('d', pathGen)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(0,0,0,0.12)')
+        .attr('stroke-width', 0.4);
+    }
 
     // ── Choropleth ──
     mapGroup.selectAll('path.geo-region')
@@ -568,29 +603,70 @@ export default function GeoMap({ widget, data, onCrossFilter }) {
       renderLegend(svg, colorScale, minVal, maxVal, w, h, widget);
     }
 
-    // ── Zoom ──
-    const zoom = d3.zoom()
-      .scaleExtent([0.5, 12])
-      .on('zoom', (event) => mapGroup.attr('transform', event.transform));
-    zoomRef.current = zoom;
-    svg.call(zoom);
+    // ── Interaction ──
+    if (isGlobe) {
+      svg.style('cursor', 'grab');
+      const drag = d3.drag()
+        .on('start', () => svg.style('cursor', 'grabbing'))
+        .on('drag', (event) => {
+          const rot = projectionRef.current.rotate();
+          const sensitivity = 75 / projectionRef.current.scale();
+          const newRot = [
+            rot[0] + event.dx * sensitivity,
+            Math.max(-90, Math.min(90, rot[1] - event.dy * sensitivity)),
+            rot[2],
+          ];
+          projectionRef.current.rotate(newRot);
+          globeRotateRef.current = newRot;
+          d3.select(svgRef.current)
+            .selectAll('path.geo-region, path.geo-sphere, path.geo-graticule')
+            .attr('d', pathGenRef.current);
+        })
+        .on('end', () => svg.style('cursor', 'grab'));
+      svg.call(drag);
 
-    if (widget.mapZoom != null || widget.mapCenter != null) {
-      const k = widget.mapZoom ?? 1;
-      const cx = widget.mapCenter?.[0] ?? 10;
-      const cy = widget.mapCenter?.[1] ?? 10;
-      svg.call(zoom.transform, d3.zoomIdentity.translate(cx, cy).scale(k));
+      svg.on('wheel.globe', (event) => {
+        event.preventDefault();
+        const autoScale = Math.min(w - 20, h - 50) / 2 - 5;
+        const curr = globeScaleRef.current ?? autoScale;
+        const factor = event.deltaY > 0 ? 0.85 : 1.15;
+        const newScale = Math.min(Math.max(curr * factor, autoScale * 0.3), autoScale * 10);
+        globeScaleRef.current = newScale;
+        projectionRef.current.scale(newScale);
+        d3.select(svgRef.current)
+          .selectAll('path.geo-region, path.geo-sphere, path.geo-graticule')
+          .attr('d', pathGenRef.current);
+      });
+    } else {
+      const zoom = d3.zoom()
+        .scaleExtent([0.5, 12])
+        .on('zoom', (event) => mapGroup.attr('transform', event.transform));
+      zoomRef.current = zoom;
+      svg.call(zoom);
+
+      if (widget.mapZoom != null || widget.mapCenter != null) {
+        const k = widget.mapZoom ?? 1;
+        const cx = widget.mapCenter?.[0] ?? 10;
+        const cy = widget.mapCenter?.[1] ?? 10;
+        svg.call(zoom.transform, d3.zoomIdentity.translate(cx, cy).scale(k));
+      }
     }
   }, [worldData, data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
 
   const handleReset = useCallback(() => {
-    const svg = d3.select(svgRef.current);
-    if (zoomRef.current) {
-      svg.transition().duration(400).call(zoomRef.current.transform, d3.zoomIdentity.translate(10, 10).scale(1));
+    if (widget.mapProjection === 'orthographic') {
+      globeRotateRef.current = [0, -30, 0];
+      globeScaleRef.current = null;
+      render();
+    } else {
+      const svg = d3.select(svgRef.current);
+      if (zoomRef.current) {
+        svg.transition().duration(400).call(zoomRef.current.transform, d3.zoomIdentity.translate(10, 10).scale(1));
+      }
     }
-  }, []);
+  }, [widget.mapProjection, render]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -653,10 +729,12 @@ function renderLegend(svg, colorScale, minVal, maxVal, w, h, widget) {
   const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
   defs.select('#geo-grad').remove();
   const grad = defs.append('linearGradient').attr('id', 'geo-grad');
-  for (let i = 0; i <= 10; i++) {
+  const interp = colorScale.interpolator();
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
     grad.append('stop')
-      .attr('offset', `${i * 10}%`)
-      .attr('stop-color', colorScale(minVal + (maxVal - minVal) * (i / 10)));
+      .attr('offset', `${t * 100}%`)
+      .attr('stop-color', interp(t));
   }
   const legend = svg.append('g').attr('class', 'geo-legend');
   legend.append('rect').attr('x', lx).attr('y', ly).attr('width', legendW).attr('height', legendH)
