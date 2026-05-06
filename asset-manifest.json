@@ -1,17 +1,17 @@
 {
   "files": {
-    "main.css": "/Ytics/static/css/main.d830093c.css",
-    "main.js": "/Ytics/static/js/main.e3ad29f5.js",
+    "main.css": "/Ytics/static/css/main.43cf52ae.css",
+    "main.js": "/Ytics/static/js/main.e8a6ec50.js",
     "static/js/364.c45f8cf5.chunk.js": "/Ytics/static/js/364.c45f8cf5.chunk.js",
     "static/js/453.48144b84.chunk.js": "/Ytics/static/js/453.48144b84.chunk.js",
     "index.html": "/Ytics/index.html",
-    "main.d830093c.css.map": "/Ytics/static/css/main.d830093c.css.map",
-    "main.e3ad29f5.js.map": "/Ytics/static/js/main.e3ad29f5.js.map",
+    "main.43cf52ae.css.map": "/Ytics/static/css/main.43cf52ae.css.map",
+    "main.e8a6ec50.js.map": "/Ytics/static/js/main.e8a6ec50.js.map",
     "364.c45f8cf5.chunk.js.map": "/Ytics/static/js/364.c45f8cf5.chunk.js.map",
     "453.48144b84.chunk.js.map": "/Ytics/static/js/453.48144b84.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.d830093c.css",
-    "static/js/main.e3ad29f5.js"
+    "static/css/main.43cf52ae.css",
+    "static/js/main.e8a6ec50.js"
   ]
 }

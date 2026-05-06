@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Northwind Sales",
+    "description": "Retail sales data with KPIs, combo charts, and cross-filtering. Shows multi-page layout and selections.",
+    "file": "Northwind.ytics",
+    "thumbnail": "Northwind.png"
+  }
+]
