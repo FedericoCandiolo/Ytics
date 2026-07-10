@@ -7,7 +7,7 @@
   },
   {
     "name": "World Population",
-    "description": "Retail sales data with KPIs, combo charts, and cross-filtering. Shows multi-page layout and selections.",
+    "description": "Global population data explored through geo maps, scatter plots, and advanced analytics — showcasing the full range of Ytics visualization capabilities.",
     "file": "World Population.ytics",
     "thumbnail": "World Population.png"
   }
