@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="index, follow" />
+  <title>Ytics — Dashboard builder for data analytics and visualization</title>
+  <meta name="description" content="Ytics is a free, browser-based dashboard builder for data analytics and visualization. Import CSV data, build interactive dashboards with dozens of chart types, and explore your data with filters and selections." />
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #ffffff;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 3rem 1.25rem 4rem;
+    }
+    header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
+    header img { width: 48px; height: 48px; border-radius: 8px; }
+    h1 { font-size: 2.4rem; margin: 0; }
+    .tagline { font-size: 1.2rem; color: #444; margin: 0 0 2rem; }
+    h2 { font-size: 1.3rem; margin-top: 2.5rem; }
+    ul { padding-left: 1.25rem; }
+    li { margin: 0.35rem 0; }
+    a { color: #2563eb; }
+    .cta {
+      display: inline-block; margin-top: 2rem; padding: 0.8rem 1.6rem;
+      background: #2563eb; color: #fff; text-decoration: none; border-radius: 8px;
+      font-weight: 600; font-size: 1.05rem;
+    }
+    .cta:hover { background: #1d4ed8; }
+    footer { margin-top: 3.5rem; color: #888; font-size: 0.85rem; border-top: 1px solid #e5e5e5; padding-top: 1rem; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e5e5e5; background: #121212; }
+      .tagline { color: #bbb; }
+      footer { border-color: #333; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/logo.png" alt="Ytics logo" onerror="this.style.display='none'" />
+    <h1>Ytics</h1>
+  </header>
+
+  <p class="tagline">A free, browser-based dashboard builder for data analytics and visualization.</p>
+
+  <h2>What is Ytics?</h2>
+  <p>
+    <strong>Ytics</strong> is a web application that lets anyone turn raw data into interactive
+    dashboards — no installation, no account, and no cost. You import your own data (such as CSV
+    files), design dashboards on a drag-and-drop grid, and explore the results with filters and
+    cross-chart selections. Everything runs entirely in your browser; your data stays on your device.
+  </p>
+
+  <h2>What you can do with it</h2>
+  <ul>
+    <li>Import and transform your own datasets (CSV and more).</li>
+    <li>Build dashboards with dozens of chart types — bar, line, pie, scatter, geographic maps, pivot tables, heat maps, treemaps, and many others.</li>
+    <li>Filter and drill into your data with interactive selections that update every chart at once.</li>
+    <li>Define calculated measures and aggregations without writing code.</li>
+    <li>Optionally open and save your dashboard files to your own Google Drive.</li>
+  </ul>
+
+  <h2>Google Drive integration</h2>
+  <p>
+    Ytics offers an optional feature to open and save dashboard files directly to your Google Drive.
+    It requests only the narrow <code>drive.file</code> permission, which grants access solely to the
+    files you explicitly open or that Ytics creates — never the rest of your Drive. See our
+    <a href="/privacy">Privacy Policy</a> for details.
+  </p>
+
+  <a class="cta" href="/">Open Ytics →</a>
+
+  <footer>
+    &copy; 2026 Ytics · <a href="/">ytics.online</a> · <a href="/privacy">Privacy Policy</a>
+  </footer>
+</body>
+</html>
