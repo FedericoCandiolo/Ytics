@@ -2,7 +2,7 @@
   "name": "ytics",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://federicocandiolo.github.io/Ytics",
+  "homepage": "https://ytics.online",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -10,6 +10,7 @@
     "@testing-library/user-event": "^13.5.0",
     "d3": "^7.9.0",
     "d3-sankey": "^0.12.3",
+    "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "papaparse": "^5.5.3",
     "react": "^19.2.4",

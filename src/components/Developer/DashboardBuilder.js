@@ -354,8 +354,16 @@ export default function DashboardBuilder() {
           ? <WidgetEditor widgetId={editingWidgetId} />
           : (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div className="db-sidebar-header">
+              <div className="db-sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>Dashboard</span>
+                <button
+                  className={`btn btn-sm ${state.renderPaused ? 'btn-primary' : 'btn-secondary'}`}
+                  title={state.renderPaused ? 'Resume rendering (calculations are frozen)' : 'Pause rendering to avoid recalculations while editing'}
+                  onClick={() => dispatch({ type: 'SET_RENDER_PAUSED', payload: !state.renderPaused })}
+                  style={{ fontSize: 11 }}
+                >
+                  {state.renderPaused ? '▶ Resume' : '⏸ Pause'}
+                </button>
               </div>
               <div className="db-sidebar-body">
                 {/* ── Dashboard Styles Section ── */}

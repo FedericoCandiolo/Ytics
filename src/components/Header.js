@@ -144,10 +144,34 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
   const [openDropdown, setOpenDropdown] = useState(false);
   const [saveDropdown, setSaveDropdown] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [screenshotting, setScreenshotting] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
   const menuRef = useRef(null);
   const openRef = useRef(null);
   const saveRef = useRef(null);
+
+  const handleScreenshot = async () => {
+    const selector = state.mode === 'viewer' ? '.viewer-canvas' : '.db-canvas';
+    const el = document.querySelector(selector);
+    if (!el) return;
+    setScreenshotting(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(el, {
+        useCORS: true,
+        allowTaint: true,
+        scale: window.devicePixelRatio || 1,
+        backgroundColor: null,
+      });
+      const link = document.createElement('a');
+      link.download = `${state.dashboard.title || 'dashboard'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      alert('Screenshot failed: ' + err.message);
+    }
+    setScreenshotting(false);
+  };
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -407,6 +431,14 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setShowExamples(true)} title="Example dashboards">
             Examples
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleScreenshot}
+            disabled={screenshotting}
+            title="Download dashboard as PNG"
+          >
+            {screenshotting ? '⏳' : '📷'}
           </button>
           <button className="btn btn-secondary btn-sm" onClick={onHelpOpen} title="Help & Documentation">
             ? Help

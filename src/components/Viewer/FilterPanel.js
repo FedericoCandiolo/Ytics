@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getFieldsByTable } from '../../utils/associativeEngine';
+import { v4 as uuid } from 'uuid';
 
 // ── Selection pill popup (categorical) ───────────────────────────────────────
 function SelectionPopup({ field, colStore, associativeState, selectedValues, dispatch, onClose }) {
@@ -188,11 +189,95 @@ function AddSelectionPopup({ colStore, existingFields, onAdd, onClose }) {
   );
 }
 
+// ── Bookmarks panel ──────────────────────────────────────────────────────────
+function BookmarksPanel({ bookmarks, selections, dispatch, onClose }) {
+  const [newName, setNewName] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const handleSave = () => {
+    const name = newName.trim();
+    if (!name) return;
+    dispatch({ type: 'SAVE_BOOKMARK', payload: { id: uuid(), name } });
+    setNewName('');
+  };
+
+  const hasSelections = Object.keys(selections).length > 0;
+
+  return (
+    <div ref={ref} className="filter-popup" style={{
+      position: 'absolute', top: 'calc(100% + 6px)', right: 0, left: 'auto',
+      zIndex: 200, minWidth: 240, maxWidth: 300,
+    }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Bookmarks</div>
+
+      {/* Save current */}
+      {hasSelections && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Save current selections as:</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input
+              className="input input-sm"
+              style={{ flex: 1 }}
+              placeholder="Bookmark name..."
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+              autoFocus
+            />
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={!newName.trim()}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Saved bookmarks */}
+      {bookmarks.length === 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 0' }}>
+          {hasSelections ? 'No bookmarks yet.' : 'Make a selection first, then save it as a bookmark.'}
+        </div>
+      ) : (
+        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          {bookmarks.map(bm => (
+            <div key={bm.id} style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 0', borderBottom: '1px solid var(--border)',
+            }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ flex: 1, textAlign: 'left', fontSize: 12, fontWeight: 400, justifyContent: 'flex-start' }}
+                onClick={() => { dispatch({ type: 'LOAD_BOOKMARK', payload: bm.id }); onClose(); }}
+                title={`Load: ${Object.keys(bm.selections || {}).join(', ')}`}
+              >
+                🔖 {bm.name}
+              </button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}
+                onClick={() => dispatch({ type: 'DELETE_BOOKMARK', payload: bm.id })}
+                title="Delete bookmark"
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── FilterPanel (now selection-based) ────────────────────────────────────────
 export default function FilterPanel() {
   const { state, dispatch, associativeState } = useApp();
   const [addOpen, setAddOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const addRef = useRef(null);
+  const bookmarksRef = useRef(null);
 
   useEffect(() => {
     const handler = (e) => { if (addRef.current && !addRef.current.contains(e.target)) setAddOpen(false); };
@@ -203,10 +288,25 @@ export default function FilterPanel() {
   const selections = state.selections || {};
   const selectionEntries = Object.entries(selections);
   const existingFields = new Set(selectionEntries.map(([f]) => f));
+  const bookmarks = state.dashboard.bookmarks || [];
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', flexShrink: 0 }}>Selections:</span>
+
+      {/* Undo / Redo selection history */}
+      <button
+        className="btn btn-ghost btn-sm"
+        title="Undo selection (Ctrl+Z)"
+        onClick={() => dispatch({ type: 'SELECTION_UNDO' })}
+        style={{ padding: '0 6px', fontSize: 14 }}
+      >←</button>
+      <button
+        className="btn btn-ghost btn-sm"
+        title="Redo selection (Ctrl+Y)"
+        onClick={() => dispatch({ type: 'SELECTION_REDO' })}
+        style={{ padding: '0 6px', fontSize: 14 }}
+      >→</button>
 
       {selectionEntries.map(([field, values]) => (
         <SelectionPill
@@ -242,6 +342,26 @@ export default function FilterPanel() {
           Clear all
         </button>
       )}
+
+      {/* Bookmarks */}
+      <div ref={bookmarksRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+        <button
+          className={`btn btn-sm ${bookmarks.length > 0 ? 'btn-secondary' : 'btn-ghost'}`}
+          onClick={() => setBookmarksOpen(o => !o)}
+          title="Saved selection bookmarks"
+          disabled={state.datasets.length === 0}
+        >
+          🔖 {bookmarks.length > 0 ? bookmarks.length : ''}
+        </button>
+        {bookmarksOpen && (
+          <BookmarksPanel
+            bookmarks={bookmarks}
+            selections={selections}
+            dispatch={dispatch}
+            onClose={() => setBookmarksOpen(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }

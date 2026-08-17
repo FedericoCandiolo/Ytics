@@ -713,6 +713,15 @@ export function getPipelineOutputTypes(data, steps) {
   return detectColumnTypes(output);
 }
 
+// Returns column types from pipeline schema — skips filter/topN/sort steps so
+// an aggressive filter on the 100-row sample never hides derived column names.
+export function getPipelineSchemaTypes(data, steps) {
+  if (!data?.length || !steps?.length) return {};
+  const schemaSteps = steps.filter(s => s.type !== 'filter' && s.type !== 'topN' && s.type !== 'sort');
+  const output = executeMeasurePipeline(data.slice(0, 100), schemaSteps);
+  return detectColumnTypes(output);
+}
+
 // ── Sorting & Grouping Utilities ─────────────────────────────────────────────
 
 export function sortAggregated(pts, options = {}) {

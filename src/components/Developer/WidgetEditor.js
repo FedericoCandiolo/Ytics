@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import { useApp } from '../../context/AppContext';
-import { COLOR_SCHEMES, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, NUMBER_FORMATS, executeMeasurePipeline, detectColumnTypes } from '../../utils/dataUtils';
+import { COLOR_SCHEMES, AGGREGATIONS_BASIC, AGGREGATIONS_ADVANCED, AGGREGATIONS_PARAM, NUMBER_FORMATS, executeMeasurePipeline, detectColumnTypes, getPipelineSchemaTypes } from '../../utils/dataUtils';
 import { getSwatchColors, getGradientSwatches, GRADIENT_SCHEMES, getColorArray, resolveGradient } from '../../utils/colorUtils';
 import { TYPE_ICONS } from '../Widgets/WidgetContainer';
 import MeasurePipeline from './MeasurePipeline';
@@ -2451,6 +2451,40 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
             onChange={e => onUpdate({ graphEdgeColor: e.target.value })} />
         </div>
       )}
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.graphCurvedLinks} onChange={e => onUpdate({ graphCurvedLinks: e.target.checked })} />
+        Curved links (better for bi-directional / self-loops)
+      </label>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Link distance mode</label>
+        <select className="select select-sm" value={widget.graphLinkDistanceMode || 'constant'} onChange={e => onUpdate({ graphLinkDistanceMode: e.target.value })}>
+          <option value="constant">Constant</option>
+          <option value="measure">By edge measure (value)</option>
+        </select>
+      </div>
+      {widget.graphLinkDistanceMode === 'measure' ? (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Distance range — {widget.graphLinkDistanceMin ?? 60}px – {widget.graphLinkDistanceMax ?? 200}px</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Min</span>
+            <input type="range" min={20} max={300} value={widget.graphLinkDistanceMin ?? 60}
+              onChange={e => onUpdate({ graphLinkDistanceMin: parseInt(e.target.value) })} style={{ flex: 1 }} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Max</span>
+            <input type="range" min={60} max={500} value={widget.graphLinkDistanceMax ?? 200}
+              onChange={e => onUpdate({ graphLinkDistanceMax: parseInt(e.target.value) })} style={{ flex: 1 }} />
+          </div>
+          <label className="checkbox-row" style={{ marginTop: 4 }}>
+            <input type="checkbox" checked={!!widget.graphLinkDistanceInvert} onChange={e => onUpdate({ graphLinkDistanceInvert: e.target.checked })} />
+            Invert (higher value = shorter link)
+          </label>
+        </div>
+      ) : (
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Link distance — {widget.graphLinkDistance ?? 80}px</label>
+          <input type="range" min={20} max={400} value={widget.graphLinkDistance ?? 80}
+            onChange={e => onUpdate({ graphLinkDistance: parseInt(e.target.value) })} />
+        </div>
+      )}
       <div className="form-group" style={{ marginBottom: 10 }}>
         <label className="form-label">Repulsion strength — {widget.graphCharge ?? -200}</label>
         <input type="range" min={-600} max={-20} value={widget.graphCharge ?? -200}
@@ -3284,19 +3318,18 @@ export default function WidgetEditor({ widgetId }) {
   // Table-grouped fields for all dropdowns
   const tableGroups = useMemo(() => getFieldsByTable(state.colStore), [state.colStore]);
 
-  // Derived/custom columns from MeasurePipeline (columns NOT present in any table)
+  // Derived/custom columns from MeasurePipeline (columns NOT present in any table).
+  // Uses schema-only execution (skips filter/topN/sort) so a restrictive filter on
+  // the 100-row sample never causes aggregated columns to disappear from field pickers.
   const customFields = useMemo(() => {
     if (!widget?.measures?.length || !syntheticData.length) return [];
     try {
-      const output = executeMeasurePipeline(syntheticData.slice(0, 100), widget.measures);
-      if (output.length > 0) {
-        const types = detectColumnTypes(output);
-        const allFieldNames = new Set(allFields.map(f => f.name));
-        return Object.keys(types)
-          .filter(name => !allFieldNames.has(name))
-          .map(name => ({ name, type: types[name] }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-      }
+      const types = getPipelineSchemaTypes(syntheticData, widget.measures);
+      const allFieldNames = new Set(allFields.map(f => f.name));
+      return Object.keys(types)
+        .filter(name => !allFieldNames.has(name))
+        .map(name => ({ name, type: types[name] }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     } catch { /* fallback */ }
     return [];
   }, [allFields, syntheticData, widget?.measures]);

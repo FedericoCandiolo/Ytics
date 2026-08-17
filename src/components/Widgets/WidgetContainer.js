@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useApp, canReplaceType } from '../../context/AppContext';
 import { executeMeasurePipeline } from '../../utils/dataUtils';
@@ -309,15 +309,26 @@ export default function WidgetContainer({ widget, isEditing, isSelected, onSelec
     return resolvedData;
   }, [resolvedData, drillFilters]);
 
+  // ── Pause render: freeze data/widget while paused so D3 charts don't re-run ──
+  const isPaused = state.renderPaused && isEditing; // only in developer mode
+  const pausedDataRef = useRef(null);
+  const pausedWidgetRef = useRef(null);
+  if (!isPaused) {
+    pausedDataRef.current = data;
+    pausedWidgetRef.current = effectiveWidget;
+  }
+  const frozenData = isPaused && pausedDataRef.current !== null ? pausedDataRef.current : data;
+  const frozenWidget = isPaused && pausedWidgetRef.current !== null ? pausedWidgetRef.current : effectiveWidget;
+
   const Chart = CHART_MAP[widget.type] || BarChart;
   const closeMaximize = useCallback(() => setMaximized(false), [setMaximized]);
 
   const crossFilter = isEditing ? undefined : onCrossFilter;
-  const hasData = data.length > 0 || state.datasets.length > 0;
+  const hasData = frozenData.length > 0 || state.datasets.length > 0;
   const chartBody = hasData
     ? <Chart
-        widget={effectiveWidget}
-        data={data}
+        widget={frozenWidget}
+        data={frozenData}
         onCrossFilter={crossFilter}
         isEditing={isEditing}
         onSlideChange={widget.type === 'carousel' && widget.carouselUseSlideTitle ? setSlideTitle : undefined}

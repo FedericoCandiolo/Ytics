@@ -131,8 +131,8 @@ export default function HelpPage({ onClose }) {
             </p>
             <p style={{ marginTop: 8, fontSize: 13 }}>
               Also available as standalone pages:{' '}
-              <a href="/user-guide.html" target="_blank" rel="noopener noreferrer">Full User Guide</a>{' | '}
-              <a href="/measures-guide.html" target="_blank" rel="noopener noreferrer">Measures Guide</a>
+              <a href={`${process.env.PUBLIC_URL}/user-guide.html`} target="_blank" rel="noopener noreferrer">Full User Guide</a>{' | '}
+              <a href={`${process.env.PUBLIC_URL}/measures-guide.html`} target="_blank" rel="noopener noreferrer">Measures Guide</a>
             </p>
           </div>
 

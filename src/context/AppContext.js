@@ -164,6 +164,7 @@ const initialState = {
     consistentColorFields: [],     // field names using sorted-palette consistent coloring across all charts
     fieldSynonyms: {},             // { fieldName: ['synonym1', 'synonym2', ...] }
     advancedStats: false,  // enable advanced aggregation functions + formula editor
+    bookmarks: [],         // [{ id, name, selections }] — saved selection snapshots
     modelPositions: null,  // { datasetId: { x, y }, ... } for data model ER diagram
     // Shared dimension definitions + state
     hierarchicDimensions: [], // [{ id, name, levels: [field,...], currentLevel: 0, filters: [] }]
@@ -174,6 +175,7 @@ const initialState = {
   selections: {},  // { fieldName: string[] } — associative selections
   editingWidgetId: null,
   maximizedWidgetId: null,
+  renderPaused: false,
   colStore: { dicts: {}, tables: {} },
 };
 
@@ -315,16 +317,22 @@ function defaultWidget(overrides = {}) {
     // Graph chart
     graphDirected: false,
     graphShowLabels: true,
+    graphCurvedLinks: false,
     graphNodeSizeMin: 6,
     graphNodeSizeMax: 24,
     graphEdgeWidth: 2,
-    graphEdgeWidthMode: 'constant',   // 'constant' | 'measure'
+    graphEdgeWidthMode: 'constant',       // 'constant' | 'measure'
     graphEdgeWidthMin: 1,
     graphEdgeWidthMax: 8,
-    graphEdgeColorMode: 'source',     // 'source' | 'target' | 'constant' | 'measure'
+    graphEdgeColorMode: 'source',         // 'source' | 'target' | 'constant' | 'measure'
     graphEdgeColor: '#999999',
     graphCharge: -200,
     graphLinkStrength: 0.4,
+    graphLinkDistance: 80,
+    graphLinkDistanceMode: 'constant',    // 'constant' | 'measure'
+    graphLinkDistanceMin: 60,
+    graphLinkDistanceMax: 200,
+    graphLinkDistanceInvert: false,       // when true: higher value = shorter link
     // Network chart (organigram/tree)
     networkLayout: 'top-down',        // 'top-down' | 'bottom-up' | 'left-right' | 'right-left' | 'radial'
     networkNodeStyle: 'circle',       // 'circle' | 'card'
@@ -765,6 +773,31 @@ function reducer(state, action) {
 
     case 'RESTORE_SELECTIONS':
       return { ...state, selections: action.payload };
+
+    // ── Bookmarks ─────────────────────────────────────────────
+    case 'SAVE_BOOKMARK': {
+      const { id: bmId, name: bmName } = action.payload;
+      const existing = (state.dashboard.bookmarks || []).find(b => b.id === bmId);
+      const bookmarks = existing
+        ? (state.dashboard.bookmarks || []).map(b => b.id === bmId ? { ...b, name: bmName, selections: state.selections } : b)
+        : [...(state.dashboard.bookmarks || []), { id: uuid(), name: bmName, selections: state.selections }];
+      return { ...state, dashboard: { ...state.dashboard, bookmarks } };
+    }
+
+    case 'DELETE_BOOKMARK': {
+      const bookmarks = (state.dashboard.bookmarks || []).filter(b => b.id !== action.payload);
+      return { ...state, dashboard: { ...state.dashboard, bookmarks } };
+    }
+
+    case 'LOAD_BOOKMARK': {
+      const bm = (state.dashboard.bookmarks || []).find(b => b.id === action.payload);
+      if (!bm) return state;
+      return { ...state, selections: bm.selections || {} };
+    }
+
+    // ── Render pause ──────────────────────────────────────────
+    case 'SET_RENDER_PAUSED':
+      return { ...state, renderPaused: action.payload };
 
     // ── Dimension colors ───────────────────────────────────────
     case 'SET_MODEL_POSITIONS':
