@@ -216,7 +216,7 @@ export default function TriangularHeatMap({ widget, data, onCrossFilter }) {
     // ── Color legend — vertical bar on the left margin ────────────────────────
     const legBarW = 8;
     const legBarH = Math.min(160, H * 0.65);
-    const legLx = 4;
+    const legLx = 18;
     const legLy = m.top + (H - legBarH) / 2;
 
     const defs = svg.append('defs');
