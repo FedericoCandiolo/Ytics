@@ -70,9 +70,13 @@ export default function TriangularHeatMap({ widget, data, onCrossFilter }) {
     while (xDomain.length < N) xDomain.push(null);
     while (yDomain.length < N) yDomain.push(null);
 
-    // Margins: top/bottom hold labels and legend
+    // Peak down: X labels at top, apex at bottom (small bottom margin).
+    // Peak up:   X labels at bottom, apex at top (small top margin).
+    // Legend is vertical on the left for both — no horizontal legend margin needed.
     const labelGap = 5;
-    const m = { top: 72, right: 24, bottom: 52, left: 76 };
+    const m = peakDown
+      ? { top: 72, right: 24, bottom: 16, left: 76 }
+      : { top: 24, right: 24, bottom: 52, left: 76 };
     const W = w - m.left - m.right;
     const H = h - m.top - m.bottom;
     if (W <= 0 || H <= 0 || N < 1) return;
@@ -209,31 +213,29 @@ export default function TriangularHeatMap({ widget, data, onCrossFilter }) {
         .text(truncated);
     }
 
-    // ── Color legend ──────────────────────────────────────────────────────────
-    const legW = Math.min(W * 0.55, 130);
-    const legH = 8;
-    const legX = cx - legW / 2;
-
-    // Peak down: below the apex (bottom of triangle).
-    // Peak up:   above the apex (in the top margin, unused space).
-    const bottomOfTriangle = rowStartY + (N - 1) * 1.5 * hexR + hexR;
-    const legY = peakDown
-      ? bottomOfTriangle + 14
-      : 10; // top margin — apex is at rowStartY = m.top + hexR, well below this
+    // ── Color legend — vertical bar on the left margin ────────────────────────
+    const legBarW = 8;
+    const legBarH = Math.min(160, H * 0.65);
+    const legLx = 4;
+    const legLy = m.top + (H - legBarH) / 2;
 
     const defs = svg.append('defs');
     const gradId = `trihm-grad-${Math.random().toString(36).slice(2, 6)}`;
-    const grad = defs.append('linearGradient').attr('id', gradId);
+    // y1=1 → y2=0 so bottom of bar = vMin, top = vMax
+    const grad = defs.append('linearGradient').attr('id', gradId)
+      .attr('x1', '0').attr('y1', '1').attr('x2', '0').attr('y2', '0');
     for (let i = 0; i <= 10; i++) {
       grad.append('stop').attr('offset', `${i * 10}%`)
         .attr('stop-color', colorScale(vMin + (i / 10) * (vMax - vMin)));
     }
-    const legG = g.append('g').attr('transform', `translate(${legX}, ${legY})`);
-    legG.append('rect').attr('width', legW).attr('height', legH).attr('rx', 3).attr('fill', `url(#${gradId})`);
-    legG.append('text').attr('x', 0).attr('y', 20).attr('font-size', 9.5)
-      .attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin, widget.numberFormat));
-    legG.append('text').attr('x', legW).attr('y', 20).attr('text-anchor', 'end').attr('font-size', 9.5)
+    const legG = g.append('g').attr('transform', `translate(${legLx}, ${legLy})`);
+    legG.append('rect').attr('width', legBarW).attr('height', legBarH).attr('rx', 3).attr('fill', `url(#${gradId})`);
+    legG.append('text').attr('x', legBarW / 2).attr('y', -4)
+      .attr('text-anchor', 'middle').attr('font-size', 9.5)
       .attr('fill', 'var(--chart-axis-color)').text(formatValue(vMax, widget.numberFormat));
+    legG.append('text').attr('x', legBarW / 2).attr('y', legBarH + 12)
+      .attr('text-anchor', 'middle').attr('font-size', 9.5)
+      .attr('fill', 'var(--chart-axis-color)').text(formatValue(vMin, widget.numberFormat));
   }, [data, widget, dims, showTooltip, moveTooltip, hideTooltip, onCrossFilter]);
 
   useEffect(render, [render]);
