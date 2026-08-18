@@ -30,6 +30,11 @@ const DIVERGING = {
 const SEMANTIC = {
   trafficLight: ['#d32f2f', '#e64a19', '#f57f17', '#fbc02d', '#fdd835', '#c5e1a5', '#7cb342', '#43a047', '#2e7d32'],
   rainbow:      ['#e53935', '#f4511e', '#fb8c00', '#fdd835', '#43a047', '#00acc1', '#1e88e5', '#3949ab', '#8e24aa'],
+  // Colorblind-safe palettes
+  deuteranopia: ['#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2', '#D55E00', '#CC79A7', '#000000', '#999999'],
+  protanopia:   ['#0077BB', '#33BBEE', '#009988', '#EE7733', '#CC3311', '#EE3377', '#BBBBBB', '#555555', '#000000'],
+  tritanopia:   ['#CC0000', '#006600', '#FF8800', '#884400', '#00AA44', '#993300', '#338800', '#CC6600', '#333333'],
+  greyscale:    ['#111111', '#333333', '#555555', '#777777', '#999999', '#AAAAAA', '#BBBBBB', '#CCCCCC', '#DDDDDD'],
 };
 
 export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING, ...SEMANTIC };
@@ -92,8 +97,13 @@ const INTERPOLATORS = {
   contrast: interpFromColors([d3.schemeDark2[1], d3.schemeDark2[5], d3.schemeDark2[4], d3.schemeDark2[0]]),                          // orange → gold → green → teal
   duo:      interpFromColors([d3.schemePaired[5], d3.schemePaired[7], d3.schemePaired[6], d3.schemePaired[10], d3.schemePaired[3], d3.schemePaired[1]]),  // red → orange → peach → yellow → green → blue
   bold:         interpFromColors([d3.schemeAccent[6], d3.schemeAccent[2], d3.schemeAccent[3], d3.schemeAccent[0], d3.schemeAccent[4]]),    // brown → peach → yellow → green → blue
-  trafficLight: interpFromColors(['#d32f2f', '#f57f17', '#fdd835', '#7cb342', '#2e7d32']),  // red → amber → yellow → lime → green
-  rainbow:      interpFromColors(['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa']),  // red → orange → yellow → green → blue → violet
+  trafficLight: interpFromColors(['#d32f2f', '#f57f17', '#fdd835', '#7cb342', '#2e7d32']),
+  rainbow:      interpFromColors(['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa']),
+  // Colorblind-safe gradients
+  deuteranopia: d3.interpolateCividis,  // perceptually uniform, designed for red-green colorblindness
+  protanopia:   interpFromColors(['#2c1654', '#1565c0', '#4fc3f7', '#fffde7', '#ffa726', '#e65100']),  // violet → blue → sky → cream → amber → deep-orange
+  tritanopia:   interpFromColors(['#7b0000', '#c62828', '#ef9a9a', '#c8e6c9', '#388e3c', '#1b5e20']),  // dark-red → red → pink → mint → green → dark-green
+  greyscale:    d3.interpolateGreys,
 };
 
 // Gradient schemes available in the UI
@@ -109,6 +119,8 @@ export const GRADIENT_SCHEMES = {
   viridis: 'Viridis', plasma: 'Plasma', inferno: 'Inferno', turbo: 'Turbo', spectral: 'Spectral',
   // Semantic
   trafficLight: 'Traffic Light', rainbow: 'Rainbow',
+  // Colorblind-safe
+  deuteranopia: 'Deuteranopia', protanopia: 'Protanopia', tritanopia: 'Tritanopia', greyscale: 'Greyscale',
 };
 
 // Maps each categorical palette to its own gradient (same key)
@@ -127,6 +139,8 @@ const PALETTE_DEFAULT_GRADIENT = {
   warmCool: 'warmCool', brownGreen: 'brownGreen',
   // Semantic
   trafficLight: 'trafficLight', rainbow: 'rainbow',
+  // Colorblind-safe
+  deuteranopia: 'deuteranopia', protanopia: 'protanopia', tritanopia: 'tritanopia', greyscale: 'greyscale',
 };
 
 /** Resolves the gradient key: explicit override → palette default → 'blues' fallback */
