@@ -28,8 +28,8 @@ const DIVERGING = {
 };
 
 const SEMANTIC = {
-  trafficLight: ['#d32f2f', '#f57f17', '#fdd835', '#9ccc65', '#43a047', '#2e7d32'],
-  rainbow:      ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#3949ab', '#8e24aa'],
+  trafficLight: ['#d32f2f', '#e64a19', '#f57f17', '#fbc02d', '#fdd835', '#c5e1a5', '#7cb342', '#43a047', '#2e7d32'],
+  rainbow:      ['#e53935', '#f4511e', '#fb8c00', '#fdd835', '#43a047', '#00acc1', '#1e88e5', '#3949ab', '#8e24aa'],
 };
 
 export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING, ...SEMANTIC };
