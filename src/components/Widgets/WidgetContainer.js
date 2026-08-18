@@ -36,6 +36,7 @@ import ImageWidget from './ImageWidget';
 import EmbedWidget from './EmbedWidget';
 import Correlogram from './Correlogram';
 import DensityChart from './DensityChart';
+import TriangularHeatMap from './TriangularHeatMap';
 import { getColorArray } from '../../utils/colorUtils';
 
 // Returns the field whose values are used for dimension coloring
@@ -63,7 +64,7 @@ const CHART_MAP = {
   pivot: PivotTable,
   waterfall: WaterfallChart, wordcloud: WordCloud, funnel: FunnelChart,
   kpi: KPICard, bubble: BubbleChart, combo: ComboChart,
-  straighttable: StraightTable, mekko: MekkoChart, graph: GraphChart, network: NetworkChart, correlogram: Correlogram, density: DensityChart,
+  straighttable: StraightTable, mekko: MekkoChart, graph: GraphChart, network: NetworkChart, correlogram: Correlogram, density: DensityChart, triheatmap: TriangularHeatMap,
   text: TextContent, image: ImageWidget, embed: EmbedWidget,
 };
 
@@ -75,7 +76,7 @@ const TYPE_ICONS = {
   pivot: '⊞',
   waterfall: '📉', wordcloud: '☁', funnel: '🔻', kpi: '🎯',
   bubble: '🫧', combo: '📊📈', straighttable: '▦', mekko: '▥',
-  correlogram: '🔲', density: '🌫', graph: '🕸️', network: '🌳',
+  correlogram: '🔲', density: '🌫', graph: '🕸️', network: '🌳', triheatmap: '🔺',
   text: '📝', image: '🖼', embed: '🔗',
 };
 

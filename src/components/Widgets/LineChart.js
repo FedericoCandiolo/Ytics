@@ -259,6 +259,11 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
     .attr('transform', isDate ? '' : 'rotate(-30)').style('text-anchor', isDate ? 'middle' : 'end');
   g.append('g').call(d3.axisLeft(yScale).ticks(5).tickFormat(fmtTick)).call(styledAxis);
 
+  // Area between lines (drawn before series so lines sit on top)
+  if (widget.fillBetweenLines || widget.fillBetweenLinesBottom) {
+    drawAreaBetweenLines(g, defs, W, H, seriesNames, seriesMap, xPos, yScale, colors, widget);
+  }
+
   // Draw each series
   seriesNames.forEach((name, si) => {
     const color = colors(name);
@@ -569,6 +574,96 @@ function addHoverOverlay(g, svg, widget, yField, seriesMap, seriesNames, seriesM
       focusDots.forEach(d => d.dot.style('display', 'none'));
       hideTooltip();
     });
+}
+
+/* ── Area between lines ──────────────────────────────────────────────────── */
+function drawAreaBetweenLines(g, defs, W, H, seriesNames, seriesMap, xPos, yScale, colors, widget) {
+  const isLinear = !widget.lineType || widget.lineType === 'linear';
+  if (!isLinear) return;
+
+  // Build pivot: all x values with each series' y at that x
+  const xMap = new Map();
+  for (const name of seriesNames) {
+    for (const pt of seriesMap.get(name) || []) {
+      const key = String(pt.x);
+      if (!xMap.has(key)) xMap.set(key, { x: pt.x, ys: new Map() });
+      xMap.get(key).ys.set(name, pt.y);
+    }
+  }
+
+  // Sort by pixel x position
+  const rows = [...xMap.values()].sort((a, b) => xPos(a) - xPos(b));
+
+  const clipId = `fill-between-clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  defs.append('clipPath').attr('id', clipId).append('rect').attr('width', W).attr('height', H);
+  const cg = g.append('g').attr('clip-path', `url(#${clipId})`).attr('pointer-events', 'none');
+
+  for (let k = 0; k < rows.length - 1; k++) {
+    const rowA = rows[k], rowB = rows[k + 1];
+    const pxA = xPos(rowA), pxB = xPos(rowB);
+
+    const active = seriesNames.filter(n =>
+      rowA.ys.has(n) && rowB.ys.has(n) && !isNaN(rowA.ys.get(n)) && !isNaN(rowB.ys.get(n))
+    );
+    if (active.length === 0) continue;
+
+    // Pixel y at both endpoints (smaller pixel y = higher value)
+    const pyA = {}, pyB = {};
+    for (const n of active) {
+      pyA[n] = yScale(rowA.ys.get(n));
+      pyB[n] = yScale(rowB.ys.get(n));
+    }
+
+    // Find all pairwise crossing points t ∈ (0,1) within this segment
+    const tBreaks = new Set([0, 1]);
+    for (let i = 0; i < active.length - 1; i++) {
+      for (let j = i + 1; j < active.length; j++) {
+        const ni = active[i], nj = active[j];
+        // ni(t) = pyA[ni] + t*(pyB[ni]-pyA[ni])
+        // nj(t) = pyA[nj] + t*(pyB[nj]-pyA[nj])
+        // equal when: pyA[ni] - pyA[nj] = t*((pyB[nj]-pyA[nj]) - (pyB[ni]-pyA[ni]))
+        const denom = (pyB[nj] - pyA[nj]) - (pyB[ni] - pyA[ni]);
+        if (Math.abs(denom) < 1e-10) continue;
+        const t = (pyA[ni] - pyA[nj]) / denom;
+        if (t > 1e-9 && t < 1 - 1e-9) tBreaks.add(t);
+      }
+    }
+
+    const tArr = [...tBreaks].sort((a, b) => a - b);
+
+    for (let ci = 0; ci < tArr.length - 1; ci++) {
+      const ta = tArr[ci], tb = tArr[ci + 1], tm = (ta + tb) / 2;
+      const evalY = (n, t) => pyA[n] + t * (pyB[n] - pyA[n]);
+      const evalX = t => pxA + t * (pxB - pxA);
+      const xA = evalX(ta), xB = evalX(tb);
+
+      // Sort ascending pixel y at midpoint → index 0 = topmost (highest data value)
+      const sorted = active.slice().sort((a, b) => evalY(a, tm) - evalY(b, tm));
+
+      // Fill between consecutive ranked pairs
+      if (widget.fillBetweenLines && sorted.length >= 2) {
+        for (let pi = 0; pi < sorted.length - 1; pi++) {
+          const upper = sorted[pi], lower = sorted[pi + 1];
+          const uyA = evalY(upper, ta), uyB = evalY(upper, tb);
+          const lyA = evalY(lower, ta), lyB = evalY(lower, tb);
+          cg.append('path')
+            .attr('d', `M${xA},${uyA} L${xB},${uyB} L${xB},${lyB} L${xA},${lyA} Z`)
+            .attr('fill', colors(upper))
+            .attr('opacity', 0.18);
+        }
+      }
+
+      // Fill bottom-most line down to y=0
+      if (widget.fillBetweenLinesBottom) {
+        const bottom = sorted[sorted.length - 1];
+        const byA = evalY(bottom, ta), byB = evalY(bottom, tb);
+        cg.append('path')
+          .attr('d', `M${xA},${byA} L${xB},${byB} L${xB},${H} L${xA},${H} Z`)
+          .attr('fill', colors(bottom))
+          .attr('opacity', 0.13);
+      }
+    }
+  }
 }
 
 /* ── Tooltip component ───────────────────────────────────────────────────── */

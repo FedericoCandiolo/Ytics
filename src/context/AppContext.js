@@ -234,6 +234,9 @@ function defaultWidget(overrides = {}) {
     lineType: 'linear',
     showPoints: true,
     showArea: false,
+    fillBetweenLines: false,
+    fillBetweenLinesBottom: false,
+    trianglePeak: 'down',
     // Line chart
     showTrendLine: false,
     innerRadius: 0,

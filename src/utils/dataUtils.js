@@ -1,7 +1,7 @@
 // ─── Data Utilities ───────────────────────────────────────────────────────────
 
 // ── CSV parsing (no external dependency) ─────────────────────────────────────
-function parseCSVLine(line) {
+function parseCSVLine(line, delim = ',') {
   const result = [];
   let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -9,7 +9,7 @@ function parseCSVLine(line) {
     if (c === '"') {
       if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
       else inQ = !inQ;
-    } else if (c === ',' && !inQ) {
+    } else if (c === delim && !inQ) {
       result.push(cur); cur = '';
     } else {
       cur += c;
@@ -19,7 +19,20 @@ function parseCSVLine(line) {
   return result;
 }
 
-export function readCSVFile(file) {
+// Sniff the most likely delimiter from the first line of a CSV file.
+export function detectCSVDelimiter(firstLine) {
+  const candidates = [',', ';', '\t', '|'];
+  let best = ',', bestCount = 0;
+  for (const d of candidates) {
+    // Count fields produced — more fields = better candidate
+    const count = parseCSVLine(firstLine, d).length;
+    if (count > bestCount) { bestCount = count; best = d; }
+  }
+  return best;
+}
+
+// delimiter: explicit character to use, or null to auto-detect from the first line.
+export function readCSVFile(file, delimiter = null) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read file'));
@@ -29,11 +42,12 @@ export function readCSVFile(file) {
         // Strip BOM if present
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) return resolve({ data: [], columns: [] });
-        const headers = parseCSVLine(lines[0]);
+        if (lines.length < 2) return resolve({ data: [], columns: [], delimiter: delimiter ?? ',' });
+        const delim = delimiter ?? detectCSVDelimiter(lines[0]);
+        const headers = parseCSVLine(lines[0], delim);
         const data = [];
         for (let i = 1; i < lines.length; i++) {
-          const vals = parseCSVLine(lines[i]);
+          const vals = parseCSVLine(lines[i], delim);
           const row = {};
           headers.forEach((h, j) => {
             const v = vals[j] ?? '';
@@ -41,7 +55,7 @@ export function readCSVFile(file) {
           });
           data.push(row);
         }
-        resolve({ data, columns: headers });
+        resolve({ data, columns: headers, delimiter: delim });
       } catch (err) {
         reject(err);
       }

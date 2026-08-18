@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getColumnInfo, readCSVFile, joinDatasets, applyTransformsUpTo, detectColumnTypes } from '../../utils/dataUtils';
+import { getColumnInfo, readCSVFile, detectCSVDelimiter, joinDatasets, applyTransformsUpTo, detectColumnTypes } from '../../utils/dataUtils';
 import { useBreakpoint } from '../../hooks/useMediaQuery';
 import DataModel from './DataModel';
 import ImportWizard from './ImportWizard';
@@ -14,25 +14,91 @@ function getFileExtension(name) {
   return (name || '').split('.').pop().toLowerCase();
 }
 
+const DELIMITERS = [
+  { value: ',',  label: 'Comma  ( , )' },
+  { value: ';',  label: 'Semicolon  ( ; )' },
+  { value: '\t', label: 'Tab  ( \\t )' },
+  { value: '|',  label: 'Pipe  ( | )' },
+];
+
+// ── CSV Delimiter Picker ───────────────────────────────────────────────────────
+function CsvDelimiterPicker({ file, detectedDelim, onConfirm, onCancel }) {
+  const [delim, setDelim] = useState(detectedDelim);
+  const [custom, setCustom] = useState('');
+  const isCustom = !DELIMITERS.some(d => d.value === delim);
+
+  const effective = isCustom ? (custom || detectedDelim) : delim;
+
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px',
+      background: 'var(--bg-elevated, var(--bg))', marginBottom: 10,
+    }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+        {file.name}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+        {detectedDelim !== ','
+          ? `Auto-detected delimiter: "${detectedDelim === '\t' ? '\\t' : detectedDelim}"`
+          : 'Comma delimiter detected'}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+        {DELIMITERS.map(d => (
+          <button key={d.value}
+            className={`btn btn-sm ${delim === d.value ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => { setDelim(d.value); setCustom(''); }}>
+            {d.label}
+          </button>
+        ))}
+        <button
+          className={`btn btn-sm ${isCustom ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setDelim('__custom__')}>
+          Custom
+        </button>
+      </div>
+      {(delim === '__custom__' || isCustom) && (
+        <input
+          className="input input-sm"
+          style={{ width: 80, marginBottom: 8 }}
+          placeholder="e.g. |"
+          maxLength={2}
+          value={custom}
+          onChange={e => setCustom(e.target.value)}
+          autoFocus
+        />
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className="btn btn-primary btn-sm" onClick={() => onConfirm(effective)}>
+          Load
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // ── File Uploader ─────────────────────────────────────────────────────────────
 function FileUploader({ onLoad, compact }) {
   const [dragging, setDragging] = useState(false);
   const [wizardFile, setWizardFile] = useState(null);
+  const [csvPending, setCsvPending] = useState(null); // { file, detectedDelim }
   const inputRef = useRef(null);
 
   const handleFile = useCallback(async (file) => {
     if (!file) return;
     const ext = getFileExtension(file.name);
 
-    // CSV: direct import (no wizard needed)
+    // CSV: sniff delimiter then show picker
     if (ext === 'csv') {
-      try {
-        const { data } = await readCSVFile(file);
-        if (data.length) onLoad(file.name, data);
-        else alert('No data found in file.');
-      } catch (err) {
-        alert('Parse error: ' + err.message);
-      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        let text = e.target.result;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+        const detectedDelim = detectCSVDelimiter(firstLine);
+        setCsvPending({ file, detectedDelim });
+      };
+      reader.readAsText(file);
       return;
     }
 
@@ -58,26 +124,47 @@ function FileUploader({ onLoad, compact }) {
     }
   }, [handleFile]);
 
+  const confirmCsv = useCallback(async (delim) => {
+    const { file } = csvPending;
+    setCsvPending(null);
+    try {
+      const { data } = await readCSVFile(file, delim);
+      if (data.length) onLoad(file.name, data);
+      else alert('No data found in file. Check that the delimiter is correct.');
+    } catch (err) {
+      alert('Parse error: ' + err.message);
+    }
+  }, [csvPending, onLoad]);
+
   return (
     <>
-      <div
-        className={`drop-zone ${dragging ? 'drop-zone--active' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
-        style={compact ? { padding: '14px 12px' } : undefined}
-      >
-        {!compact && <div className="drop-zone-icon">📂</div>}
-        <div style={{ fontWeight: 600, marginBottom: compact ? 0 : 4, fontSize: compact ? 12 : undefined }}>
-          {compact ? '📂 Drop file or click to browse' : 'Drop file here or click to browse'}
-        </div>
-        {!compact && <div className="text-sm text-muted">Supported: CSV, Excel (.xlsx/.xls), JSON</div>}
-        <input
-          ref={inputRef} type="file" accept={ACCEPTED_MIME} hidden
-          onChange={e => { handleFile(e.target.files[0]); e.target.value = ''; }}
+      {csvPending ? (
+        <CsvDelimiterPicker
+          file={csvPending.file}
+          detectedDelim={csvPending.detectedDelim}
+          onConfirm={confirmCsv}
+          onCancel={() => setCsvPending(null)}
         />
-      </div>
+      ) : (
+        <div
+          className={`drop-zone ${dragging ? 'drop-zone--active' : ''}`}
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          style={compact ? { padding: '14px 12px' } : undefined}
+        >
+          {!compact && <div className="drop-zone-icon">📂</div>}
+          <div style={{ fontWeight: 600, marginBottom: compact ? 0 : 4, fontSize: compact ? 12 : undefined }}>
+            {compact ? '📂 Drop file or click to browse' : 'Drop file here or click to browse'}
+          </div>
+          {!compact && <div className="text-sm text-muted">Supported: CSV, Excel (.xlsx/.xls), JSON</div>}
+          <input
+            ref={inputRef} type="file" accept={ACCEPTED_MIME} hidden
+            onChange={e => { handleFile(e.target.files[0]); e.target.value = ''; }}
+          />
+        </div>
+      )}
       {wizardFile && (
         <ImportWizard
           file={wizardFile}

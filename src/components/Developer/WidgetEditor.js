@@ -349,7 +349,7 @@ function AggregationSelect({ value, onChange, advancedStats, className, style, n
 // Which field key holds the "value to aggregate" for each chart type
 const AGG_VALUE_KEY = {
   bar: 'yField', line: 'yField', histogram: 'xField',
-  treemap: 'valueField', heatmap: 'valueField', bump: 'valueField', stream: 'valueField',
+  treemap: 'valueField', heatmap: 'valueField', triheatmap: 'valueField', bump: 'valueField', stream: 'valueField',
   radar: 'valueField', waffle: 'valueField', sankey: 'valueField', boxplot: 'yField',
   pivot: 'valueField',
   waterfall: 'valueField', wordcloud: 'valueField', funnel: 'valueField',
@@ -358,7 +358,7 @@ const AGG_VALUE_KEY = {
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'geo', 'text', 'image', 'embed'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'triheatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'geo', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -368,6 +368,7 @@ const COLOR_DIMENSION_FIELD = {
   pie: w => w.labelField,
   treemap: w => w.labelField,
   heatmap: w => w.xField,
+  triheatmap: w => w.xField,
   bump: w => w.colorField,
   stream: w => w.colorField,
   violin: w => w.xField,
@@ -430,6 +431,11 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
       { key: 'groupField',label: 'Group by (optional)',        filter: null, optional: true },
     ],
     heatmap: [
+      { key: 'xField',    label: 'Dimension (X axis)',        filter: null },
+      { key: 'yField',    label: 'Dimension (Y axis)',        filter: null },
+      { key: 'valueField',label: 'Measure',                   filter: null },
+    ],
+    triheatmap: [
       { key: 'xField',    label: 'Dimension (X axis)',        filter: null },
       { key: 'yField',    label: 'Dimension (Y axis)',        filter: null },
       { key: 'valueField',label: 'Measure',                   filter: null },
@@ -575,7 +581,7 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
     onUpdate(updates);
   };
 
-  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'graph', 'network', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'geo'].includes(widget.type);
+  const showAgg = ['bar', 'line', 'histogram', 'treemap', 'heatmap', 'triheatmap', 'bump', 'stream', 'radar', 'waffle', 'sankey', 'graph', 'network', 'pivot', 'waterfall', 'wordcloud', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'geo'].includes(widget.type);
 
   return (
     <div>
@@ -2122,6 +2128,22 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
         <input type="checkbox" checked={!!widget.showArea} onChange={e => onUpdate({ showArea: e.target.checked })} />
         Fill area under line
       </label>
+      {(!widget.lineType || widget.lineType === 'linear') && (
+        <>
+          <label className="checkbox-row" style={{ marginBottom: 8 }}>
+            <input type="checkbox" checked={!!widget.fillBetweenLines}
+              onChange={e => onUpdate({ fillBetweenLines: e.target.checked })} />
+            Fill area between lines
+          </label>
+          {widget.fillBetweenLines && (
+            <label className="checkbox-row" style={{ marginBottom: 8, paddingLeft: 16 }}>
+              <input type="checkbox" checked={!!widget.fillBetweenLinesBottom}
+                onChange={e => onUpdate({ fillBetweenLinesBottom: e.target.checked })} />
+              Fill bottom line to zero
+            </label>
+          )}
+        </>
+      )}
       {widget.showArea && widget.colorField && (
         <div className="form-group" style={{ marginTop: 8 }}>
           <label className="form-label">Area stack mode</label>
@@ -2863,6 +2885,19 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
 
   if (widget.type === 'heatmap') return (
     <div><SortOptions widget={widget} onUpdate={onUpdate} /></div>
+  );
+
+  if (widget.type === 'triheatmap') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Triangle peak</label>
+        <select className="select select-sm" value={widget.trianglePeak || 'down'} onChange={e => onUpdate({ trianglePeak: e.target.value })}>
+          <option value="down">Peak down (wide row at top)</option>
+          <option value="up">Peak up (wide row at bottom)</option>
+        </select>
+      </div>
+      <SortOptions widget={widget} onUpdate={onUpdate} />
+    </div>
   );
 
   if (widget.type === 'stream') return (

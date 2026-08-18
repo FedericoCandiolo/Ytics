@@ -331,9 +331,9 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
       <input ref={importRef} type="file" accept=".ytics,.zip" hidden onChange={handleImport} />
       <div className="header-logo">
         {!logoError ? (
-          <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="ytics" className="header-logo-img" onError={() => setLogoError(true)} />
+          <img src={`${process.env.PUBLIC_URL}/logo.png`} alt="Ytics" className="header-logo-img" onError={() => setLogoError(true)} />
         ) : (
-          !isMobile && <span>ytics</span>
+          !isMobile && <span>Ytics</span>
         )}
       </div>
 

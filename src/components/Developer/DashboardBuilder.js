@@ -24,6 +24,7 @@ const WIDGET_TYPES = [
   { type: 'geo',          label: 'Geo Map',        icon: '🌍' },
   { type: 'graph',        label: 'Graph Chart',    icon: '🕸️' },
   { type: 'heatmap',      label: 'Heat Map',       icon: '🌡' },
+  { type: 'triheatmap',  label: 'Triangular Heat Map', icon: '🔺' },
   { type: 'histogram',    label: 'Histogram',      icon: '▬' },
   { type: 'kpi',          label: 'KPI Card',       icon: '🎯' },
   { type: 'line',         label: 'Line Chart',     icon: '📈' },
