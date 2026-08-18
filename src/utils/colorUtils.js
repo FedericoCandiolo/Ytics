@@ -86,7 +86,9 @@ const INTERPOLATORS = {
   pastel:   interpFromColors([d3.schemePastel1[0], d3.schemePastel1[4], d3.schemePastel1[5], d3.schemePastel1[2], d3.schemePastel1[1]]),  // pink → peach → cream → mint → sky
   contrast: interpFromColors([d3.schemeDark2[1], d3.schemeDark2[5], d3.schemeDark2[4], d3.schemeDark2[0]]),                          // orange → gold → green → teal
   duo:      interpFromColors([d3.schemePaired[5], d3.schemePaired[7], d3.schemePaired[6], d3.schemePaired[10], d3.schemePaired[3], d3.schemePaired[1]]),  // red → orange → peach → yellow → green → blue
-  bold:     interpFromColors([d3.schemeAccent[6], d3.schemeAccent[2], d3.schemeAccent[3], d3.schemeAccent[0], d3.schemeAccent[4]]),    // brown → peach → yellow → green → blue
+  bold:         interpFromColors([d3.schemeAccent[6], d3.schemeAccent[2], d3.schemeAccent[3], d3.schemeAccent[0], d3.schemeAccent[4]]),    // brown → peach → yellow → green → blue
+  trafficLight: interpFromColors(['#d32f2f', '#f57f17', '#fdd835', '#7cb342', '#2e7d32']),  // red → amber → yellow → lime → green
+  rainbow:      interpFromColors(['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa']),  // red → orange → yellow → green → blue → violet
 };
 
 // Gradient schemes available in the UI
@@ -100,6 +102,8 @@ export const GRADIENT_SCHEMES = {
   warmCool: 'Red → Yellow → Blue', brownGreen: 'Brown → Green',
   // Perceptual
   viridis: 'Viridis', plasma: 'Plasma', inferno: 'Inferno', turbo: 'Turbo', spectral: 'Spectral',
+  // Semantic
+  trafficLight: 'Traffic Light', rainbow: 'Rainbow',
 };
 
 // Maps each categorical palette to its own gradient (same key)
