@@ -125,6 +125,8 @@ const PALETTE_DEFAULT_GRADIENT = {
   blues: 'blues', greens: 'greens', reds: 'reds', purples: 'purples', oranges: 'oranges',
   // Diverging
   warmCool: 'warmCool', brownGreen: 'brownGreen',
+  // Semantic
+  trafficLight: 'trafficLight', rainbow: 'rainbow',
 };
 
 /** Resolves the gradient key: explicit override → palette default → 'blues' fallback */
