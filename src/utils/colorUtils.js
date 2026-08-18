@@ -34,7 +34,7 @@ const SEMANTIC = {
   deuteranopia: ['#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2', '#D55E00', '#CC79A7', '#000000', '#999999'],
   protanopia:   ['#0077BB', '#33BBEE', '#009988', '#EE7733', '#CC3311', '#EE3377', '#BBBBBB', '#555555', '#000000'],
   tritanopia:   ['#CC0000', '#006600', '#FF8800', '#884400', '#00AA44', '#993300', '#338800', '#CC6600', '#333333'],
-  greyscale:    ['#111111', '#333333', '#555555', '#777777', '#999999', '#AAAAAA', '#BBBBBB', '#CCCCCC', '#DDDDDD'],
+  greyscale:    ['#111111', '#333333', '#555555', '#777777', '#999999', '#AAAAAA', '#BBBBBB', '#CCCCCC'],
 };
 
 export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING, ...SEMANTIC };
