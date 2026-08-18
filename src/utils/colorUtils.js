@@ -27,7 +27,12 @@ const DIVERGING = {
   brownGreen: d3.schemeBrBG[9],
 };
 
-export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING };
+const SEMANTIC = {
+  trafficLight: ['#d32f2f', '#f57f17', '#fdd835', '#9ccc65', '#43a047', '#2e7d32'],
+  rainbow:      ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#3949ab', '#8e24aa'],
+};
+
+export const ALL_SCHEMES = { ...CATEGORICAL, ...SEQUENTIAL, ...DIVERGING, ...SEMANTIC };
 
 // Deterministic string hash → palette index for consistent cross-chart coloring
 function valueHash(str) {
