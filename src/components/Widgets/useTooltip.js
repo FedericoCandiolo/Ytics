@@ -1,24 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
-/**
- * useTooltip — shared tooltip hook for all chart components.
- * Renders via a portal so it always appears above the grid.
- *
- * Usage:
- *   const { tooltipEl, showTooltip, moveTooltip, hideTooltip } = useTooltip();
- *   ...
- *   <svg onMouseMove={moveTooltip} onMouseLeave={hideTooltip}>
- *   ...
- *   showTooltip(event, <TooltipContent />)
- *   ...
- *   {tooltipEl}
- */
 export function useTooltip() {
   const [tip, setTip] = useState(null); // { x, y, content }
 
   const showTooltip = useCallback((event, content) => {
-    setTip({ x: event.clientX, y: event.clientY, content });
+    const x = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
+    const y = event.clientY ?? event.touches?.[0]?.clientY ?? 0;
+    setTip({ x, y, content });
   }, []);
 
   const moveTooltip = useCallback((event) => {
@@ -27,13 +16,30 @@ export function useTooltip() {
 
   const hideTooltip = useCallback(() => setTip(null), []);
 
+  // Dismiss on tap outside the tooltip (mobile)
+  useEffect(() => {
+    if (!tip) return;
+    const handler = (e) => {
+      if (!e.target.closest('.chart-tooltip')) setTip(null);
+    };
+    document.addEventListener('touchstart', handler, { passive: true });
+    return () => document.removeEventListener('touchstart', handler);
+  }, [tip]);
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 767;
+
   const tooltipEl = tip ? ReactDOM.createPortal(
     <div
       className="chart-tooltip"
-      style={{
+      style={isMobile ? {
+        // Center horizontally, float above the touch point
+        left: '50%',
+        transform: 'translateX(-50%)',
+        top: Math.max(56, tip.y - 140),
+        maxWidth: 'calc(100vw - 24px)',
+      } : {
         left: tip.x + 14,
         top: tip.y - 10,
-        // Keep in viewport
         maxWidth: 260,
       }}
     >

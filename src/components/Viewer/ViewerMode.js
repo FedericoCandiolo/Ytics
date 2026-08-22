@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useApp } from '../../context/AppContext';
 import WidgetContainer from '../Widgets/WidgetContainer';
@@ -14,11 +14,11 @@ export default function ViewerMode({ isMobile }) {
   const theme = dashboard.theme || {};
   const pages = dashboard.pages || [];
   const pageIdx = Math.max(0, pages.findIndex(p => p.id === dashboard.currentPageId));
-  const setPageIdx = (valOrFn) => {
+  const setPageIdx = useCallback((valOrFn) => {
     const next = typeof valOrFn === 'function' ? valOrFn(pageIdx) : valOrFn;
     const clamped = Math.max(0, Math.min(next, pages.length - 1));
     if (pages[clamped]) dispatch({ type: 'SET_CURRENT_PAGE', payload: pages[clamped].id });
-  };
+  }, [pageIdx, pages, dispatch]);
 
   // After page change, fire a window resize so WidthProvider + chart ResizeObservers re-measure
   useEffect(() => {
@@ -45,6 +45,20 @@ export default function ViewerMode({ isMobile }) {
     return () => ro.disconnect();
   }, []);
 
+  // Swipe gesture for page navigation (mobile only)
+  const swipeStart = useRef(null);
+  const handleTouchStart = useCallback((e) => {
+    swipeStart.current = e.touches[0].clientX;
+  }, []);
+  const handleTouchEnd = useCallback((e) => {
+    if (swipeStart.current === null || pages.length < 2) return;
+    const dx = e.changedTouches[0].clientX - swipeStart.current;
+    swipeStart.current = null;
+    if (Math.abs(dx) < 48) return;
+    if (dx < 0) setPageIdx(i => i + 1);
+    else setPageIdx(i => i - 1);
+  }, [pages.length, setPageIdx]);
+
   const currentPage = pages[Math.min(pageIdx, pages.length - 1)] || pages[0] || { widgets: [], layout: [] };
   const layouts = useMemo(
     () => computeResponsiveLayouts(currentPage.layout),
@@ -69,15 +83,18 @@ export default function ViewerMode({ isMobile }) {
       </div>
 
       {/* ── Dashboard canvas ── */}
-      <div ref={canvasRef} className="viewer-canvas" style={{ background: theme.canvasColor || '#f0f4f8' }}>
+      <div
+        ref={canvasRef}
+        className="viewer-canvas"
+        style={{ background: theme.canvasColor || '#f0f4f8' }}
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
+      >
         {totalWidgets === 0 ? (
           <div className="empty-state" style={{ height: '60vh' }}>
             <div className="empty-state-icon">👁</div>
             <h3>Nothing to view yet</h3>
             <p>Switch to Developer mode to add charts and build your dashboard.</p>
-            <button className="btn btn-primary" onClick={() => dispatch({ type: 'SET_MODE', payload: 'developer' })}>
-              Go to Developer
-            </button>
           </div>
         ) : currentPage.widgets.length === 0 ? (
           <div className="empty-state" style={{ height: '60vh' }}>
@@ -111,27 +128,58 @@ export default function ViewerMode({ isMobile }) {
       {/* ── Page navigation ── */}
       {pages.length > 1 && (
         <div className="viewer-page-nav">
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={pageIdx === 0}
-            onClick={() => setPageIdx(i => i - 1)}
-          >◄</button>
-          <div className="page-tabs" style={{ flex: 1, justifyContent: 'center', borderTop: 'none', background: 'transparent' }}>
-            {pages.map((page, i) => (
-              <div
-                key={page.id}
-                className={`page-tab ${i === pageIdx ? 'page-tab--active' : ''}`}
-                onClick={() => setPageIdx(i)}
-              >
-                <span>{page.name}</span>
+          {isMobile ? (
+            /* Mobile: prev/next arrows + dot indicator */
+            <>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={pageIdx === 0}
+                onClick={() => setPageIdx(i => i - 1)}
+                style={{ minWidth: 44, minHeight: 44 }}
+              >◄</button>
+              <div className="viewer-page-dots">
+                {pages.map((_, i) => (
+                  <button
+                    key={i}
+                    className={`viewer-page-dot ${i === pageIdx ? 'viewer-page-dot--active' : ''}`}
+                    onClick={() => setPageIdx(i)}
+                    aria-label={pages[i].name}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={pageIdx === pages.length - 1}
-            onClick={() => setPageIdx(i => i + 1)}
-          >►</button>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={pageIdx === pages.length - 1}
+                onClick={() => setPageIdx(i => i + 1)}
+                style={{ minWidth: 44, minHeight: 44 }}
+              >►</button>
+            </>
+          ) : (
+            /* Desktop: full page tabs */
+            <>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={pageIdx === 0}
+                onClick={() => setPageIdx(i => i - 1)}
+              >◄</button>
+              <div className="page-tabs" style={{ flex: 1, justifyContent: 'center', borderTop: 'none', background: 'transparent' }}>
+                {pages.map((page, i) => (
+                  <div
+                    key={page.id}
+                    className={`page-tab ${i === pageIdx ? 'page-tab--active' : ''}`}
+                    onClick={() => setPageIdx(i)}
+                  >
+                    <span>{page.name}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={pageIdx === pages.length - 1}
+                onClick={() => setPageIdx(i => i + 1)}
+              >►</button>
+            </>
+          )}
         </div>
       )}
     </div>
