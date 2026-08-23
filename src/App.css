@@ -669,6 +669,16 @@ input.widget-title-edit:focus {
   top: calc(100% + 6px);
   left: 0;
 }
+.filter-popup-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+.filter-popup-item:hover { background: var(--bg-hover, #f1f5f9); }
 
 /* ── Color scheme swatches ─────────────────────────────────────────────── */
 .color-scheme-option {
