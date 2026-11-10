@@ -12,7 +12,7 @@ import { getAllFields, getFieldsByTable, resolveWidgetData } from '../../utils/a
 // mode='single': click to pick one value. mode='multi': checkboxes.
 function SearchableFieldPicker({ tableGroups, customFields, typeFilter, value, onChange,
                                   mode = 'single', placeholder = '— none —', showType = true,
-                                  extraGroups, style }) {
+                                  extraGroups, displayValue, style }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef(null);
@@ -84,9 +84,8 @@ function SearchableFieldPicker({ tableGroups, customFields, typeFilter, value, o
     }
   }, [value, onChange]);
 
-  // Display text for single mode
   const displayText = mode === 'single'
-    ? (value || placeholder)
+    ? (displayValue || value || placeholder)
     : (Array.isArray(value) && value.length > 0 ? `${value.length} selected` : placeholder);
 
   const itemStyle = {
@@ -204,6 +203,15 @@ function FieldSelect({ label, value, columns, typeFilter, onChange, optional, cu
     return groups.length > 0 ? groups : null;
   }, [showDims, hierarchies, cyclics]);
 
+  // Resolve __hier__<id> / __cyclic__<id> to human-readable label for display
+  let resolvedDisplay = value || '';
+  if (value && extraGroups) {
+    for (const eg of extraGroups) {
+      const match = eg.items.find(it => it.value === value);
+      if (match) { resolvedDisplay = match.label; break; }
+    }
+  }
+
   return (
     <div className="form-group editor-section" style={{ marginBottom: 10 }}>
       <label className="form-label">
@@ -216,6 +224,7 @@ function FieldSelect({ label, value, columns, typeFilter, onChange, optional, cu
         value={value || ''}
         onChange={onChange}
         extraGroups={extraGroups}
+        displayValue={resolvedDisplay}
         showType
       />
     </div>
@@ -355,10 +364,11 @@ const AGG_VALUE_KEY = {
   waterfall: 'valueField', wordcloud: 'valueField', funnel: 'valueField',
   kpi: 'valueField', bubble: 'valueField', combo: 'yField',
   straighttable: 'valueField', mekko: 'yField', network: 'sizeField',
+  gridchart: 'valueField',
 };
 
 // Charts that support the measure pipeline
-const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'triheatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'geo', 'text', 'image', 'embed'];
+const PIPELINE_TYPES = ['bar', 'line', 'scatter', 'pie', 'histogram', 'treemap', 'heatmap', 'triheatmap', 'bump', 'stream', 'boxplot', 'radar', 'waffle', 'sankey', 'graph', 'network', 'table', 'pivot', 'waterfall', 'funnel', 'kpi', 'bubble', 'combo', 'straighttable', 'mekko', 'wordcloud', 'correlogram', 'density', 'geo', 'gridchart', 'topomap', 'text', 'image', 'embed'];
 
 // Which field provides the "color dimension" for each chart type
 const COLOR_DIMENSION_FIELD = {
@@ -553,6 +563,17 @@ function FieldsTab({ widget, dataset, columns, onUpdate, tableGroups, customFiel
     ],
     correlogram: [
       { key: '_correlogramFields', label: 'Variables (numeric or categorical)', multi: true },
+    ],
+    gridchart: [
+      { key: 'xField',      label: 'Column dimension',    filter: null },
+      { key: 'yField',      label: 'Row dimension',       filter: null },
+      { key: 'valueField',  label: 'Measure (size)',      filter: ['number'] },
+      { key: 'colorField',  label: 'Breakdown dim (optional)', filter: null, optional: true },
+    ],
+    topomap: [
+      { key: 'xField',      label: 'X coordinate',        filter: ['number'] },
+      { key: 'yField',      label: 'Y coordinate',        filter: ['number'] },
+      { key: 'zField',      label: 'Z value (height)',    filter: ['number'] },
     ],
     text: [],
     image: [],
@@ -1715,14 +1736,32 @@ function DimensionColorsSection({ widget, dataset, dispatch, dimensionColors }) 
 }
 
 function ColorsTab({ widget, dataset, columns, onUpdate, dispatch, dimensionColors }) {
-  const isTable = widget.type === 'table' || widget.type === 'pivot';
+  const isTable = widget.type === 'table' || widget.type === 'pivot' || widget.type === 'straighttable';
   const isChart = !isTable && widget.type !== 'carousel';
+
+  // For StraightTable, derive the actual display column labels so CF can match them
+  const cfColumns = useMemo(() => {
+    if (widget.type !== 'straighttable') return columns;
+    const dims = (widget.straightTableDimensions || (widget.xField ? [widget.xField] : [])).filter(Boolean);
+    const result = dims.map(d => ({ name: d, type: 'dimension' }));
+    if (widget.valueField) {
+      const agg = widget.aggregation || 'sum';
+      result.push({ name: widget.primaryMeasureLabel || `${widget.valueField} (${agg})`, type: 'number' });
+    }
+    for (const m of widget.straightTableMeasures || []) {
+      if (m.representation !== 'link' && m.field) {
+        const agg = m.aggregation || 'sum';
+        result.push({ name: m.label || `${m.field} (${agg})`, type: 'number' });
+      }
+    }
+    return result;
+  }, [widget, columns]);
 
   return (
     <div>
       {/* Conditional formatting for tables */}
       {isTable && (
-        <ConditionalFormattingSection widget={widget} columns={columns} onUpdate={onUpdate} />
+        <ConditionalFormattingSection widget={widget} columns={cfColumns} onUpdate={onUpdate} />
       )}
 
       {/* Gradient color mode for charts */}
@@ -1834,24 +1873,53 @@ function ParetoOptions({ widget, onUpdate }) {
   );
 }
 
-function ReferenceLineOption({ widget, onUpdate }) {
-  const ref = widget.referenceLine || {};
+function ReferenceLinesOption({ widget, onUpdate }) {
+  const lines = widget.referenceLines?.length
+    ? widget.referenceLines
+    : (widget.referenceLine?.value != null
+      ? [{ id: 'legacy', value: widget.referenceLine.value, label: widget.referenceLine.label || '', color: '#94a3b8', dashed: true, axis: 'y' }]
+      : []);
+
+  const addLine = () => {
+    onUpdate({ referenceLines: [...lines, { id: uuid(), value: null, label: '', color: '#94a3b8', dashed: true, axis: 'y', dimValue: null }] });
+  };
+  const updateLine = (i, updates) => onUpdate({ referenceLines: lines.map((l, j) => j === i ? { ...l, ...updates } : l) });
+  const removeLine = (i) => onUpdate({ referenceLines: lines.filter((_, j) => j !== i) });
+
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
-      <div className="form-group" style={{ marginBottom: 10 }}>
-        <label className="form-label">Reference line value</label>
-        <input type="number" className="input input-sm" value={ref.value ?? ''}
-          onChange={e => onUpdate({ referenceLine: { ...ref, value: e.target.value ? parseFloat(e.target.value) : null } })}
-          placeholder="e.g. 100" />
-      </div>
-      {ref.value != null && (
-        <div className="form-group" style={{ marginBottom: 10 }}>
-          <label className="form-label">Reference line label</label>
-          <input className="input input-sm" value={ref.label || ''}
-            onChange={e => onUpdate({ referenceLine: { ...ref, label: e.target.value } })}
-            placeholder="e.g. Target" />
+      <div className="form-label" style={{ marginBottom: 8 }}>Reference Lines</div>
+      {lines.map((ref, i) => (
+        <div key={ref.id || i} style={{ border: '1px solid var(--border)', borderRadius: 4, padding: '6px 8px', marginBottom: 6 }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+            <select className="select select-sm" style={{ width: 54 }} value={ref.axis || 'y'}
+              onChange={e => updateLine(i, { axis: e.target.value })} title="Axis">
+              <option value="y">Y</option>
+              <option value="x">X dim</option>
+            </select>
+            {(ref.axis || 'y') === 'y'
+              ? <input type="number" className="input input-sm" style={{ flex: 1 }} value={ref.value ?? ''} placeholder="Value"
+                  onChange={e => updateLine(i, { value: e.target.value ? parseFloat(e.target.value) : null })} />
+              : <input className="input input-sm" style={{ flex: 1 }} value={ref.dimValue ?? ''} placeholder="Category"
+                  onChange={e => updateLine(i, { dimValue: e.target.value || null })} />
+            }
+            <input type="color" value={ref.color || '#94a3b8'}
+              onChange={e => updateLine(i, { color: e.target.value })}
+              title="Color" style={{ width: 24, height: 22, border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer', padding: 1 }} />
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeLine(i)}>{'✕'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input className="input input-sm" style={{ flex: 1 }} value={ref.label || ''} placeholder="Label (optional)"
+              onChange={e => updateLine(i, { label: e.target.value })} />
+            <label className="checkbox-row" style={{ fontSize: 11, flexShrink: 0 }}>
+              <input type="checkbox" checked={ref.dashed !== false}
+                onChange={e => updateLine(i, { dashed: e.target.checked })} />
+              Dashed
+            </label>
+          </div>
         </div>
-      )}
+      ))}
+      <button className="btn btn-ghost btn-sm" style={{ width: '100%' }} onClick={addLine}>+ Add reference line</button>
     </div>
   );
 }
@@ -2096,7 +2164,31 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
         Show grid lines at every major tick
       </label>
       <ParetoOptions widget={widget} onUpdate={onUpdate} />
-      <ReferenceLineOption widget={widget} onUpdate={onUpdate} />
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 10 }}>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.showRegression} onChange={e => onUpdate({ showRegression: e.target.checked })} />
+          Show trend line
+        </label>
+        {widget.showRegression && (<>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Trend type</label>
+            <select className="select select-sm" value={widget.regressionType || 'linear'} onChange={e => onUpdate({ regressionType: e.target.value })}>
+              <option value="linear">Linear</option>
+              <option value="polynomial">Polynomial</option>
+              <option value="logarithmic">Logarithmic</option>
+              <option value="exponential">Exponential</option>
+            </select>
+          </div>
+          {widget.regressionType === 'polynomial' && (
+            <div className="form-group" style={{ marginBottom: 10 }}>
+              <label className="form-label">Degree — {widget.polynomialDegree || 2}</label>
+              <input type="range" min={2} max={6} value={widget.polynomialDegree || 2}
+                onChange={e => onUpdate({ polynomialDegree: parseInt(e.target.value) })} />
+            </div>
+          )}
+        </>)}
+      </div>
+      <ReferenceLinesOption widget={widget} onUpdate={onUpdate} />
     </div>
   );
 
@@ -2180,6 +2272,7 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
         <input type="checkbox" checked={!!widget.useLogScale} onChange={e => onUpdate({ useLogScale: e.target.checked })} />
         Logarithmic Y scale
       </label>
+      <ReferenceLinesOption widget={widget} onUpdate={onUpdate} />
     </div>
   );
 
@@ -3130,6 +3223,63 @@ function OptionsTab({ widget, columns, onUpdate, tableGroups, customFields }) {
           <option value="text">Text only</option>
         </select>
       </div>
+    </div>
+  );
+
+  if (widget.type === 'gridchart') return (
+    <div>
+      <SortOptions widget={widget} onUpdate={onUpdate} />
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">Cell type</label>
+        <select className="select select-sm" value={widget.gridCellType || 'circle'} onChange={e => onUpdate({ gridCellType: e.target.value })}>
+          <option value="circle">Circle (bubble)</option>
+          <option value="pie">Mini pie chart</option>
+          <option value="bar">Mini bar chart</option>
+        </select>
+      </div>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.showLegend} onChange={e => onUpdate({ showLegend: e.target.checked })} />
+        Show legend
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 8 }}>
+        <input type="checkbox" checked={!!widget.showGrid} onChange={e => onUpdate({ showGrid: e.target.checked })} />
+        Show grid lines
+      </label>
+    </div>
+  );
+
+  if (widget.type === 'topomap') return (
+    <div>
+      <div className="form-group" style={{ marginBottom: 10 }}>
+        <label className="form-label">View</label>
+        <select className="select select-sm" value={widget.topoView || '2d'} onChange={e => onUpdate({ topoView: e.target.value })}>
+          <option value="2d">2D contour map</option>
+          <option value="3d">3D ridge view</option>
+        </select>
+      </div>
+      {(widget.topoView || '2d') === '2d' && (<>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label className="form-label">Contour levels — {widget.topoThresholds || 10}</label>
+          <input type="range" min={3} max={30} value={widget.topoThresholds || 10}
+            onChange={e => onUpdate({ topoThresholds: parseInt(e.target.value) })} />
+        </div>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={widget.topoSmooth !== false} onChange={e => onUpdate({ topoSmooth: e.target.checked })} />
+          Smooth contour lines
+        </label>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.topoShowLines} onChange={e => onUpdate({ topoShowLines: e.target.checked })} />
+          Show contour outlines
+        </label>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.topoShowLabels} onChange={e => onUpdate({ topoShowLabels: e.target.checked })} />
+          Show level labels
+        </label>
+        <label className="checkbox-row" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={!!widget.topoShowPoints} onChange={e => onUpdate({ topoShowPoints: e.target.checked })} />
+          Show data points
+        </label>
+      </>)}
     </div>
   );
 

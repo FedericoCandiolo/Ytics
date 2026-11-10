@@ -155,3 +155,106 @@ export function drawTrendLine(g, points, xToPixel, yScale, xRange, type, degree,
     .attr('clip-path', clipAttr)
     .text(`R\u00B2=${r2.toFixed(3)}`);
 }
+
+/**
+ * Draw multiple reference lines for bar/grouped charts.
+ * numScale: maps numeric value \u2192 pixel (y for vertical bars, x for horizontal)
+ * catScale: maps category string \u2192 pixel (x for vertical bars, y for horizontal) \u2014 may be null
+ */
+function refLabelContrast(color) {
+  if (!color || !color.startsWith('#') || color.length < 7) return '#ffffff';
+  try {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 155 ? '#1e293b' : '#ffffff';
+  } catch { return '#ffffff'; }
+}
+
+function drawRefLabel(g, lx, ly, text, color, anchor = 'start') {
+  const bgColor = color.startsWith('var(') ? '#64748b' : color;
+  const tw = Math.max(text.length * 5.5 + 8, 20);
+  const th = 14;
+  const bx = anchor === 'end' ? lx - tw : lx;
+  g.append('rect').attr('x', bx).attr('y', ly - th + 2)
+    .attr('width', tw).attr('height', th)
+    .attr('rx', 2).attr('fill', bgColor).attr('opacity', 0.9);
+  g.append('text').attr('x', bx + tw / 2).attr('y', ly - 1)
+    .attr('font-size', 10).attr('fill', refLabelContrast(bgColor))
+    .attr('font-family', 'var(--font)').attr('text-anchor', 'middle')
+    .text(text);
+}
+
+export function drawReferenceLines(g, widget, numScale, catScale, W, H, isH) {
+  const lines = widget.referenceLines?.length
+    ? widget.referenceLines
+    : (widget.referenceLine?.value != null ? [widget.referenceLine] : []);
+  if (!lines.length) return;
+
+  for (const ref of lines) {
+    if (!ref) continue;
+    const color = ref.color || 'var(--text-muted)';
+    const strokeDash = ref.dashed !== false ? '6,4' : null;
+    const axis = ref.axis || 'y';
+
+    if (axis === 'y' && ref.value != null) {
+      const pos = numScale(+ref.value);
+      if (!isFinite(pos)) continue;
+      if (isH) {
+        g.append('line').attr('x1', pos).attr('x2', pos).attr('y1', 0).attr('y2', H)
+          .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+        if (ref.label) drawRefLabel(g, pos + 4, 10, ref.label, color, 'start');
+      } else {
+        g.append('line').attr('x1', 0).attr('x2', W).attr('y1', pos).attr('y2', pos)
+          .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+        if (ref.label) drawRefLabel(g, W - 4, pos - 5, ref.label, color, 'end');
+      }
+    } else if (axis === 'x' && ref.dimValue != null && catScale) {
+      const pos = catScale(String(ref.dimValue));
+      if (pos == null || !isFinite(pos)) continue;
+      const bw = catScale.bandwidth?.() || 0;
+      const cx = pos + bw / 2;
+      if (isH) {
+        g.append('line').attr('x1', 0).attr('x2', W).attr('y1', cx).attr('y2', cx)
+          .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+        if (ref.label) drawRefLabel(g, W - 4, cx - 5, ref.label, color, 'end');
+      } else {
+        g.append('line').attr('x1', cx).attr('x2', cx).attr('y1', 0).attr('y2', H)
+          .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+        if (ref.label) drawRefLabel(g, cx + 4, 10, ref.label, color, 'start');
+      }
+    }
+  }
+}
+
+/**
+ * Draw reference lines for XY charts (line, scatter).
+ * xMapper: function(val) \u2192 pixel x (handles date/numeric/categorical)
+ */
+export function drawReferenceLinesXY(g, widget, yScale, xMapper, W, H) {
+  const lines = widget.referenceLines?.length
+    ? widget.referenceLines
+    : (widget.referenceLine?.value != null ? [{ ...widget.referenceLine, axis: 'y' }] : []);
+  if (!lines.length) return;
+
+  for (const ref of lines) {
+    if (!ref) continue;
+    const color = ref.color || 'var(--text-muted)';
+    const strokeDash = ref.dashed !== false ? '6,4' : null;
+    const axis = ref.axis || 'y';
+
+    if (axis === 'y' && ref.value != null) {
+      const pos = yScale(+ref.value);
+      if (!isFinite(pos) || pos < 0 || pos > H) continue;
+      g.append('line').attr('x1', 0).attr('x2', W).attr('y1', pos).attr('y2', pos)
+        .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+      if (ref.label) drawRefLabel(g, W - 4, pos - 5, ref.label, color, 'end');
+    } else if (axis === 'x' && ref.dimValue != null && xMapper) {
+      const pos = xMapper(ref.dimValue);
+      if (pos == null || !isFinite(pos) || pos < 0 || pos > W) continue;
+      g.append('line').attr('x1', pos).attr('x2', pos).attr('y1', 0).attr('y2', H)
+        .attr('stroke', color).attr('stroke-width', 1.5).attr('stroke-dasharray', strokeDash).attr('opacity', 0.85);
+      if (ref.label) drawRefLabel(g, pos + 4, 10, ref.label, color, 'start');
+    }
+  }
+}

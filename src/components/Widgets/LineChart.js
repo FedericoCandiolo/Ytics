@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { aggregate, formatValue, sortAggregated } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale, safeLog, drawTrendLine } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, fmtTick, makeValueScale, safeLog, drawTrendLine, drawReferenceLinesXY } from './chartHelpers';
 
 const CURVES = {
   linear: d3.curveLinear,
@@ -350,6 +350,14 @@ function renderNormal(svgRef, data, widget, yField, dims, showTooltip, moveToolt
         .text(name.length > 13 ? name.slice(0, 13) + '\u2026' : name);
     });
   }
+
+  // Reference lines
+  const xRefMapper = (val) => {
+    if (isDate) return xScale(new Date(val));
+    if (isLinearScale) return xScale(+val);
+    return xScale(String(val));
+  };
+  drawReferenceLinesXY(g, widget, yScale, xRefMapper, W, H);
 
   // X-axis label
   g.append('text').attr('fill', 'var(--chart-axis-color)').attr('font-size', 11)

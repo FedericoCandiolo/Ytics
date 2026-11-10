@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { aggregate, buildGroups, formatValue, sortAggregated, applyParetoGrouping } from '../../utils/dataUtils';
 import { getColorScaleWithOverrides, getOrdinalWithOverrides, getSequentialScale, resolveGradient } from '../../utils/colorUtils';
 import { useTooltip } from './useTooltip';
-import { useChartDims, styledAxis, Placeholder } from './chartHelpers';
+import { useChartDims, styledAxis, Placeholder, drawTrendLine, drawReferenceLines } from './chartHelpers';
 
 export default function BarChart({ widget, data, onCrossFilter }) {
   const containerRef = useRef(null);
@@ -62,46 +62,6 @@ function makeValueScale(widget, domain, range) {
 // Safe value accessor for log scale — ensures minimum of 1 for log
 function safeLogVal(widget, v) {
   return widget.useLogScale ? Math.max(1, v) : v;
-}
-
-// ── Reference line drawing ──────────────────────────────────────────────────
-function drawReferenceLine(g, widget, scale, W, H, isH) {
-  if (!widget.referenceLine || widget.referenceLine.value == null) return;
-  const val = +widget.referenceLine.value;
-  const label = widget.referenceLine.label || '';
-
-  if (isH) {
-    const xPos = scale(safeLogVal(widget, val));
-    if (xPos < 0 || xPos > W) return;
-    g.append('line')
-      .attr('x1', xPos).attr('x2', xPos)
-      .attr('y1', 0).attr('y2', H)
-      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', '6,4').attr('opacity', 0.8);
-    if (label) {
-      g.append('text')
-        .attr('x', xPos + 4).attr('y', 10)
-        .attr('font-size', 10).attr('fill', 'var(--text-muted)')
-        .attr('font-family', 'var(--font)')
-        .text(label);
-    }
-  } else {
-    const yPos = scale(safeLogVal(widget, val));
-    if (yPos < 0 || yPos > H) return;
-    g.append('line')
-      .attr('x1', 0).attr('x2', W)
-      .attr('y1', yPos).attr('y2', yPos)
-      .attr('stroke', 'var(--text-muted)').attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', '6,4').attr('opacity', 0.8);
-    if (label) {
-      g.append('text')
-        .attr('x', W - 4).attr('y', yPos - 5)
-        .attr('font-size', 10).attr('fill', 'var(--text-muted)')
-        .attr('font-family', 'var(--font)')
-        .attr('text-anchor', 'end')
-        .text(label);
-    }
-  }
 }
 
 // ── Simple bar (no groupField) ─────────────────────────────────────────────────
@@ -205,7 +165,7 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .style('cursor', onCrossFilter ? 'pointer' : null)
       .transition().duration(500).ease(d3.easeCubicOut).attr('width', d => xScale(safeLogVal(widget, d.value)));
 
-    drawReferenceLine(g, widget, xScale, W, H, true);
+    drawReferenceLines(g, widget, xScale, yScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pts.map(d => d.key)).range([0, W]).padding(0.22);
@@ -228,7 +188,32 @@ function renderSimple(svgRef, data, widget, dims, isH, opacity, showTooltip, mov
       .attr('y', d => yScale(safeLogVal(widget, d.value)))
       .attr('height', d => H - yScale(safeLogVal(widget, d.value)));
 
-    drawReferenceLine(g, widget, yScale, W, H, false);
+    drawReferenceLines(g, widget, yScale, xScale, W, H, false);
+
+    // Trend line (vertical bar only)
+    if (widget.showRegression) {
+      const regPts = pts.map((p, i) => ({ x: i, y: p.value }));
+      if (regPts.length >= 2) {
+        const trendType = widget.regressionType || 'linear';
+        const trendDegree = widget.polynomialDegree || 2;
+        const clipId = `bar-trend-clip-${Math.random().toString(36).slice(2, 8)}`;
+        const defs = d3.select(svgRef.current).select('defs').node()
+          ? d3.select(svgRef.current).select('defs')
+          : d3.select(svgRef.current).append('defs');
+        defs.append('clipPath').attr('id', clipId).append('rect').attr('width', W).attr('height', H);
+        const trendColor = widget.colorScheme ? '#64748b' : '#64748b';
+        const xToPixel = (rx) => {
+          const f = Math.max(0, Math.min(Math.floor(rx), pts.length - 1));
+          const c = Math.min(f + 1, pts.length - 1);
+          const frac = rx - f;
+          const cx0 = xScale(pts[f].key) + xScale.bandwidth() / 2;
+          const cx1 = xScale(pts[c].key) + xScale.bandwidth() / 2;
+          return cx0 * (1 - frac) + cx1 * frac;
+        };
+        drawTrendLine(g, regPts, xToPixel, yScale, [0, pts.length - 1], trendType, trendDegree, trendColor, clipId);
+      }
+    }
+
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }
@@ -512,7 +497,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         .attr('width', d => xScale(safeLogVal(widget, d[1])) - xScale(safeLogVal(widget, d[0])));
     });
 
-    drawReferenceLine(g, widget, xScale, W, H, true);
+    drawReferenceLines(g, widget, xScale, yScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, W]).padding(0.22);
@@ -540,7 +525,7 @@ function renderStacked(g, pivotData, groupKeys, colorScale, widget, W, H, isH, o
         .attr('height', d => yScale(safeLogVal(widget, d[0])) - yScale(safeLogVal(widget, d[1])));
     });
 
-    drawReferenceLine(g, widget, yScale, W, H, false);
+    drawReferenceLines(g, widget, yScale, xScale, W, H, false);
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }
@@ -575,7 +560,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
       });
     });
 
-    drawReferenceLine(g, widget, xScale, W, H, true);
+    drawReferenceLines(g, widget, xScale, yScale, W, H, true);
     axisLabel(g, widget.yField, W / 2, H + 38, false);
   } else {
     const xScale = d3.scaleBand().domain(pivotData.map(d => d.__x)).range([0, W]).padding(0.15);
@@ -606,7 +591,7 @@ function renderGroupedBars(g, pivotData, groupKeys, colorScale, widget, W, H, is
       });
     });
 
-    drawReferenceLine(g, widget, yScale, W, H, false);
+    drawReferenceLines(g, widget, yScale, xScale, W, H, false);
     axisLabel(g, widget.xField, W / 2, H + 56, false);
     axisLabel(g, widget.yField, -(H / 2), -46, true);
   }
