@@ -4,6 +4,135 @@ import { exportDashboard, importDashboard, generateDashboardBlob } from '../util
 import { pickFile, downloadFile, createFile, updateFile } from '../utils/googleDrive';
 import { TYPE_ICONS } from './Widgets/WidgetContainer';
 
+// ── Open from URL modal ──────────────────────────────────────────────────────
+function OpenFromUrlModal({ onClose, onLoad }) {
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, []);
+
+  const handleLoad = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    try {
+      const res = await fetch(trimmed);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const blob = await res.blob();
+      await onLoad(blob, trimmed);
+      onClose();
+    } catch (err) {
+      alert('Failed to load dashboard: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(4px)',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-card, #fff)', borderRadius: 12,
+        boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+        width: 'min(480px, 90vw)', padding: '20px 24px',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Open dashboard from URL</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)', padding: '2px 6px' }}>×</button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+          Enter the URL of a <strong>.ytics</strong> file hosted on a file server or public URL.
+        </div>
+        <input
+          ref={inputRef}
+          className="input"
+          style={{ width: '100%', marginBottom: 12, fontSize: 13, boxSizing: 'border-box' }}
+          placeholder="https://example.com/dashboard.ytics"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLoad()}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary btn-sm" onClick={handleLoad} disabled={loading || !url.trim()}>
+            {loading ? 'Loading…' : 'Open'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Embed code modal ─────────────────────────────────────────────────────────
+function EmbedModal({ srcUrl, onClose }) {
+  const appUrl = window.location.origin + window.location.pathname;
+  const embedUrl = `${appUrl}?embed=1&src=${encodeURIComponent(srcUrl)}`;
+  const iframe = `<iframe src="${embedUrl}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
+  const [copied, setCopied] = useState(null);
+
+  const copy = (text, key) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,.45)', backdropFilter: 'blur(4px)',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--bg-card, #fff)', borderRadius: 12,
+        boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+        width: 'min(560px, 92vw)', padding: '20px 24px',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Embed dashboard</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)', padding: '2px 6px' }}>×</button>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Embed URL</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              className="input input-sm"
+              style={{ flex: 1, fontSize: 11, fontFamily: 'monospace' }}
+              readOnly
+              value={embedUrl}
+              onClick={e => e.target.select()}
+            />
+            <button className="btn btn-secondary btn-sm" style={{ flexShrink: 0 }} onClick={() => copy(embedUrl, 'url')}>
+              {copied === 'url' ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>iframe snippet</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <textarea
+              className="input input-sm"
+              style={{ flex: 1, fontSize: 11, fontFamily: 'monospace', resize: 'vertical', minHeight: 56 }}
+              readOnly
+              value={iframe}
+              onClick={e => e.target.select()}
+            />
+            <button className="btn btn-secondary btn-sm" style={{ flexShrink: 0, alignSelf: 'flex-start' }} onClick={() => copy(iframe, 'iframe')}>
+              {copied === 'iframe' ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>
+          The embedded viewer is read-only. The source file must be publicly accessible.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Google Drive icon (inline SVG for the buttons) ──────────────────────────
 const DriveIcon = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle' }}>
@@ -146,6 +275,8 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
   const [saving, setSaving] = useState(false);
   const [screenshotting, setScreenshotting] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
+  const [showUrlModal, setShowUrlModal] = useState(false);
+  const [showEmbedModal, setShowEmbedModal] = useState(false);
   const menuRef = useRef(null);
   const openRef = useRef(null);
   const saveRef = useRef(null);
@@ -284,8 +415,14 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
     dispatch({ type: 'IMPORT_STATE', payload: { ...result, fileOrigin: null } });
   };
 
+  const handleOpenFromUrl = async (blob, srcUrl) => {
+    const result = await importDashboard(blob);
+    dispatch({ type: 'IMPORT_STATE', payload: { ...result, fileOrigin: { source: 'url', url: srcUrl } } });
+  };
+
   const canExport = state.datasets.length > 0 || state.dashboard.pages.reduce((n, p) => n + p.widgets.length, 0) > 0;
   const isDriveFile = state.fileOrigin?.source === 'googledrive';
+  const isUrlFile = state.fileOrigin?.source === 'url';
 
   // Compact mode: hide text labels on buttons (tablet)
   const compact = isMobile || isTablet;
@@ -323,6 +460,17 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
       onMouseLeave={e => e.currentTarget.style.background = 'none'}
     >
       <DriveIcon /> From Google Drive
+    </button>
+  );
+
+  const openUrlBtn = (onClick) => (
+    <button
+      style={dropdownItemStyle}
+      onClick={() => { setShowUrlModal(true); if (onClick) onClick(); }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+    >
+      <span>🔗</span> From URL
     </button>
   );
 
@@ -396,12 +544,16 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
               <button className="header-dropdown-item" onClick={handleNew}>+ New</button>
               <button className="header-dropdown-item" onClick={() => { setShowExamples(true); setMenuOpen(false); }}>Examples</button>
               <button className="header-dropdown-item" onClick={() => { onHelpOpen(); setMenuOpen(false); }}>? Help</button>
+              <button className="header-dropdown-item" onClick={() => window.open(window.location.pathname + '?tool=convert', '_blank')}>🔄 Converter</button>
               <div style={{ borderTop: '1px solid var(--border, #e2e8f0)', margin: '4px 0' }} />
               <button className="header-dropdown-item" onClick={() => { importRef.current?.click(); setMenuOpen(false); }}>
                 📁 Open from computer
               </button>
-              <button className="header-dropdown-item" onClick={handleOpenFromDrive}>
+              <button className="header-dropdown-item" onClick={() => { handleOpenFromDrive(); setMenuOpen(false); }}>
                 <DriveIcon /> Open from Drive
+              </button>
+              <button className="header-dropdown-item" onClick={() => { setShowUrlModal(true); setMenuOpen(false); }}>
+                🔗 Open from URL
               </button>
               <div style={{ borderTop: '1px solid var(--border, #e2e8f0)', margin: '4px 0' }} />
               <button
@@ -443,20 +595,28 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
           <button className="btn btn-secondary btn-sm" onClick={onHelpOpen} title="Help & Documentation">
             ? Help
           </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => window.open(window.location.pathname + '?tool=convert', '_blank')}
+            title="Convert from other formats (QVF, etc.)"
+          >
+            🔄 Convert
+          </button>
 
           {/* Open button with dropdown */}
           <div ref={openRef} style={{ position: 'relative' }}>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => setOpenDropdown(o => !o)}
-              title="Open .ytics file"
+              title="Open dashboard (local file, Google Drive, or URL)"
             >
-              ⬆ Open ▾
+              📂 Open ▾
             </button>
             {openDropdown && (
               <div style={dropdownStyle}>
                 {openLocalBtn(() => setOpenDropdown(false))}
                 {openDriveBtn(() => setOpenDropdown(false))}
+                {openUrlBtn(() => setOpenDropdown(false))}
               </div>
             )}
           </div>
@@ -502,6 +662,16 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
                 >
                   <DriveIcon /> {isDriveFile ? 'Update on Drive' : 'Save to Google Drive'}
                 </button>
+                {isUrlFile && (
+                  <button
+                    style={dropdownItemStyle}
+                    onClick={() => { setSaveDropdown(false); setShowEmbedModal(true); }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f1f5f9)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <span>{'</>'}</span> Get embed code
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -511,6 +681,18 @@ export default function Header({ onHelpOpen, onAIToggle, isAIOpen, isMobile, isT
         <ExamplesModal
           onClose={() => setShowExamples(false)}
           onLoad={handleLoadExample}
+        />
+      )}
+      {showUrlModal && (
+        <OpenFromUrlModal
+          onClose={() => setShowUrlModal(false)}
+          onLoad={handleOpenFromUrl}
+        />
+      )}
+      {showEmbedModal && isUrlFile && (
+        <EmbedModal
+          srcUrl={state.fileOrigin.url}
+          onClose={() => setShowEmbedModal(false)}
         />
       )}
     </header>

@@ -1,6 +1,6 @@
 # Ytics User Guide
 
-**Ytics** is an interactive dashboard builder for data analytics and visualization. Upload your data, build multi-page dashboards with 18 chart types, apply transforms and filters, customize colors and styles, and share your work as portable `.ytics` files.
+**Ytics** is an interactive dashboard builder for data analytics and visualization. Load data from files, URLs, or SQLite databases; build multi-page dashboards with 30+ chart types; apply transforms and filters; customize colors and styles; and share or embed your work as portable `.ytics` files.
 
 ---
 
@@ -9,6 +9,8 @@
 1. [Getting Started](#1-getting-started)
 2. [The Interface](#2-the-interface)
 3. [Loading Data](#3-loading-data)
+   - [3a. URL Sources & Auto-Reload](#3a-url-sources--auto-reload)
+   - [3b. SQLite Databases](#3b-sqlite-databases)
 4. [Data Transforms](#4-data-transforms)
 5. [Building a Dashboard](#5-building-a-dashboard)
 6. [Chart Types Reference](#6-chart-types-reference)
@@ -21,6 +23,7 @@
 13. [Viewer Mode](#13-viewer-mode)
 14. [Filtering and Cross-Filtering](#14-filtering-and-cross-filtering)
 15. [Export and Import](#15-export-and-import)
+    - [15a. Embedding Dashboards](#15a-embedding-dashboards)
 16. [Keyboard Shortcuts](#16-keyboard-shortcuts)
 17. [Tips and Best Practices](#17-tips-and-best-practices)
 
@@ -72,32 +75,95 @@ That's it — your first visualization is live.
 
 ## 3. Loading Data
 
-### Uploading CSV Files
+The Data panel has three source tabs — **📂 File**, **🔗 URL**, **🗄 SQLite** — plus **+ Inline Table** for manual entry.
 
-1. Click the **Data** tab in the developer sidebar.
-2. Drag one or more `.csv` files onto the upload area — or click to browse.
-3. Ytics parses your file and auto-detects column types:
-   - **number** — Numeric values (integers and decimals).
-   - **date** — Recognizable date strings.
-   - **string** — Everything else (text, categories).
+### File Sources (CSV, Excel, JSON)
 
-### Dataset Management
+| Format | Extensions | Details |
+|---|---|---|
+| CSV | `.csv` | Drag-and-drop or click to browse. Auto-detects delimiter and column types. |
+| Excel | `.xlsx .xls .xlsb .xlsm .ods` | Opens an Import Wizard — select sheets, skip header rows, preview before importing. |
+| JSON | `.json` | Supports arrays of objects. Opens a preview wizard. |
 
-- Each uploaded file appears as a named dataset in the left panel.
-- Click a dataset to select it and preview its contents.
-- The preview shows the first 200 rows with column headers and type badges.
-- A summary line displays the total row and column counts.
-- Click the **×** button to delete a dataset.
+### Dataset List
+
+Each dataset shows a source icon: **📂** file, **🔗** URL, **🗄** SQLite, **✏️** inline, **⛓** join. The row/column count and transform count appear below the name.
+
+- Double-click the name to rename.
+- Click **↺** to reload from the original source (see section 3a).
+- Click **✕** to delete (with confirmation).
 
 ### Multiple Datasets
 
-You can load as many datasets as you need. Each widget independently selects which dataset it visualizes, so a single dashboard can combine data from multiple sources.
+Each widget independently picks its dataset, so one dashboard can combine data from multiple sources.
+
+---
+
+## 3a. URL Sources & Auto-Reload
+
+Click the **🔗 URL** tab to load a CSV or JSON file from any public URL.
+
+### Loading from a URL
+
+1. Enter the full URL (e.g. `https://example.com/sales.csv`).
+2. Select **Format**: Auto-detect, CSV, or JSON.
+3. If CSV: choose the delimiter (Comma, Semicolon, Tab, Pipe).
+4. Set a **Refresh interval** for automatic reloading, or leave as "Manual only".
+5. Click **Load**.
+
+> **CORS**: The server must allow cross-origin requests. GitHub raw URLs and most public APIs work. File servers may need `Access-Control-Allow-Origin: *`.
+
+### Auto-Refresh Intervals
+
+| Interval | Use case |
+|---|---|
+| Manual only | Reload only when you click ↺ |
+| 1 / 5 / 15 min | Live dashboards connected to frequently-updating APIs |
+| Hourly / daily | Daily reports, slow-moving metrics |
+
+URL datasets with an active interval show **· auto** in the dataset meta line.
+
+### Reloading Datasets
+
+Click **↺** on any dataset:
+
+- **URL source** — Re-fetches immediately.
+- **File source** — Opens a file picker to select a new version. Transforms are preserved.
+- **SQLite source** — Opens a file picker; the same table is re-read from the new file.
+
+**Reload All**: When URL datasets exist, a **↺ Reload all** button appears at the top of the dataset list to refresh all URL sources in one click.
+
+### Non-Destructive Reloads
+
+All transforms in the pipeline are automatically re-applied after any reload. Original data is never modified.
+
+---
+
+## 3b. SQLite Databases
+
+Ytics opens `.db`, `.sqlite`, and `.sqlite3` files directly in the browser using WebAssembly — no server needed.
+
+### How to Load
+
+1. Click the **🗄 SQLite** tab in the Data panel.
+2. Click the dashed zone and select your database file.
+3. Ytics reads all base tables and shows a picker with row/column counts.
+4. Check the tables to import and click **Import**. Each table becomes a separate dataset.
+
+> Tables are capped at 100,000 rows. Pre-filter in a SQLite client if you need a specific slice.
+
+### Notes
+
+- Files are read entirely in-memory — the original file is never modified.
+- Views and virtual tables are not listed.
+- `NULL` values become empty strings in Ytics rows.
+- Reloading opens a file picker; the same table name is used automatically.
 
 ---
 
 ## 4. Data Transforms
 
-Transforms modify a dataset in place before any widget uses it. They are applied in order, top to bottom.
+Transforms are **non-destructive**: they form a pipeline re-applied every time source data is reloaded. The original data is never modified. Add, remove, or reorder transforms at any time — the pipeline re-runs instantly.
 
 ### Adding Transforms
 
@@ -115,27 +181,21 @@ Remove rows that don't match a condition.
 
 #### Rename Column
 Change a column's name without altering its data.
-- **Column**: The column to rename.
-- **New name**: The desired name.
 
 *Example: Rename `pop_est` to `Population`.*
 
 #### Computed Column
 Create a new column using a JavaScript expression. All existing column names are available as variables.
-- **New column name**: The name for the calculated column.
-- **Expression**: A JavaScript expression referencing column names.
 
 *Example: Name: `gdp_per_capita`, Expression: `gdp / population`.*
 
 #### Sort
-Reorder all rows by a column.
-- **Field**: The column to sort by.
-- **Direction**: Ascending or descending.
+Reorder all rows by a column, ascending or descending.
 
 ### Managing Transforms
 - Transforms are listed in order with type badges and descriptions.
-- Click **×** on any transform to remove it.
-- Transforms are saved with the dashboard when you export.
+- Click **×** to remove; use the pipeline view to disable, reorder, and inspect intermediate results.
+- Transforms are saved with the dashboard in `.ytics` exports and re-applied on import.
 
 ---
 
@@ -742,29 +802,70 @@ Filter history is separate from developer-mode undo history.
 
 ## 15. Export and Import
 
-### Exporting
+### Exporting (.ytics file)
 
-Click **⬇ Export** in the header (or in the Viewer mode top bar).
+Click **Save** (or **Save ▾** for more options) in the header.
 
 Ytics saves a `.ytics` file — a ZIP archive containing:
 
 | File | Contents |
 |---|---|
-| `dashboard.json` | Full dashboard configuration: pages, widgets, layouts, theme, dimension colors. |
-| `data/*.csv` | A CSV export of each dataset. |
-| `README.md` | A human-readable summary of the dashboard. |
+| `dashboard.json` | Pages, widgets, layouts, theme, dimension colors, model positions, selection fields, transform pipelines, and dataset source descriptors. |
+| `data/*.csv` | A CSV export of each dataset's original data. |
+| `README.md` | A human-readable summary. |
 
-The export includes everything needed to fully restore the dashboard on any Ytics instance.
+Transforms and source descriptors are saved so the pipeline is fully restored on import and URL datasets can be reloaded.
 
-### Importing
+### Opening a Local File
 
-Click **⬆ Import** in the header and select a `.ytics` file (or a `.zip` file).
+Click **Open ▾ → From computer** and select a `.ytics` or `.zip` file. Ytics reconstructs all datasets (re-applying transforms), restores the full dashboard, and switches to Viewer mode.
 
-Ytics will:
-1. Parse the dashboard configuration.
-2. Reconstruct all datasets from the embedded CSVs.
-3. Restore the complete dashboard state.
-4. Switch to Viewer mode.
+### Opening from Google Drive
+
+Click **Open ▾ → From Google Drive**. Authorize and pick a file. Loaded exactly like a local import.
+
+### Opening from a URL
+
+Click **Open ▾ → From URL**, paste the URL to a `.ytics` file hosted anywhere publicly accessible, and press **Open**.
+
+Once loaded from a URL, the source is remembered. The **Save ▾** dropdown shows a **`</> Get embed code`** option.
+
+> The server must allow CORS. GitHub raw URLs and most public CDNs work out of the box.
+
+---
+
+## 15a. Embedding Dashboards
+
+Any dashboard loaded from a URL can be embedded as a read-only interactive viewer.
+
+### Getting the Embed Code
+
+1. Open a dashboard via **Open ▾ → From URL**.
+2. Open **Save ▾** and click **`</> Get embed code`**.
+3. Copy the **Embed URL** or the ready-to-paste **`<iframe>` snippet**.
+
+### Embed URL Format
+
+```
+https://your-app.com/?embed=1&src=https%3A%2F%2Fexample.com%2Fdashboard.ytics
+```
+
+- `embed=1` activates embed mode (no header, no developer tools).
+- `src` is the URL-encoded path to the `.ytics` file.
+
+### What the Embed Viewer Shows
+
+- Full-screen viewer mode: interactive tooltips, cross-filtering, page navigation.
+- No header, no edit controls — suitable for `<iframe>` embedding.
+- Loading spinner while fetching; descriptive error card if the fetch fails.
+
+Updating the hosted `.ytics` file automatically updates all embedded dashboards — no code changes needed.
+
+### Requirements
+
+- The `.ytics` file must be **publicly accessible** (CORS headers required).
+- Ytics must be served over HTTPS if the source file is HTTPS.
+- Runs entirely client-side — no backend needed.
 
 ---
 
@@ -813,10 +914,17 @@ Undo/redo operates independently in each mode — developer mode tracks dashboar
 
 ### Sharing Dashboards
 
-- Export as `.ytics` to share complete dashboards with data included.
-- Recipients import the file and get an identical dashboard — no setup required.
+- **Download & share** — Export `.ytics` to share the full dashboard with data included. Recipients import and get an identical dashboard.
+- **Host & share URL** — Upload the `.ytics` to a file server or public URL. Anyone can open it via **Open ▾ → From URL**.
+- **Embed** — Host the file and use **Get embed code** to get an `<iframe>` snippet. The embedded viewer is read-only, interactive, and updates automatically when you replace the hosted file.
 - Dashboard titles help recipients understand what they're looking at — name them descriptively.
+
+### Data Sources
+
+- Use **URL sources** with auto-refresh for live dashboards connected to APIs or updating data files.
+- Use **SQLite** to load structured data directly from local database files — no export step needed.
+- Transforms are non-destructive and re-applied on every reload, so your pipeline always produces consistent results.
 
 ---
 
-*Built with React, D3.js, and react-grid-layout.*
+*Built with React, D3.js, react-grid-layout, and sql.js.*

@@ -9,9 +9,9 @@ export async function generateDashboardBlob(datasets, dashboard, selections) {
   }
 
   zip.file('dashboard.json', JSON.stringify({
-    version: '3.0',
+    version: '3.1',
     dashboard,
-    datasetMeta: datasets.map(d => ({ id: d.id, name: d.name })),
+    datasetMeta: datasets.map(d => ({ id: d.id, name: d.name, transforms: d.transforms || [], source: d.source || { type: 'file' } })),
     selectionFields: Object.keys(selections || {}),
   }, null, 2));
 
@@ -40,13 +40,15 @@ export async function importDashboard(file) {
   const dataFolder = zip.folder('data');
   const datasets = [];
 
-  for (const { id, name } of (cfg.datasetMeta || [])) {
+  for (const meta of (cfg.datasetMeta || [])) {
+    const { id, name } = meta;
     const fname = name.endsWith('.csv') ? name : name + '.csv';
     const f = dataFolder.file(fname);
     if (f) {
       const text = await f.async('string');
       const { data } = fromCSV(text);
-      datasets.push({ id, name, data, originalData: data, transforms: [] });
+      const transforms = Array.isArray(meta.transforms) ? meta.transforms : [];
+      datasets.push({ id, name, data, originalData: data, transforms, source: meta.source || { type: 'import' } });
     }
   }
 

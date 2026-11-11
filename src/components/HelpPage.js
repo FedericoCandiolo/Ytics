@@ -5,6 +5,8 @@ const TOC = [
   { id: 'getting-started', label: 'Getting Started' },
   { id: 'interface', label: 'The Interface' },
   { id: 'loading-data', label: 'Loading Data' },
+  { id: 'url-reload', label: 'URL Sources & Reload' },
+  { id: 'sqlite-data', label: 'SQLite Databases' },
   { id: 'data-model', label: 'Data Model' },
   { id: 'data-transforms', label: 'Data Transforms' },
   { id: 'data-pipeline', label: 'Interactive Pipeline' },
@@ -24,6 +26,7 @@ const TOC = [
   { id: 'viewer-mode', label: 'Viewer Mode' },
   { id: 'filtering', label: 'Filtering & Cross-Filtering' },
   { id: 'export-import', label: 'Export & Import' },
+  { id: 'embedding', label: 'Embedding Dashboards' },
   { id: 'shortcuts', label: 'Keyboard Shortcuts' },
   { id: 'ml-analytics', label: 'ML Analytics & Clustering' },
   { id: 'tips', label: 'Tips & Best Practices' },
@@ -178,40 +181,38 @@ export default function HelpPage({ onClose }) {
 
           {/* ── 3. Loading Data ─────────────────────────────────────────── */}
           <Section id="loading-data" title="3. Loading Data">
-            <p>Ytics supports multiple data sources. Go to the <strong>Data</strong> tab in the developer sidebar to manage datasets.</p>
+            <p>Ytics supports four data source types. Use the <strong>📂 File / 🔗 URL / 🗄 SQLite</strong> tabs in the Data panel to load data, or click <strong>+ Inline Table</strong> for manual entry.</p>
 
-            <Sub title="Supported File Formats">
+            <Sub title="File Sources (CSV, Excel, JSON)">
               <Table
                 headers={['Format', 'Extensions', 'Details']}
                 rows={[
-                  ['CSV', '.csv', 'Drag-and-drop or click to browse. Parsed instantly with auto-detected column types.'],
-                  ['Excel', '.xlsx, .xls, .xlsb, .xlsm, .ods', 'Opens an Import Wizard where you can select sheets, skip header rows, and preview data before importing.'],
-                  ['JSON', '.json', 'Supports arrays of objects or nested objects (one level of flattening). Opens a preview wizard.'],
+                  ['CSV', '.csv', 'Drag-and-drop or click to browse. Parsed instantly with auto-detected delimiter and column types.'],
+                  ['Excel', '.xlsx, .xls, .xlsb, .xlsm, .ods', 'Opens an Import Wizard — select sheets, skip header rows, preview before importing.'],
+                  ['JSON', '.json', 'Supports arrays of objects or nested objects. Opens a preview wizard.'],
                 ]}
               />
             </Sub>
 
             <Sub title="Excel Import Wizard">
-              <p>When you upload an Excel file, a multi-step wizard guides you through the import:</p>
               <ol className="help-ol">
-                <li><strong>Sheet selection</strong> — All sheets are listed with checkboxes. Select which ones to import.</li>
-                <li><strong>Per-sheet configuration</strong> — For each selected sheet, set the dataset name, number of rows to skip from the top, and which row contains headers.</li>
-                <li><strong>Preview</strong> — See the first 5 rows of parsed data to verify the configuration is correct.</li>
-                <li><strong>Import</strong> — Click Import to load all selected sheets as separate datasets.</li>
+                <li><strong>Sheet selection</strong> — Checkboxes for each sheet.</li>
+                <li><strong>Per-sheet config</strong> — Dataset name, rows to skip, header row.</li>
+                <li><strong>Preview</strong> — First 5 rows to verify settings.</li>
+                <li><strong>Import</strong> — Each sheet becomes a separate dataset.</li>
               </ol>
             </Sub>
 
             <Sub title="Inline Tables">
-              <p>Click the <strong>+ Inline Table</strong> button to create a dataset by typing data directly — useful for lookup tables, categories, or manual mappings.</p>
+              <p>Click <strong>+ Inline Table</strong> to create a dataset by typing directly. Useful for lookup tables, categories, or manual data.</p>
               <ul className="help-ul">
-                <li>Click column headers to rename them. Use the <strong>+ Column</strong> and <strong>+ Row</strong> buttons to expand the table.</li>
-                <li><strong>Paste support</strong> — Copy cells from Excel or Google Sheets and paste them directly into the grid. The table auto-expands to fit.</li>
-                <li>Use <Kbd>Tab</Kbd> to navigate between cells and <Kbd>Enter</Kbd> to move down (auto-adds a new row at the bottom).</li>
+                <li>Click column headers to rename them. <strong>+ Column</strong> and <strong>+ Row</strong> expand the table.</li>
+                <li><strong>Paste support</strong> — Copy from Excel or Google Sheets and paste directly. The table auto-expands.</li>
+                <li><Kbd>Tab</Kbd> moves between cells; <Kbd>Enter</Kbd> moves down and adds a new row at the bottom.</li>
               </ul>
             </Sub>
 
             <Sub title="Column Types">
-              <p>Ytics auto-detects column types on import:</p>
               <Table
                 headers={['Type', 'Description']}
                 rows={[
@@ -221,22 +222,90 @@ export default function HelpPage({ onClose }) {
                   ['string', 'Everything else (text, categories).'],
                 ]}
               />
-              <p>You can change a column's type by clicking the <strong>type badge</strong> in the Data Preview header. Ytics applies smart conversions (e.g., stripping currency symbols when casting to number).</p>
+              <p>Click the <strong>type badge</strong> in the Data Preview header to change a column's type. Ytics applies smart conversions (e.g., strips currency symbols when casting to number).</p>
             </Sub>
 
-            <Sub title="Dataset Management">
+            <Sub title="Dataset List">
+              <p>Each dataset shows an icon reflecting its source: <strong>📂</strong> file, <strong>🔗</strong> URL, <strong>🗄</strong> SQLite, <strong>✏️</strong> inline, <strong>⛓</strong> join. The row/column count and transform count appear below the name.</p>
               <ul className="help-ul">
-                <li>Each loaded file or table appears as a named dataset in the left panel, with an icon indicating its source (file, inline, or join).</li>
-                <li>Click a dataset to select it and preview its contents (first 200 rows).</li>
-                <li>Click the <strong>delete</strong> button on a dataset to remove it (with confirmation).</li>
+                <li>Double-click the dataset name to rename it.</li>
+                <li>Click <strong>↺</strong> to reload data from its original source (see <em>URL Sources & Reload</em>).</li>
+                <li>Click <strong>✕</strong> to delete a dataset (with confirmation).</li>
               </ul>
             </Sub>
 
             <Sub title="Multiple Datasets">
-              <p>
-                You can load as many datasets as you need. Each widget independently selects which dataset
-                it visualizes, so a single dashboard can combine data from multiple sources.
-              </p>
+              <p>Load as many datasets as needed. Each widget independently picks which dataset it visualizes, so one dashboard can combine data from multiple sources.</p>
+            </Sub>
+          </Section>
+
+          {/* ── 3b. URL Sources & Reload ─────────────────────────────────── */}
+          <Section id="url-reload" title="3b. URL Sources & Reload">
+            <p>Datasets can be loaded from a remote URL and optionally refreshed automatically. Click the <strong>🔗 URL</strong> tab in the Data panel's add-data area.</p>
+
+            <Sub title="Loading from a URL">
+              <ol className="help-ol">
+                <li>Enter the full URL to a CSV or JSON file (e.g. <code>https://example.com/sales.csv</code>).</li>
+                <li>Select <strong>Format</strong>: <em>Auto-detect</em> (default), CSV, or JSON. Auto-detect checks the URL extension and content.</li>
+                <li>If CSV is selected, choose the delimiter (Comma, Semicolon, Tab, Pipe).</li>
+                <li>Set a <strong>Refresh interval</strong> for automatic reloading, or leave as "Manual only".</li>
+                <li>Click <strong>Load</strong>. The dataset name is derived from the filename in the URL.</li>
+              </ol>
+              <Tip>The server must allow cross-origin requests (CORS). Most public data APIs and GitHub raw URLs do. File servers may need <code>Access-Control-Allow-Origin: *</code> headers configured.</Tip>
+            </Sub>
+
+            <Sub title="Auto-Refresh">
+              <Table
+                headers={['Interval', 'Use case']}
+                rows={[
+                  ['Manual only', 'Reload only when you click the ↺ button.'],
+                  ['Every 1 / 5 / 15 min', 'Live dashboards connected to frequently-updating APIs.'],
+                  ['Every hour / day', 'Daily reports, weather data, or slow-moving metrics.'],
+                ]}
+              />
+              <p>URL datasets with an active interval show <strong>· auto</strong> in the dataset meta line. Intervals run while the Data Integration panel is open. All dashboard widgets update automatically when fresh data arrives.</p>
+            </Sub>
+
+            <Sub title="Reload a Dataset">
+              <p>Click the <strong>↺</strong> button on any dataset to reload it from its original source:</p>
+              <ul className="help-ul">
+                <li><strong>URL source</strong> — Re-fetches the URL immediately.</li>
+                <li><strong>File source</strong> — Opens a file picker so you can select a new version of the file. The dataset name and all transforms are preserved.</li>
+                <li><strong>SQLite source</strong> — Opens a file picker; the same table is re-read from the new database file.</li>
+              </ul>
+              <p>All transforms in the pipeline are re-applied automatically after reload.</p>
+            </Sub>
+
+            <Sub title="Reload All">
+              <p>When at least one URL dataset exists, a <strong>↺ Reload all</strong> button appears at the top of the dataset list. It re-fetches every URL source in sequence (file sources are skipped — they require manual file selection).</p>
+            </Sub>
+          </Section>
+
+          {/* ── 3c. SQLite Databases ─────────────────────────────────────── */}
+          <Section id="sqlite-data" title="3c. SQLite Databases">
+            <p>Ytics can open <code>.db</code>, <code>.sqlite</code>, and <code>.sqlite3</code> files directly in the browser using WebAssembly — no server required.</p>
+
+            <Sub title="How to Load a SQLite File">
+              <ol className="help-ol">
+                <li>In the Data panel, click the <strong>🗄 SQLite</strong> tab.</li>
+                <li>Click the dashed zone and select your database file.</li>
+                <li>Ytics reads all tables in the database and shows a picker with each table's row and column count.</li>
+                <li>Check the tables you want to import and click <strong>Import</strong>. Each table becomes a separate dataset.</li>
+              </ol>
+              <Tip>Large tables are capped at 100,000 rows on import. Use a transform filter or SQL <code>WHERE</code> pre-processing in a SQLite client first if you need a specific slice.</Tip>
+            </Sub>
+
+            <Sub title="Reloading SQLite Data">
+              <p>Click <strong>↺</strong> on a SQLite dataset to open a file picker. Ytics re-reads the same table from the new database file. If the schema changed (new columns, renamed columns), the data updates but any transform referring to old column names may need adjustment.</p>
+            </Sub>
+
+            <Sub title="Notes">
+              <ul className="help-ul">
+                <li>SQLite files are read entirely in-memory — the original file is not modified.</li>
+                <li>Views and virtual tables are not listed (only base tables).</li>
+                <li><code>NULL</code> values become empty strings in Ytics rows.</li>
+                <li>SQLite integer/real columns become <code>number</code> type; text columns become <code>string</code>.</li>
+              </ul>
             </Sub>
           </Section>
 
@@ -257,7 +326,7 @@ export default function HelpPage({ onClose }) {
 
           {/* ── 4. Data Transforms ──────────────────────────────────────── */}
           <Section id="data-transforms" title="4. Data Transforms">
-            <p>Transforms modify a dataset in place before any widget uses it. They are applied in order, top to bottom.</p>
+            <p>Transforms are <strong>non-destructive</strong>: they form a pipeline that is re-applied every time the source data is reloaded. The original data is never modified. Add, remove, or reorder transforms at any time and the pipeline re-runs instantly.</p>
             <Sub title="Filter Rows">
               <p>Remove rows that don't match a condition.</p>
               <Table
@@ -1054,21 +1123,78 @@ export default function HelpPage({ onClose }) {
 
           {/* ── 17. Export & Import ─────────────────────────────────────── */}
           <Section id="export-import" title="17. Export & Import">
-            <Sub title="Exporting">
-              <p>Click <strong>Export</strong> in the header. Ytics saves a <code>.ytics</code> file (ZIP archive) containing:</p>
+            <Sub title="Exporting (.ytics file)">
+              <p>Click <strong>Save</strong> in the header. Ytics saves a <code>.ytics</code> file (ZIP archive) containing:</p>
               <Table
                 headers={['File', 'Contents']}
                 rows={[
-                  ['dashboard.json', 'Full configuration: pages, widgets, layouts, theme, dimension colors, data model positions, and selection pane fields.'],
-                  ['data/*.csv', 'A CSV export of each dataset.'],
+                  ['dashboard.json', 'Full config: pages, widgets, layouts, theme, dimension colors, model positions, selection pane fields, transforms pipeline, and dataset source descriptors.'],
+                  ['data/*.csv', 'A CSV export of each dataset\'s original data.'],
                   ['README.md', 'A human-readable summary.'],
                 ]}
               />
-              <p>Selection pane fields are saved so that on import, the same panes appear in the viewer (reset to "all").</p>
-              <Tip>You can export at any point — even with no visualizations. As long as you have at least one dataset loaded, the Export button is enabled.</Tip>
+              <p>Transforms and source descriptors are saved so that on import the pipeline is fully restored and URL datasets can be reloaded.</p>
+              <Tip>The Export button is enabled as soon as you have at least one dataset or one widget.</Tip>
             </Sub>
-            <Sub title="Importing">
-              <p>Click <strong>Import</strong> in the header and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs datasets, restores the dashboard state including selection panes, and switches to Viewer mode.</p>
+
+            <Sub title="Opening a local .ytics file">
+              <p>Click <strong>Open ▾ → From computer</strong> and select a <code>.ytics</code> or <code>.zip</code> file. Ytics reconstructs all datasets (re-applying transforms), restores the full dashboard state, and switches to Viewer mode.</p>
+            </Sub>
+
+            <Sub title="Opening from Google Drive">
+              <p>Click <strong>Open ▾ → From Google Drive</strong>. Sign in and select a file from the Google Drive Picker. The file is downloaded and opened exactly like a local import.</p>
+            </Sub>
+
+            <Sub title="Opening from a URL">
+              <p>Click <strong>Open ▾ → From URL</strong> to open a <code>.ytics</code> file hosted on a file server or any public URL.</p>
+              <ol className="help-ol">
+                <li>Paste the full URL to the <code>.ytics</code> file.</li>
+                <li>Press <Kbd>Enter</Kbd> or click <strong>Open</strong>.</li>
+                <li>The dashboard loads exactly as if opened locally.</li>
+              </ol>
+              <p>Once a URL-sourced file is open, its source is remembered. The <strong>Save</strong> dropdown will show a <strong>&lt;/&gt; Get embed code</strong> option (see <em>Embedding Dashboards</em>).</p>
+              <Tip>The server hosting the <code>.ytics</code> file must allow cross-origin requests (CORS). GitHub raw URLs and most public CDNs work out of the box.</Tip>
+            </Sub>
+          </Section>
+
+          {/* ── 17b. Embedding Dashboards ─────────────────────────────── */}
+          <Section id="embedding" title="17b. Embedding Dashboards">
+            <p>Any dashboard loaded from a URL can be embedded in another page as a read-only interactive viewer.</p>
+
+            <Sub title="Getting the Embed Code">
+              <ol className="help-ol">
+                <li>Open a dashboard via <strong>Open ▾ → From URL</strong>.</li>
+                <li>Open the <strong>Save ▾</strong> dropdown and click <strong>&lt;/&gt; Get embed code</strong>.</li>
+                <li>Copy the <strong>Embed URL</strong> or the ready-to-paste <strong>&lt;iframe&gt; snippet</strong>.</li>
+              </ol>
+            </Sub>
+
+            <Sub title="Embed URL Format">
+              <p>The embed URL follows this pattern:</p>
+              <pre style={{ background: 'var(--bg-hover, #f1f5f9)', padding: '8px 12px', borderRadius: 6, fontSize: 12, overflowX: 'auto' }}>
+                {'https://your-app.com/?embed=1&src=https%3A%2F%2Fexample.com%2Fdashboard.ytics'}
+              </pre>
+              <ul className="help-ul">
+                <li><strong>embed=1</strong> — Activates embed mode (no header, no developer tools).</li>
+                <li><strong>src</strong> — URL-encoded path to the <code>.ytics</code> file.</li>
+              </ul>
+            </Sub>
+
+            <Sub title="What the Embed Viewer Shows">
+              <ul className="help-ul">
+                <li>Full-screen viewer mode: interactive tooltips, cross-filtering, page navigation.</li>
+                <li>No header, no mode toggle, no edit controls — suitable for <code>&lt;iframe&gt;</code> embedding.</li>
+                <li>Loading spinner while fetching; descriptive error card if the fetch fails.</li>
+              </ul>
+              <Tip>The <code>.ytics</code> file is fetched fresh each time the embed URL is loaded. Update the hosted file to update all embedded dashboards automatically — no embed code changes needed.</Tip>
+            </Sub>
+
+            <Sub title="Requirements">
+              <ul className="help-ul">
+                <li>The <code>.ytics</code> file must be <strong>publicly accessible</strong> from the browser (CORS headers required).</li>
+                <li>Your Ytics app must be served over HTTPS if the source file is also HTTPS (mixed-content rules).</li>
+                <li>The embed viewer runs entirely client-side — no backend or server-side rendering needed.</li>
+              </ul>
             </Sub>
           </Section>
 

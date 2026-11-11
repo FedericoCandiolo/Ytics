@@ -6,6 +6,8 @@ import { useBreakpoint } from './hooks/useMediaQuery';
 import Header from './components/Header';
 import DeveloperMode from './components/Developer/DeveloperMode';
 import ViewerMode from './components/Viewer/ViewerMode';
+import EmbedViewer from './components/EmbedViewer';
+import ConverterApp from './components/Converter/ConverterApp';
 import HelpPage from './components/HelpPage';
 import './App.css';
 
@@ -54,7 +56,24 @@ function AppInner() {
   );
 }
 
+function EmbedApp({ src }) {
+  return (
+    <AppProvider>
+      <EmbedViewer src={src} />
+    </AppProvider>
+  );
+}
+
 export default function App() {
+  const params = new URLSearchParams(window.location.search);
+
+  // Embed mode: ?embed=1&src=<url>
+  const embedSrc = params.get('embed') === '1' ? params.get('src') : null;
+  if (embedSrc) return <EmbedApp src={decodeURIComponent(embedSrc)} />;
+
+  // Converter tool: ?tool=convert
+  if (params.get('tool') === 'convert') return <ConverterApp />;
+
   return (
     <AppProvider>
       <AppInner />

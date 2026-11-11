@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getColumnInfo, readCSVFile, detectCSVDelimiter, joinDatasets, applyTransformsUpTo, detectColumnTypes } from '../../utils/dataUtils';
+import { getColumnInfo, readCSVFile, detectCSVDelimiter, fetchUrlData, joinDatasets, applyTransformsUpTo, detectColumnTypes } from '../../utils/dataUtils';
+import { openSQLiteFile, readSQLiteTable, getSQLiteTableInfo } from '../../utils/sqliteUtils';
 import { useBreakpoint } from '../../hooks/useMediaQuery';
 import DataModel from './DataModel';
 import ImportWizard from './ImportWizard';
@@ -129,7 +130,7 @@ function FileUploader({ onLoad, compact }) {
     setCsvPending(null);
     try {
       const { data } = await readCSVFile(file, delim);
-      if (data.length) onLoad(file.name, data);
+      if (data.length) onLoad(file.name, data, { type: 'file', fileName: file.name, delimiter: delim });
       else alert('No data found in file. Check that the delimiter is correct.');
     } catch (err) {
       alert('Parse error: ' + err.message);
@@ -173,6 +174,91 @@ function FileUploader({ onLoad, compact }) {
         />
       )}
     </>
+  );
+}
+
+// ── URL Loader ────────────────────────────────────────────────────────────────
+function UrlLoader({ onLoad }) {
+  const [url, setUrl] = useState('');
+  const [format, setFormat] = useState('auto');
+  const [delimiter, setDelimiter] = useState(',');
+  const [refreshInterval, setRefreshInterval] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const handleLoad = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setLoading(true);
+    try {
+      const delim = format === 'csv' ? delimiter : null;
+      const { data } = await fetchUrlData(trimmed, format, delim);
+      if (!data.length) { alert('URL returned no data.'); return; }
+      const name = trimmed.split('/').pop().split('?')[0] || 'url-data';
+      const source = { type: 'url', url: trimmed, format, delimiter: delim, refreshInterval };
+      onLoad(name, data, source);
+      setUrl('');
+    } catch (err) {
+      alert('Failed to load URL: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+      <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, color: 'var(--text)' }}>🔗 Load from URL</div>
+      <input
+        className="input input-sm"
+        style={{ width: '100%', marginBottom: 6, fontSize: 12 }}
+        placeholder="https://example.com/data.csv"
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleLoad()}
+      />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        <select
+          className="select select-sm"
+          style={{ flex: 1, fontSize: 12 }}
+          value={format}
+          onChange={e => setFormat(e.target.value)}
+        >
+          <option value="auto">Auto-detect</option>
+          <option value="csv">CSV</option>
+          <option value="json">JSON</option>
+        </select>
+        {format === 'csv' && (
+          <select
+            className="select select-sm"
+            style={{ width: 90, fontSize: 12 }}
+            value={delimiter}
+            onChange={e => setDelimiter(e.target.value)}
+          >
+            <option value=",">Comma ,</option>
+            <option value=";">Semicolon ;</option>
+            <option value={'\t'}>Tab \t</option>
+            <option value="|">Pipe |</option>
+          </select>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <select
+          className="select select-sm"
+          style={{ flex: 1, fontSize: 12 }}
+          value={refreshInterval}
+          onChange={e => setRefreshInterval(Number(e.target.value))}
+        >
+          {REFRESH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <button
+          className="btn btn-primary btn-sm"
+          style={{ fontSize: 12 }}
+          onClick={handleLoad}
+          disabled={loading || !url.trim()}
+        >
+          {loading ? '…' : 'Load'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -541,6 +627,8 @@ function sourceIcon(source) {
   if (!source) return '📂';
   switch (source.type) {
     case 'file':    return '📂';
+    case 'url':     return '🔗';
+    case 'sqlite':  return '🗄';
     case 'inline':  return '✏️';
     case 'join':    return '⛓';
     case 'import':  return '📦';
@@ -551,7 +639,9 @@ function sourceIcon(source) {
 function sourceLabel(source) {
   if (!source) return 'File import';
   switch (source.type) {
-    case 'file':    return 'File import';
+    case 'file':    return source.fileName ? `File: ${source.fileName}` : 'File import';
+    case 'url':     return `URL: ${source.url}`;
+    case 'sqlite':  return `SQLite: ${source.fileName} → ${source.tableName}`;
     case 'inline':  return 'Inline table';
     case 'join':    return `${source.joinType} join: ${source.leftName}.${source.leftField} = ${source.rightName}.${source.rightField}`;
     case 'import':  return 'Imported';
@@ -559,10 +649,21 @@ function sourceLabel(source) {
   }
 }
 
+const REFRESH_OPTIONS = [
+  { value: 0,     label: 'Manual only' },
+  { value: 60,    label: 'Every 1 min' },
+  { value: 300,   label: 'Every 5 min' },
+  { value: 900,   label: 'Every 15 min' },
+  { value: 3600,  label: 'Every hour' },
+  { value: 86400, label: 'Every day' },
+];
+
 // ── Dataset item with inline rename ──────────────────────────────────────────
 function DatasetItem({ ds, isActive, dispatch }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(ds.name);
+  const [reloading, setReloading] = useState(false);
+  const fileInputRef = useRef(null);
   const inputRef = useRef(null);
 
   const startEdit = (e) => {
@@ -586,6 +687,73 @@ function DatasetItem({ ds, isActive, dispatch }) {
       dispatch({ type: 'DELETE_DATASET', payload: ds.id });
     }
   };
+
+  const handleReload = async (e) => {
+    e.stopPropagation();
+    const src = ds.source;
+    if (src?.type === 'url') {
+      setReloading(true);
+      try {
+        const { data } = await fetchUrlData(src.url, src.format || 'auto', src.delimiter || null);
+        if (!data.length) { alert('Reloaded URL returned no data.'); return; }
+        dispatch({ type: 'RELOAD_DATASET', payload: { id: ds.id, data } });
+      } catch (err) {
+        alert('Reload failed: ' + err.message);
+      } finally {
+        setReloading(false);
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleFileReload = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    setReloading(true);
+    try {
+      let data;
+      if (['db', 'sqlite', 'sqlite3'].includes(ext)) {
+        const tableName = ds.source?.tableName;
+        if (!tableName) {
+          alert('Cannot reload: original table name unknown. Re-import via the SQLite loader.');
+          setReloading(false);
+          return;
+        }
+        const { db: newDb } = await openSQLiteFile(file);
+        data = readSQLiteTable(newDb, tableName);
+        newDb.close();
+        dispatch({ type: 'UPDATE_DATASET_SOURCE', payload: { id: ds.id, source: { ...ds.source, fileName: file.name } } });
+      } else if (ext === 'csv') {
+        const { data: d } = await readCSVFile(file, ds.source?.delimiter || null);
+        data = d;
+        dispatch({ type: 'UPDATE_DATASET_SOURCE', payload: { id: ds.id, source: { ...ds.source, fileName: file.name } } });
+      } else if (ext === 'json') {
+        const text = await file.text();
+        let parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        data = parsed;
+        dispatch({ type: 'UPDATE_DATASET_SOURCE', payload: { id: ds.id, source: { ...ds.source, fileName: file.name } } });
+      } else {
+        alert('For Excel files, delete this dataset and re-import with the full wizard.');
+        setReloading(false);
+        return;
+      }
+      if (!data?.length) { alert('File returned no data.'); setReloading(false); return; }
+      dispatch({ type: 'RELOAD_DATASET', payload: { id: ds.id, data } });
+    } catch (err) {
+      alert('Reload failed: ' + err.message);
+    } finally {
+      setReloading(false);
+    }
+  };
+
+  const canReload = ds.source?.type === 'url' || ds.source?.type === 'file'
+    || ds.source?.type === 'sqlite' || !ds.source || ds.source?.type === 'import';
+
+  const reloadFileAccept = ds.source?.type === 'sqlite' ? '.db,.sqlite,.sqlite3' : '.csv,.json';
 
   return (
     <div
@@ -612,17 +780,38 @@ function DatasetItem({ ds, isActive, dispatch }) {
         <div className="di-dataset-item-meta">
           {ds.data.length.toLocaleString()} rows · {ds.columns.length} cols
           {ds.transforms.length > 0 && ` · ${ds.transforms.length} tx`}
+          {ds.source?.type === 'url' && ds.source.refreshInterval > 0 && ` · auto`}
         </div>
       </div>
       {!editing && (
-        <button
-          className="btn btn-ghost btn-icon di-delete-btn"
-          onClick={handleDelete}
-          title="Delete dataset"
-        >
-          ✕
-        </button>
+        <>
+          {canReload && (
+            <button
+              className="btn btn-ghost btn-icon di-delete-btn"
+              onClick={handleReload}
+              disabled={reloading}
+              title={ds.source?.type === 'url' ? 'Reload from URL' : 'Reload from file'}
+              style={{ opacity: reloading ? 0.5 : 1 }}
+            >
+              {reloading ? '…' : '↺'}
+            </button>
+          )}
+          <button
+            className="btn btn-ghost btn-icon di-delete-btn"
+            onClick={handleDelete}
+            title="Delete dataset"
+          >
+            ✕
+          </button>
+        </>
       )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={reloadFileAccept}
+        hidden
+        onChange={handleFileReload}
+      />
     </div>
   );
 }
@@ -1274,6 +1463,193 @@ function CenterPanel({ view, setView, activeDataset, modelPositions, setModelPos
   );
 }
 
+// ── SQLite Loader ─────────────────────────────────────────────────────────────
+function SQLiteLoader({ onLoad }) {
+  const [state, setState] = useState('idle'); // 'idle' | 'loading' | 'pick'
+  const [db, setDb] = useState(null);
+  const [tables, setTables] = useState([]); // [{ name, columns, rows }]
+  const [fileName, setFileName] = useState('');
+  const [selected, setSelected] = useState({});
+  const [tableSearch, setTableSearch] = useState('');
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setState('loading');
+    try {
+      const { db: newDb, tables: tableNames } = await openSQLiteFile(file);
+      const tableInfo = tableNames.map(name => {
+        const { columns, rows } = getSQLiteTableInfo(newDb, name);
+        return { name, columns, rows };
+      });
+      setDb(newDb);
+      setTables(tableInfo);
+      setFileName(file.name);
+      setSelected(Object.fromEntries(tableNames.map(n => [n, true])));
+      setTableSearch('');
+      setState('pick');
+    } catch (err) {
+      alert('Failed to open SQLite file: ' + err.message);
+      setState('idle');
+    }
+  };
+
+  const handleImport = () => {
+    for (const tbl of tables) {
+      if (!selected[tbl.name]) continue;
+      try {
+        const data = readSQLiteTable(db, tbl.name);
+        onLoad(tbl.name, data, { type: 'sqlite', fileName, tableName: tbl.name });
+      } catch (err) {
+        alert(`Error reading table "${tbl.name}": ${err.message}`);
+      }
+    }
+    db.close();
+    setDb(null);
+    setTables([]);
+    setState('idle');
+  };
+
+  const handleCancel = () => {
+    db?.close();
+    setDb(null);
+    setTables([]);
+    setState('idle');
+  };
+
+  if (state === 'loading') {
+    return (
+      <div style={{ padding: '10px 0', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
+        Loading SQLite file…
+      </div>
+    );
+  }
+
+  if (state === 'pick') {
+    const anySelected = Object.values(selected).some(Boolean);
+    const filtered = tables.filter(t => t.name.toLowerCase().includes(tableSearch.toLowerCase()));
+    const allFilteredSelected = filtered.length > 0 && filtered.every(t => selected[t.name]);
+    const toggleAll = () => {
+      const next = !allFilteredSelected;
+      setSelected(s => ({ ...s, ...Object.fromEntries(filtered.map(t => [t.name, next])) }));
+    };
+    const selectedCount = Object.values(selected).filter(Boolean).length;
+    return (
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8 }}>📁 {fileName}</div>
+        {tables.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No tables found in this database.</div>
+        ) : (
+          <>
+            <input
+              type="text"
+              placeholder={`Search ${tables.length} tables…`}
+              value={tableSearch}
+              onChange={e => setTableSearch(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box', marginBottom: 6,
+                padding: '4px 8px', fontSize: 12, borderRadius: 5,
+                border: '1px solid var(--border)', background: 'var(--bg)',
+                color: 'var(--text)', outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}>
+                <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
+                {allFilteredSelected ? 'Deselect all' : 'Select all'}
+                {filtered.length < tables.length ? ` (${filtered.length} shown)` : ''}
+              </label>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{selectedCount} selected</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8, maxHeight: 240, overflowY: 'auto', borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+              {filtered.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '6px 0' }}>No tables match.</div>
+              ) : filtered.map(tbl => (
+                <label key={tbl.name} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, padding: '2px 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!selected[tbl.name]}
+                    onChange={e => setSelected(s => ({ ...s, [tbl.name]: e.target.checked }))}
+                  />
+                  <span style={{ fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tbl.name}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>
+                    {tbl.rows.toLocaleString()} rows · {tbl.columns} cols
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-primary btn-sm" onClick={handleImport} disabled={!anySelected || tables.length === 0}>
+            Import {selectedCount > 0 ? `(${selectedCount})` : ''}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={handleCancel}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        style={{
+          border: '1px dashed var(--border)', borderRadius: 8, padding: '14px 12px',
+          textAlign: 'center', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)',
+        }}
+        onClick={() => inputRef.current?.click()}
+      >
+        🗄 Click to open a <strong>.db</strong> / <strong>.sqlite</strong> file
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".db,.sqlite,.sqlite3"
+        hidden
+        onChange={e => { handleFile(e.target.files[0]); e.target.value = ''; }}
+      />
+    </>
+  );
+}
+
+// ── Add-data panel (file + URL + SQLite) ──────────────────────────────────────
+function AddDataPanel({ onLoad, onInlineTable, compact }) {
+  const [addMode, setAddMode] = useState('file'); // 'file' | 'url' | 'sqlite'
+  return (
+    <div style={{ padding: compact ? '8px 10px' : 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+        <button
+          className={`btn btn-sm ${addMode === 'file' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ flex: 1, fontSize: 12 }}
+          onClick={() => setAddMode('file')}
+        >📂 File</button>
+        <button
+          className={`btn btn-sm ${addMode === 'url' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ flex: 1, fontSize: 12 }}
+          onClick={() => setAddMode('url')}
+        >🔗 URL</button>
+        <button
+          className={`btn btn-sm ${addMode === 'sqlite' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ flex: 1, fontSize: 12 }}
+          onClick={() => setAddMode('sqlite')}
+        >🗄 SQLite</button>
+      </div>
+      {addMode === 'file' ? (
+        <FileUploader onLoad={onLoad} compact={compact} />
+      ) : addMode === 'url' ? (
+        <UrlLoader onLoad={onLoad} />
+      ) : (
+        <SQLiteLoader onLoad={onLoad} />
+      )}
+      <button
+        className="btn btn-secondary btn-sm w-full"
+        style={{ marginTop: 6, fontSize: 12 }}
+        onClick={onInlineTable}
+      >+ Inline Table</button>
+    </div>
+  );
+}
+
 // ── Main DataIntegration component ────────────────────────────────────────────
 export default function DataIntegration() {
   const { state, dispatch } = useApp();
@@ -1292,6 +1668,40 @@ export default function DataIntegration() {
   const handleLoad = useCallback((name, data, source) => {
     dispatch({ type: 'LOAD_DATASET', payload: { name, data, source } });
   }, [dispatch]);
+
+  // ── Auto-refresh for URL datasets ──
+  const urlDatasets = useMemo(
+    () => state.datasets.filter(d => d.source?.type === 'url' && d.source.refreshInterval > 0),
+    [state.datasets]
+  );
+  useEffect(() => {
+    if (!urlDatasets.length) return;
+    const timers = urlDatasets.map(ds => {
+      const interval = ds.source.refreshInterval * 1000;
+      return setInterval(async () => {
+        try {
+          const { data } = await fetchUrlData(ds.source.url, ds.source.format || 'auto', ds.source.delimiter || null);
+          if (data.length) dispatch({ type: 'RELOAD_DATASET', payload: { id: ds.id, data } });
+        } catch { /* silent — user will see stale data */ }
+      }, interval);
+    });
+    return () => timers.forEach(clearInterval);
+  }, [urlDatasets, dispatch]);
+
+  // ── Reload all URL datasets ──
+  const reloadAllUrl = useCallback(async () => {
+    const urlDs = state.datasets.filter(d => d.source?.type === 'url');
+    for (const ds of urlDs) {
+      try {
+        const { data } = await fetchUrlData(ds.source.url, ds.source.format || 'auto', ds.source.delimiter || null);
+        if (data.length) dispatch({ type: 'RELOAD_DATASET', payload: { id: ds.id, data } });
+      } catch (err) {
+        console.warn(`Reload failed for ${ds.name}:`, err.message);
+      }
+    }
+  }, [state.datasets, dispatch]);
+
+  const hasUrlDatasets = state.datasets.some(d => d.source?.type === 'url');
 
   // ── Tablet: merge left + right into a single tabbed panel ──
   if (isTablet) {
@@ -1323,18 +1733,18 @@ export default function DataIntegration() {
 
           {leftTab === 'datasets' ? (
             <>
-              <div style={{ padding: '8px 10px' }}>
-                <FileUploader onLoad={handleLoad} compact />
-                <button
-                  className="btn btn-secondary btn-sm w-full"
-                  style={{ marginTop: 6, fontSize: 12 }}
-                  onClick={() => setShowInlineEditor(true)}
-                >+ Inline Table</button>
-              </div>
+              <AddDataPanel onLoad={handleLoad} onInlineTable={() => setShowInlineEditor(true)} compact />
+              {hasUrlDatasets && (
+                <div style={{ padding: '0 10px 6px' }}>
+                  <button className="btn btn-secondary btn-sm w-full" style={{ fontSize: 12 }} onClick={reloadAllUrl}>
+                    ↺ Reload all URLs
+                  </button>
+                </div>
+              )}
               <div className="di-datasets">
                 {state.datasets.length === 0 && (
                   <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
-                    Load a file or create an inline table
+                    Load a file or enter a URL
                   </div>
                 )}
                 {state.datasets.map(ds => (
@@ -1373,18 +1783,25 @@ export default function DataIntegration() {
       {/* ── Left: dataset list ── */}
       <div className="di-left">
         <div className="di-left-header">
-          <div className="section-title">Datasets</div>
-          <FileUploader onLoad={handleLoad} />
-          <button
-            className="btn btn-secondary btn-sm w-full"
-            style={{ marginTop: 6 }}
-            onClick={() => setShowInlineEditor(true)}
-          >+ Inline Table</button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="section-title" style={{ marginBottom: 0 }}>Datasets</div>
+            {hasUrlDatasets && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={reloadAllUrl}
+                title="Reload all URL datasets"
+              >↺ Reload all</button>
+            )}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <AddDataPanel onLoad={handleLoad} onInlineTable={() => setShowInlineEditor(true)} compact={false} />
+          </div>
         </div>
         <div className="di-datasets">
           {state.datasets.length === 0 && (
             <div style={{ padding: '16px 8px', color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>
-              Load a file or create an inline table
+              Load a file or enter a URL
             </div>
           )}
           {state.datasets.map(ds => (

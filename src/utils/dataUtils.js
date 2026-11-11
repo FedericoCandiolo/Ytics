@@ -32,36 +32,53 @@ export function detectCSVDelimiter(firstLine) {
 }
 
 // delimiter: explicit character to use, or null to auto-detect from the first line.
+export function parseCSVText(text, delimiter = null) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { data: [], columns: [], delimiter: delimiter ?? ',' };
+  const delim = delimiter ?? detectCSVDelimiter(lines[0]);
+  const headers = parseCSVLine(lines[0], delim);
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCSVLine(lines[i], delim);
+    const row = {};
+    headers.forEach((h, j) => {
+      const v = vals[j] ?? '';
+      row[h] = v !== '' && !isNaN(v) && v.trim() !== '' ? Number(v) : v;
+    });
+    data.push(row);
+  }
+  return { data, columns: headers, delimiter: delim };
+}
+
 export function readCSVFile(file, delimiter = null) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.onload = (e) => {
       try {
-        let text = e.target.result;
-        // Strip BOM if present
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) return resolve({ data: [], columns: [], delimiter: delimiter ?? ',' });
-        const delim = delimiter ?? detectCSVDelimiter(lines[0]);
-        const headers = parseCSVLine(lines[0], delim);
-        const data = [];
-        for (let i = 1; i < lines.length; i++) {
-          const vals = parseCSVLine(lines[i], delim);
-          const row = {};
-          headers.forEach((h, j) => {
-            const v = vals[j] ?? '';
-            row[h] = v !== '' && !isNaN(v) && v.trim() !== '' ? Number(v) : v;
-          });
-          data.push(row);
-        }
-        resolve({ data, columns: headers, delimiter: delim });
+        resolve(parseCSVText(e.target.result, delimiter));
       } catch (err) {
         reject(err);
       }
     };
     reader.readAsText(file);
   });
+}
+
+export async function fetchUrlData(url, format = 'auto', delimiter = null) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  const text = await response.text();
+  const trimmed = text.trim();
+  const isJson = format === 'json' || (format === 'auto' && (trimmed.startsWith('[') || trimmed.startsWith('{')));
+  if (isJson) {
+    let parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) parsed = [parsed];
+    const columns = Object.keys(parsed[0] || {});
+    return { data: parsed, columns, delimiter: null };
+  }
+  return parseCSVText(text, delimiter);
 }
 
 export function detectColumnTypes(data) {

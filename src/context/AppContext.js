@@ -934,6 +934,27 @@ function reducer(state, action) {
       return { ...state, datasets, colStore: { dicts, tables } };
     }
 
+    case 'RELOAD_DATASET': {
+      const { id: rdId, data: rdData } = action.payload;
+      const dicts = cloneDicts(state.colStore.dicts);
+      const tables = { ...state.colStore.tables };
+      const datasets = state.datasets.map(d => {
+        if (d.id !== rdId) return d;
+        const updated = recompute({ ...d, originalData: rdData }, dicts);
+        tables[d.id] = updated.table;
+        return updated;
+      });
+      return { ...state, datasets, colStore: { dicts, tables } };
+    }
+
+    case 'UPDATE_DATASET_SOURCE': {
+      const { id: usId, source: usSource } = action.payload;
+      return {
+        ...state,
+        datasets: state.datasets.map(d => d.id === usId ? { ...d, source: usSource } : d),
+      };
+    }
+
     // ── Import ────────────────────────────────────────────────
     case 'IMPORT_STATE': {
       const { datasets, dashboard } = action.payload;
@@ -1018,6 +1039,7 @@ const UNDOABLE_ACTIONS = new Set([
   'SET_DIMENSION_COLOR', 'REMOVE_DIMENSION_COLOR', 'TOGGLE_CONSISTENT_COLOR_FIELD',
   'SET_FIELD_SYNONYMS',
   'RUN_CLUSTERING', 'REMOVE_COLUMN',
+  'RELOAD_DATASET',
 ]);
 
 const FILTER_ACTIONS = new Set(['SET_FILTER', 'REMOVE_FILTER', 'CLEAR_FILTERS']);
@@ -1029,7 +1051,7 @@ export function saveDashboard(state) {
   try {
     const payload = {
       datasets: state.datasets.map(d => ({
-        id: d.id, name: d.name, data: d.originalData, transforms: d.transforms,
+        id: d.id, name: d.name, data: d.originalData, transforms: d.transforms, source: d.source,
       })),
       dashboard: state.dashboard,
       selections: state.selections,
